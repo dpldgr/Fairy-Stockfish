@@ -25,8 +25,18 @@ jobs:
       - name: make
         run: cd src && make clean && make -j build COMP=mingw ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }}.exe && strip fairy-stockfish_${{ matrix.arch }}.exe
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fairy-stockfish_${{ matrix.arch }}_windows
+          path: src/fairy-stockfish_${{ matrix.arch }}.exe
+
       - name: make largeboards
         run: cd src && make clean && make -j build COMP=mingw ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }}.exe largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fairy-stockfish-largeboards_${{ matrix.arch }}_windows
+          path: src/fairy-stockfish-largeboards_${{ matrix.arch }}.exe
 
       - name: make all
         if: ${{ matrix.arch == 'x86-64' }}
@@ -34,8 +44,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish_${{ matrix.arch }}_windows
-          path: src/fairy-stockfish_${{ matrix.arch }}.exe
+          name: fairy-stockfish-all_${{ matrix.arch }}_windows
+          path: src/fairy-stockfish-all_${{ matrix.arch }}.exe
 
   linux:
     strategy:
@@ -49,8 +59,18 @@ jobs:
       - name: make
         run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }} && strip fairy-stockfish_${{ matrix.arch }}
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fairy-stockfish_${{ matrix.arch }}_linux
+          path: src/fairy-stockfish_${{ matrix.arch }}
+
       - name: make largeboards
         run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }} largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fairy-stockfish-largeboards_${{ matrix.arch }}_linux
+          path: src/fairy-stockfish-largeboards_${{ matrix.arch }}
 
       - name: make all
         if: ${{ matrix.arch == 'x86-64' }}
@@ -58,5 +78,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish_${{ matrix.arch }}_linux
-          path: src/fairy-stockfish_${{ matrix.arch }}
+          name: fairy-stockfish-all_${{ matrix.arch }}_windows
+          path: src/fairy-stockfish-all_${{ matrix.arch }}
