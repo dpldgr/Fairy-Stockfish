@@ -14,8 +14,8 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - uses: al-cheb/configure-pagefile-action@v1.2	
-        with:	
+      - uses: al-cheb/configure-pagefile-action@v1.2        
+        with:        
             minimum-size: 16GB
             maximum-size: 16GB
             disk-root: "C:"
@@ -34,38 +34,38 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish-all_x86-64_win64
-	  path: src/fairy-stockfish-all_x86-64.exe
+          name: fairy-stockfish-all_x86-64_win64
+          path: src/fairy-stockfish-all_x86-64.exe
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish-largeboards_x86-64_win64
-	  path: src/fairy-stockfish-largeboards_x86-64.exe
+          name: fairy-stockfish-largeboards_x86-64_win64
+          path: src/fairy-stockfish-largeboards_x86-64.exe
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish-largeboards_x86-64-bmi2_win64
-	  path: src/fairy-stockfish-largeboards_x86-64-bmi2.exe
+          name: fairy-stockfish-largeboards_x86-64-bmi2_win64
+          path: src/fairy-stockfish-largeboards_x86-64-bmi2.exe
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish-largeboards_x86-64-modern_win64
-	  path: src/fairy-stockfish-largeboards_x86-64-modern.exe
+          name: fairy-stockfish-largeboards_x86-64-modern_win64
+          path: src/fairy-stockfish-largeboards_x86-64-modern.exe
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish_x86-64_win64
-	  path: src/fairy-stockfish_x86-64.exe
+          name: fairy-stockfish_x86-64_win64
+          path: src/fairy-stockfish_x86-64.exe
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish_x86-64-bmi2_win64
-	  path: src/fairy-stockfish_x86-64-bmi2.exe
+          name: fairy-stockfish_x86-64-bmi2_win64
+          path: src/fairy-stockfish_x86-64-bmi2.exe
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish_x86-64-modern_win64
-	  path: src/fairy-stockfish_x86-64-modern.exe
+          name: fairy-stockfish_x86-64-modern_win64
+          path: src/fairy-stockfish_x86-64-modern.exe
 
   linux:
     strategy:
@@ -88,35 +88,35 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish-all_x86-64_linux
-	  path: src/fairy-stockfish-all_x86-64
+          name: fairy-stockfish-all_x86-64_linux
+          path: src/fairy-stockfish-all_x86-64
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish-largeboards_x86-64_linux
-	  path: src/fairy-stockfish-largeboards_x86-64
+          name: fairy-stockfish-largeboards_x86-64_linux
+          path: src/fairy-stockfish-largeboards_x86-64
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish-largeboards_x86-64-bmi2_linux
-	  path: src/fairy-stockfish-largeboards_x86-64-bmi2
+          name: fairy-stockfish-largeboards_x86-64-bmi2_linux
+          path: src/fairy-stockfish-largeboards_x86-64-bmi2
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish-largeboards_x86-64-modern_linux
-	  path: src/fairy-stockfish-largeboards_x86-64-modern
+          name: fairy-stockfish-largeboards_x86-64-modern_linux
+          path: src/fairy-stockfish-largeboards_x86-64-modern
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish_x86-64_linux
-	  path: src/fairy-stockfish_x86-64
+          name: fairy-stockfish_x86-64_linux
+          path: src/fairy-stockfish_x86-64
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish_x86-64-bmi2_linux
-	  path: src/fairy-stockfish_x86-64-bmi2
+          name: fairy-stockfish_x86-64-bmi2_linux
+          path: src/fairy-stockfish_x86-64-bmi2
 
       - uses: actions/upload-artifact@v4
         with:
-	  name: fairy-stockfish_x86-64-modern_linux
-	  path: src/fairy-stockfish_x86-64-modern
+          name: fairy-stockfish_x86-64-modern_linux
+          path: src/fairy-stockfish_x86-64-modern
