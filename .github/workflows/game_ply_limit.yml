@@ -44,8 +44,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish-all_${{ matrix.arch }}_windows
-          path: src/fairy-stockfish-all_${{ matrix.arch }}.exe
+          name: fairy-stockfish-largeboards-all_${{ matrix.arch }}_windows
+          path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}.exe
 
   linux:
     strategy:
@@ -78,5 +78,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish-all_${{ matrix.arch }}_windows
+          name: fairy-stockfish-largeboards-all_${{ matrix.arch }}_linux
           path: src/fairy-stockfish-all_${{ matrix.arch }}
