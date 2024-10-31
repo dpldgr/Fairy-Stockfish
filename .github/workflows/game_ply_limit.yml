@@ -34,38 +34,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fsf_all_win64
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish-all_x86-64.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fsf_lb_win64
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish-largeboards_x86-64.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fsf_lb_bmi2_win64
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish-largeboards_x86-64-bmi2.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fsf_lb_modern_win64
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish-largeboards_x86-64-modern.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fsf_win64
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish_x86-64.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fsf_bmi2_win64
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish_x86-64-bmi2.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fsf_modern_win64
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish_x86-64-modern.exe
+          name: fairy-stockfish_${{ matrix.arch }}_windows
+          path: src/fairy-stockfish_${{ matrix.arch }}.exe
 
   linux:
     strategy:
@@ -88,35 +58,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish-all_x86-64_linux
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish-all_x86-64
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fairy-stockfish-largeboards_x86-64_linux
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish-largeboards_x86-64
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fairy-stockfish-largeboards_x86-64-bmi2_linux
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish-largeboards_x86-64-bmi2
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fairy-stockfish-largeboards_x86-64-modern_linux
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish-largeboards_x86-64-modern
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fairy-stockfish_x86-64_linux
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish_x86-64
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fairy-stockfish_x86-64-bmi2_linux
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish_x86-64-bmi2
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fairy-stockfish_x86-64-modern_linux
-          path: D:/a/Fairy-Stockfish/Fairy-Stockfish/src/fairy-stockfish_x86-64-modern
+          name: fairy-stockfish_${{ matrix.arch }}_linux
+          path: src/fairy-stockfish_${{ matrix.arch }}
