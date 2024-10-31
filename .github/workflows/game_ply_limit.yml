@@ -1,0 +1,35 @@
+name: Dev (game_ply_limit)
+
+on:
+  push:
+    branches: [ game_ply_limit ]
+  pull_request:
+    branches: [ game_ply_limit ]
+
+jobs:
+  windows:
+    strategy:
+      matrix:
+        arch: ["x86-64-bmi2"]
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: install mingw w64
+        run: sudo apt install mingw-w64
+
+      - name: make
+        run: cd src && make clean && make -j build COMP=mingw ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }}.exe && strip fairy-stockfish_${{ matrix.arch }}.exe
+
+      - name: make largeboards
+        run: cd src && make clean && make -j build COMP=mingw ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }}.exe largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}.exe
+
+      - name: make all
+        if: ${{ matrix.arch == 'x86-64' }}
+        run: cd src && make clean && make -j build COMP=mingw ARCH=${{ matrix.arch }} EXE=fairy-stockfish-all_${{ matrix.arch }}.exe largeboards=yes all=yes && strip fairy-stockfish-all_${{ matrix.arch }}.exe
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: fairy-stockfish
+          path: src/fairy-stockfish*.exe
