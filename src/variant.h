@@ -121,6 +121,8 @@ struct Variant {
   bool freeDrops = false;
 
   // game end
+  int gamePlyLimitRule = 0;
+  Value gamePlyLimitValue = VALUE_DRAW;
   PieceSet nMoveRuleTypes[COLOR_NB] = {piece_set(PAWN), piece_set(PAWN)};
   int nMoveRule = 50;
   int nFoldRule = 3;

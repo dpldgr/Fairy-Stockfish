@@ -2714,6 +2714,13 @@ bool Position::is_optional_game_end(Value& result, int ply, int countStarted) co
 
 bool Position::is_immediate_game_end(Value& result, int ply) const {
 
+  // Game Ply Limit.
+  if (game_ply_limit_enabled() && game_ply() >= game_ply_limit_count())
+  {
+    result = game_ply_limit_value(ply);
+    return true;
+  }
+
   // Extinction
   // Extinction does not apply for pseudo-royal pieces, because they can not be captured
   if (extinction_value() != VALUE_NONE && (!var->extinctionPseudoRoyal || blast_on_capture()))

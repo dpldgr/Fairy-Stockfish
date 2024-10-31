@@ -188,6 +188,9 @@ public:
   bool makpong() const;
   EnclosingRule flip_enclosed_pieces() const;
   // winning conditions
+  bool game_ply_limit_enabled() const;
+  int game_ply_limit_count() const;
+  Value game_ply_limit_value(int ply = 0) const;
   int n_move_rule() const;
   int n_fold_rule() const;
   Value stalemate_value(int ply = 0) const;
@@ -833,6 +836,24 @@ inline Bitboard Position::promoted_soldiers(Color c) const {
 inline bool Position::makpong() const {
   assert(var != nullptr);
   return var->makpongRule;
+}
+
+inline bool Position::game_ply_limit_enabled() const
+{
+    assert(var != nullptr);
+    return (var->gamePlyLimitRule > 0);
+}
+
+inline int Position::game_ply_limit_count() const
+{
+    assert(var != nullptr);
+    return var->gamePlyLimitRule;
+}
+
+inline Value Position::game_ply_limit_value(int ply) const
+{
+    assert(var != nullptr);
+    return convert_mate_value(var->gamePlyLimitValue, ply);
 }
 
 inline int Position::n_move_rule() const {
