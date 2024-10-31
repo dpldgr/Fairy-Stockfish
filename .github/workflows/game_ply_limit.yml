@@ -43,6 +43,7 @@ jobs:
         run: cd src && make clean && make -j build COMP=mingw ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }}.exe largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}.exe
 
       - uses: actions/upload-artifact@v4
+        if: ${{ matrix.arch == 'x86-64' }}
         with:
           name: fairy-stockfish-largeboards-all_${{ matrix.arch }}_windows
           path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}.exe
@@ -77,6 +78,7 @@ jobs:
         run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }} largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
+        if: ${{ matrix.arch == 'x86-64' }}
         with:
           name: fairy-stockfish-largeboards-all_${{ matrix.arch }}_linux
           path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}
