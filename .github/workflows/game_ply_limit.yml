@@ -7,22 +7,57 @@ on:
     branches: [ game_ply_limit ]
 
 jobs:
-  macos:
+  macos13:
+    strategy:
+      matrix:
+        arch: ["x86-64-bmi2", "x86-64-modern", "x86-64"]
+    runs-on: macos-13
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: make
+        run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }} && strip fairy-stockfish_${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FSF macos ${{ matrix.arch }}
+          path: src/fairy-stockfish_${{ matrix.arch }}
+
+      - name: make largeboards
+        run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }} largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FSF LB macos ${{ matrix.arch }}
+          path: src/fairy-stockfish-largeboards_${{ matrix.arch }}
+
+      - name: make all
+        if: ${{ matrix.arch == 'x86-64' }}
+        run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }} largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ matrix.arch == 'x86-64' }}
+        with:
+          name: FSF LB All macos ${{ matrix.arch }}
+          path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}
+
+  macos14:
     strategy:
       matrix:
         arch: ["apple-silicon"]
-    runs-on: macos-13
+    runs-on: macos-14
 
     steps:
       - uses: actions/checkout@v4
 
       - name: make
-        run: cd src && make clean && make -j build COMP=clang ARCH=${{ matrix.arch }} EXE=fairy-stockfish_macos && strip fairy-stockfish_macos
+        run: cd src && make clean && make -j build COMP=clang ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }} && strip fairy-stockfish_${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish_macos
-          path: src/fairy-stockfish_macos
+          name: FSF macos-m1 ${{ matrix.arch }}
+          path: src/fairy-stockfish_${{ matrix.arch }}
 
   windows:
     strategy:
@@ -44,7 +79,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish_${{ matrix.arch }}_windows
+          name: FSF windows ${{ matrix.arch }}
           path: src/fairy-stockfish_${{ matrix.arch }}.exe
 
       - name: make largeboards
@@ -52,7 +87,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish-largeboards_${{ matrix.arch }}_windows
+          name: FSF LB windows ${{ matrix.arch }}
           path: src/fairy-stockfish-largeboards_${{ matrix.arch }}.exe
 
       - name: make all
@@ -62,7 +97,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: ${{ matrix.arch == 'x86-64' }}
         with:
-          name: fairy-stockfish-largeboards-all_${{ matrix.arch }}_windows
+          name: FSF LB All windows ${{ matrix.arch }}
           path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}.exe
 
   linux:
@@ -79,7 +114,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish_${{ matrix.arch }}_linux
+          name: FSF ubuntu ${{ matrix.arch }}
           path: src/fairy-stockfish_${{ matrix.arch }}
 
       - name: make largeboards
@@ -87,7 +122,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fairy-stockfish-largeboards_${{ matrix.arch }}_linux
+          name: FSF LB linux ${{ matrix.arch }}
           path: src/fairy-stockfish-largeboards_${{ matrix.arch }}
 
       - name: make all
@@ -97,5 +132,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: ${{ matrix.arch == 'x86-64' }}
         with:
-          name: fairy-stockfish-largeboards-all_${{ matrix.arch }}_linux
+          name: FSF LB All linux ${{ matrix.arch }}
           path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}
