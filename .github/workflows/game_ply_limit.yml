@@ -7,6 +7,23 @@ on:
     branches: [ game_ply_limit ]
 
 jobs:
+  macos:
+    strategy:
+      matrix:
+        arch: ["apple-silicon"]
+    runs-on: macos-13
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: make
+        run: cd src && make clean && make -j build COMP=clang ARCH=${{ matrix.arch }} EXE=fairy-stockfish_macos && strip fairy-stockfish_macos
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fairy-stockfish_macos
+          path: src/fairy-stockfish_macos
+
   windows:
     strategy:
       matrix:
