@@ -6,9 +6,9 @@
     {"NAME": "ubuntu",   "arch": "x86-64",        "run_os": "ubuntu-20.04", "COMPCXX": "g++",     "COMP": "gcc"},
     {"NAME": "ubuntu",   "arch": "x86-64-bmi2",   "run_os": "ubuntu-20.04", "COMPCXX": "g++",     "COMP": "gcc"},
     {"NAME": "ubuntu",   "arch": "x86-64-modern", "run_os": "ubuntu-20.04", "COMPCXX": "g++",     "COMP": "gcc"},
-    {"NAME": "macos",    "arch": "x86-64",        "run_os": "macos13",      "COMPCXX": "clang++", "COMP": "clang"},
-    {"NAME": "macos",    "arch": "x86-64-bmi2",   "run_os": "macos13",      "COMPCXX": "clang++", "COMP": "clang"},
-    {"NAME": "macos",    "arch": "x86-64-modern", "run_os": "macos13",      "COMPCXX": "clang++", "COMP": "clang"},
-    {"NAME": "macos-m1", "arch": "apple-silicon", "run_os": "macos14",      "COMPCXX": "clang++", "COMP": "clang"}
+    {"NAME": "macos",    "arch": "x86-64",        "run_os": "macos-13",     "COMPCXX": "clang++", "COMP": "clang"},
+    {"NAME": "macos",    "arch": "x86-64-bmi2",   "run_os": "macos-13",     "COMPCXX": "clang++", "COMP": "clang"},
+    {"NAME": "macos",    "arch": "x86-64-modern", "run_os": "macos-13",     "COMPCXX": "clang++", "COMP": "clang"},
+    {"NAME": "macos-m1", "arch": "apple-silicon", "run_os": "macos-14",     "COMPCXX": "clang++", "COMP": "clang"}
   ]
 }
