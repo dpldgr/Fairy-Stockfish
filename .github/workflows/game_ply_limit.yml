@@ -114,6 +114,7 @@ jobs:
         if: ${{ matrix.arch == 'x86-64' }}
         run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT
 
+      - uses: actions/upload-artifact@v4
         if: ${{ matrix.arch == 'x86-64' }}
         with:
           name: windows ${{ matrix.arch }} (FSF LB All)
