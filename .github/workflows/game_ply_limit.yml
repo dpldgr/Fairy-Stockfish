@@ -10,6 +10,8 @@ on:
     branches: [ game_ply_limit ]
   pull_request:
     branches: [ game_ply_limit ]
+  workflow_dispatch:
+    branches: [ game_ply_limit ]
 
 jobs:
   configure:
@@ -22,7 +24,7 @@ jobs:
      - name: Set matrix data
        id: set-matrix
        run: |
-            echo "configure Summary" >> $GITHUB_STEP_SUMMARY
+            echo "build matrix:" >> $GITHUB_STEP_SUMMARY
             echo "matrix=$(jq -c . < .github/workflows/matrix.json)" >> $GITHUB_STEP_SUMMARY
             echo "matrix=$(jq -c . < .github/workflows/matrix.json)" >> $GITHUB_OUTPUT
 
