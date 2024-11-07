@@ -16,6 +16,7 @@ jobs:
     strategy:
       matrix:
         include:
+        - {arch: x86-64, run_os: windows-2022, COMPCXX: g++, COMP: mingw, EXT: .exe, NAME: windows}
         - arch: x86-64
           run_os: windows-2022
           COMPCXX: g++
