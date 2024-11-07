@@ -40,27 +40,31 @@ jobs:
         run: ${{ matrix.COMPCXX }} -v
 
       - name: make
+        if: ${{ matrix.build_std == true }}
         run: cd src && make clean && make -j build COMP=${{ matrix.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ matrix.EXT }} && strip ${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - uses: actions/upload-artifact@v4
+        if: ${{ matrix.build_std == true }}
         with:
           name: ${{ matrix.NAME }} ${{ env.EXE_NAME_STD }}_${{ matrix.arch }}
           path: src/${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - name: make largeboards
+        if: ${{ matrix.build_lb == true }}
         run: cd src && make clean && make -j build COMP=${{ matrix.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.EXT }} largeboards=yes && strip ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - uses: actions/upload-artifact@v4
+        if: ${{ matrix.build_lb == true }}
         with:
           name: ${{ matrix.NAME }} ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}
           path: src/${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - name: make all
-        if: ${{ matrix.arch == 'x86-64' }}
+        if: ${{ matrix.build_all == true }}
         run: cd src && make clean && make -j build COMP=${{ matrix.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.EXT }} largeboards=yes all=yes && strip ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - uses: actions/upload-artifact@v4
-        if: ${{ matrix.arch == 'x86-64' }}
+        if: ${{ matrix.build_all == true }}
         with:
           name: ${{ matrix.NAME }} ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}
           path: src/${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.EXT }}
