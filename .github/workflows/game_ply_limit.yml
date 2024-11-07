@@ -21,7 +21,8 @@ jobs:
        
      - name: Set matrix data
        id: set-matrix
-       run: echo "matrix=$(jq -c . < .github/workflows/matrix.json)" >> $GITHUB_OUTPUT
+       run: echo "matrix=$(jq -c . < .github/workflows/matrix.json)" >> $GITHUB_STEP_SUMMARY
+            echo "matrix=$(jq -c . < .github/workflows/matrix.json)" >> $GITHUB_OUTPUT
 
   build:
     needs: configure    
