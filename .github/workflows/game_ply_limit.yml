@@ -135,27 +135,28 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: make
-        run: cd src && make clean && make -j build COMP=${{ env.COMP }} ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }}${{ env.EXT }} && strip fairy-stockfish_${{ matrix.arch }}${{ env.$EXT }}
+        run: cd src && make clean && make -j build COMP=${{ env.COMP }} ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }}${{ env.EXT }} && strip fairy-stockfish_${{ matrix.arch }}${{ env.EXT }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NAME }} ${{ matrix.arch }} (FSF)
-          path: src/fairy-stockfish_${{ matrix.arch }}${{ env.$EXT }}
+          path: src/fairy-stockfish_${{ matrix.arch }}${{ env.EXT }}
 
       - name: make largeboards
-        run: cd src && make clean && make -j build COMP=${{ env.COMP }} ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }}$EXT largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}$EXT
+        run: cd src && make clean && make -j build COMP=${{ env.COMP }} ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }}${{ env.EXT }} largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}${{ env.EXT }}
+
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NAME }} ${{ matrix.arch }} (FSF LB)
-          path: src/fairy-stockfish-largeboards_${{ matrix.arch }}$EXT
+          path: src/fairy-stockfish-largeboards_${{ matrix.arch }}${{ env.EXT }}
 
       - name: make all
         if: ${{ matrix.arch == 'x86-64' }}
-        run: cd src && make clean && make -j build COMP=${{ env.COMP }} ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT
+        run: cd src && make clean && make -j build COMP=${{ env.COMP }} ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }}${{ env.EXT }} largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}${{ env.EXT }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ matrix.arch == 'x86-64' }}
         with:
           name: ${{ env.NAME }} ${{ matrix.arch }} (FSF LB All)
-          path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT
+          path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}${{ env.EXT }}
