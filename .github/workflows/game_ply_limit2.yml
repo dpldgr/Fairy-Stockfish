@@ -16,7 +16,12 @@ jobs:
     strategy:
       matrix:
         include:
-        - arch: x86-64, run_os: windows-2022, COMPCXX: g++, COMP: mingw, EXT: .exe, NAME: windows
+        - arch: x86-64
+          run_os: windows-2022
+          COMPCXX: g++
+          COMP: mingw
+          EXT: .exe
+          NAME: windows
         - arch: x86-64-bmi2, run_os: windows-2022, COMPCXX: g++, COMP: mingw, EXT: .exe, NAME: windows
         - arch: x86-64-modern, run_os: windows-2022, COMPCXX: g++, COMP: mingw, EXT: .exe, NAME: windows
         - arch: x86-64, run_os: ubuntu-20.04, COMPCXX: g++, COMP: gcc, NAME: ubuntu
