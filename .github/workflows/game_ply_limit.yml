@@ -1,17 +1,15 @@
 name: branch(game_ply_limit)
 
-env:
-  EXE_NAME_STD: fairy-stockfish
-  EXE_NAME_LB:  fairy-stockfish-largeboards
-  EXE_NAME_ALL: fairy-stockfish-largeboards-all
-
 on:
   push:
     branches: [ game_ply_limit ]
   pull_request:
     branches: [ game_ply_limit ]
-  workflow_dispatch:
-    branches: [ game_ply_limit ]
+
+env:
+  EXE_NAME_STD: fairy-stockfish
+  EXE_NAME_LB:  fairy-stockfish-largeboards
+  EXE_NAME_ALL: fairy-stockfish-largeboards-all
 
 jobs:
   configure:
@@ -34,6 +32,11 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.configure.outputs.matrix) }}
     steps:
+     - name: Print matrix data
+       run: |
+            echo "Matrix data:" >> $GITHUB_STEP_SUMMARY
+            echo "{name:${{matrix.NAME}},arch:${{matrix.arch}},run-os:${{matrix.Run_os}},comp:${{matrix.COMP}},}" >> $GITHUB_STEP_SUMMARY
+
       - uses: actions/checkout@v4
 
       - name: Check compiler
