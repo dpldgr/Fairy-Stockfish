@@ -78,27 +78,27 @@ jobs:
         run: ${{ env.COMPCXX }} -v
 
       - name: make
-        run: cd src && make clean && make -j build COMP=${{ env.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ env.EXT }} && strip ${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ env.EXT }}
+        run: cd src && make clean && make -j build COMP=${{ matrix.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ matrix.EXT }} && strip ${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.NAME }} ${{ env.EXE_NAME_STD }}_${{ matrix.arch }}
-          path: src/${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ env.EXT }}
+          name: ${{ matrix.NAME }} ${{ env.EXE_NAME_STD }}_${{ matrix.arch }}
+          path: src/${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - name: make largeboards
-        run: cd src && make clean && make -j build COMP=${{ env.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ env.EXT }} largeboards=yes && strip ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ env.EXT }}
+        run: cd src && make clean && make -j build COMP=${{ matrix.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.EXT }} largeboards=yes && strip ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.NAME }} ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}
-          path: src/${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ env.EXT }}
+          name: ${{ matrix.NAME }} ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}
+          path: src/${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - name: make all
         if: ${{ matrix.arch == 'x86-64' }}
-        run: cd src && make clean && make -j build COMP=${{ env.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ env.EXT }} largeboards=yes all=yes && strip ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ env.EXT }}
+        run: cd src && make clean && make -j build COMP=${{ matrix.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.EXT }} largeboards=yes all=yes && strip ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.EXT }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ matrix.arch == 'x86-64' }}
         with:
-          name: ${{ env.NAME }} ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}
-          path: src/${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ env.EXT }}
+          name: ${{ matrix.NAME }} ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}
+          path: src/${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.EXT }}
