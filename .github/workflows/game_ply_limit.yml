@@ -12,34 +12,40 @@ jobs:
       matrix:
         arch: ["x86-64-bmi2", "x86-64-modern", "x86-64"]
     runs-on: macos-13
-    
+    env:
+      COMPCXX: clang++
+      COMP: clang
+      NAME: macos
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check compiler
+        run: $COMPCXX -v
+
       - name: make
-        run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }} && strip fairy-stockfish_${{ matrix.arch }}
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }} && strip fairy-stockfish_${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FSF macos ${{ matrix.arch }}
+          name: $NAME ${{ matrix.arch }} (FSF)
           path: src/fairy-stockfish_${{ matrix.arch }}
 
       - name: make largeboards
-        run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }} largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }} largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FSF LB macos ${{ matrix.arch }}
+          name: $NAME ${{ matrix.arch }} (FSF LB)
           path: src/fairy-stockfish-largeboards_${{ matrix.arch }}
 
       - name: make all
         if: ${{ matrix.arch == 'x86-64' }}
-        run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }} largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }} largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ matrix.arch == 'x86-64' }}
         with:
-          name: FSF LB All macos ${{ matrix.arch }}
+          name: $NAME ${{ matrix.arch }} (FSF LB All)
           path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}
 
   macos14:
@@ -48,15 +54,23 @@ jobs:
         arch: ["apple-silicon"]
     runs-on: macos-14
 
+    env:
+      COMPCXX: clang++
+      COMP: clang
+      NAME: macos-m1
+
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check compiler
+        run: $COMPCXX -v
+
       - name: make
-        run: cd src && make clean && make -j build COMP=clang ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }} && strip fairy-stockfish_${{ matrix.arch }}
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }} && strip fairy-stockfish_${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FSF macos-m1 ${{ matrix.arch }}
+          name: $NAME ${{ matrix.arch }} (FSF)
           path: src/fairy-stockfish_${{ matrix.arch }}
 
   windows:
@@ -64,6 +78,12 @@ jobs:
       matrix:
         arch: ["x86-64-bmi2", "x86-64-modern", "x86-64"]
     runs-on: windows-2022
+
+    env:
+      COMPCXX: g++
+      COMP: mingw
+      EXT: .exe
+      NAME: windows
 
     steps:
       - uses: al-cheb/configure-pagefile-action@v1.2        
@@ -75,62 +95,66 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: make
-        run: cd src && make clean && make -j build COMP=mingw ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }}.exe && strip fairy-stockfish_${{ matrix.arch }}.exe
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }}$EXT && strip fairy-stockfish_${{ matrix.arch }}$EXT
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FSF windows ${{ matrix.arch }}
-          path: src/fairy-stockfish_${{ matrix.arch }}.exe
+          name: windows ${{ matrix.arch }} (FSF)
+          path: src/fairy-stockfish_${{ matrix.arch }}$EXT
 
       - name: make largeboards
-        run: cd src && make clean && make -j build COMP=mingw ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }}.exe largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}.exe
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }}$EXT largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}$EXT
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FSF LB windows ${{ matrix.arch }}
-          path: src/fairy-stockfish-largeboards_${{ matrix.arch }}.exe
+          name: windows ${{ matrix.arch }} (FSF LB)
+          path: src/fairy-stockfish-largeboards_${{ matrix.arch }}$EXT
 
       - name: make all
         if: ${{ matrix.arch == 'x86-64' }}
-        run: cd src && make clean && make -j build COMP=mingw ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }}.exe largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}.exe
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT
 
-      - uses: actions/upload-artifact@v4
         if: ${{ matrix.arch == 'x86-64' }}
         with:
-          name: FSF LB All windows ${{ matrix.arch }}
-          path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}.exe
+          name: windows ${{ matrix.arch }} (FSF LB All)
+          path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT
 
   linux:
     strategy:
       matrix:
         arch: ["x86-64-bmi2", "x86-64-modern", "x86-64"]
     runs-on: ubuntu-20.04
+    env:
+      COMPCXX: g++
+      COMP: gcc
+      EXT: ''
+      NAME: ubuntu
 
     steps:
       - uses: actions/checkout@v4
 
       - name: make
-        run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }} && strip fairy-stockfish_${{ matrix.arch }}
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish_${{ matrix.arch }}$EXT && strip fairy-stockfish_${{ matrix.arch }}$EXT
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FSF ubuntu ${{ matrix.arch }}
-          path: src/fairy-stockfish_${{ matrix.arch }}
+          name: ubuntu ${{ matrix.arch }} (FSF)
+          path: src/fairy-stockfish_${{ matrix.arch }}$EXT
 
       - name: make largeboards
-        run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }} largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards_${{ matrix.arch }}$EXT largeboards=yes && strip fairy-stockfish-largeboards_${{ matrix.arch }}$EXT
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FSF LB linux ${{ matrix.arch }}
-          path: src/fairy-stockfish-largeboards_${{ matrix.arch }}
+          name: ubuntu ${{ matrix.arch }} (FSF LB)
+          path: src/fairy-stockfish-largeboards_${{ matrix.arch }}$EXT
 
       - name: make all
         if: ${{ matrix.arch == 'x86-64' }}
-        run: cd src && make clean && make -j build COMP=gcc ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }} largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}
+        run: cd src && make clean && make -j build COMP=$COMP ARCH=${{ matrix.arch }} EXE=fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT largeboards=yes all=yes && strip fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT
 
       - uses: actions/upload-artifact@v4
         if: ${{ matrix.arch == 'x86-64' }}
         with:
-          name: FSF LB All linux ${{ matrix.arch }}
-          path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}
+          name: ubuntu ${{ matrix.arch }} (FSF LB All)
+          path: src/fairy-stockfish-largeboards-all_${{ matrix.arch }}$EXT
