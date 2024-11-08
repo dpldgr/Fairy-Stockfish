@@ -1,9 +1,10 @@
 name: branch(game_ply_limit)
 
 env:
-  EXE_NAME_STD: fairy-stockfish
-  EXE_NAME_LB:  fairy-stockfish-largeboards
-  EXE_NAME_ALL: fairy-stockfish-largeboards-all
+  EXE_NAME:        fairy-stockfish
+  EXE_NAME_ALL:    fairy-stockfish-all
+  EXE_NAME_LB:     fairy-stockfish-largeboards
+  EXE_NAME_LB_ALL: fairy-stockfish-largeboards-all
 
 on:
   push:
@@ -37,34 +38,44 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check compiler
-        run: ${{ matrix.COMPCXX }} -v
+        run: ${{ matrix.compcxx }} -v
 
       - name: make
         if: ${{ matrix.build_std == true }}
-        run: cd src && make clean && make -j build COMP=${{ matrix.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ matrix.EXT }} && strip ${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ matrix.EXT }}
+        run: cd src && make clean && make -j build COMP=${{ matrix.comp }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME }}_${{ matrix.arch }}${{ matrix.ext }} && strip ${{ env.EXE_NAME }}_${{ matrix.arch }}${{ matrix.ext }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ matrix.build_std == true }}
         with:
-          name: ${{ matrix.NAME }} ${{ env.EXE_NAME_STD }}_${{ matrix.arch }}
-          path: src/${{ env.EXE_NAME_STD }}_${{ matrix.arch }}${{ matrix.EXT }}
+          name: ${{ matrix.os_name }} ${{ env.EXE_NAME }}_${{ matrix.arch }}
+          path: src/${{ env.EXE_NAME }}_${{ matrix.arch }}${{ matrix.ext }}
 
       - name: make largeboards
         if: ${{ matrix.build_lb == true }}
-        run: cd src && make clean && make -j build COMP=${{ matrix.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.EXT }} largeboards=yes && strip ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.EXT }}
+        run: cd src && make clean && make -j build COMP=${{ matrix.comp }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.ext }} largeboards=yes && strip ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.ext }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ matrix.build_lb == true }}
         with:
-          name: ${{ matrix.NAME }} ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}
-          path: src/${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.EXT }}
+          name: ${{ matrix.os_name }} ${{ env.EXE_NAME_LB }}_${{ matrix.arch }}
+          path: src/${{ env.EXE_NAME_LB }}_${{ matrix.arch }}${{ matrix.ext }}
 
       - name: make all
         if: ${{ matrix.build_all == true }}
-        run: cd src && make clean && make -j build COMP=${{ matrix.COMP }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.EXT }} largeboards=yes all=yes && strip ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.EXT }}
+        run: cd src && make clean && make -j build COMP=${{ matrix.comp }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.ext }} all=yes && strip ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.ext }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ matrix.build_all == true }}
         with:
-          name: ${{ matrix.NAME }} ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}
-          path: src/${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.EXT }}
+          name: ${{ matrix.os_name }} ${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}
+          path: src/${{ env.EXE_NAME_ALL }}_${{ matrix.arch }}${{ matrix.ext }}
+
+      - name: make largeboards all
+        if: ${{ matrix.build_lb_all == true }}
+        run: cd src && make clean && make -j build COMP=${{ matrix.comp }} ARCH=${{ matrix.arch }} EXE=${{ env.EXE_NAME_LB_ALL }}_${{ matrix.arch }}${{ matrix.ext }} largeboards=yes all=yes && strip ${{ env.EXE_NAME_LB_ALL }}_${{ matrix.arch }}${{ matrix.ext }}
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ matrix.build_lb_all == true }}
+        with:
+          name: ${{ matrix.os_name }} ${{ env.EXE_NAME_LB_ALL }}_${{ matrix.arch }}
+          path: src/${{ env.EXE_NAME_LB_ALL }}_${{ matrix.arch }}${{ matrix.ext }}
