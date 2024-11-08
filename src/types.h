@@ -231,7 +231,7 @@ constexpr int SQUARE_BITS = 6;
 #define USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
 
 #ifdef ALLVARS
-constexpr int MAX_MOVES = 65536;
+constexpr int MAX_MOVES = 16*1024;
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
 constexpr int MAX_PLY = 246;
 #else
