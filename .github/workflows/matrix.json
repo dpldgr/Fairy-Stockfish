@@ -1,14 +1,14 @@
 {
   "include": [
-    {"os_name": "windows",  "arch": "x86-64",        "run_os": "windows-2022", "COMPCXX": "g++",     "COMP": "mingw", "build_std": true, "build_lb": true, "build_all": false, "build_lb_all": false, "EXT": ".exe"},
-    {"os_name": "windows",  "arch": "x86-64-bmi2",   "run_os": "windows-2022", "COMPCXX": "g++",     "COMP": "mingw", "build_std": true, "build_lb": true, "build_all":  true, "build_lb_all":  true, "EXT": ".exe"},
-    {"os_name": "windows",  "arch": "x86-64-modern", "run_os": "windows-2022", "COMPCXX": "g++",     "COMP": "mingw", "build_std": true, "build_lb": true, "build_all": false, "build_lb_all": false, "EXT": ".exe"},
-    {"os_name": "ubuntu",   "arch": "x86-64",        "run_os": "ubuntu-20.04", "COMPCXX": "g++",     "COMP": "gcc",   "build_std": true, "build_lb": true, "build_all": false, "build_lb_all": false},
-    {"os_name": "ubuntu",   "arch": "x86-64-bmi2",   "run_os": "ubuntu-20.04", "COMPCXX": "g++",     "COMP": "gcc",   "build_std": true, "build_lb": true, "build_all": false, "build_lb_all": false},
-    {"os_name": "ubuntu",   "arch": "x86-64-modern", "run_os": "ubuntu-20.04", "COMPCXX": "g++",     "COMP": "gcc",   "build_std": true, "build_lb": true, "build_all": false, "build_lb_all": false},
-    {"os_name": "macos",    "arch": "x86-64",        "run_os": "macos-13",     "COMPCXX": "clang++", "COMP": "clang", "build_std": true, "build_lb": true, "build_all": false, "build_lb_all": false},
-    {"os_name": "macos",    "arch": "x86-64-bmi2",   "run_os": "macos-13",     "COMPCXX": "clang++", "COMP": "clang", "build_std": true, "build_lb": true, "build_all": false, "build_lb_all": false},
-    {"os_name": "macos",    "arch": "x86-64-modern", "run_os": "macos-13",     "COMPCXX": "clang++", "COMP": "clang", "build_std": true, "build_lb": true, "build_all": false, "build_lb_all": false},
-    {"os_name": "macos-m1", "arch": "apple-silicon", "run_os": "macos-14",     "COMPCXX": "clang++", "COMP": "clang", "build_std": true, "build_lb": true, "build_all": false, "build_lb_all": false}
+    {"os_name": "windows",  "arch": "x86-64",        "run_os": "windows-2022", "COMPCXX": "g++",     "COMP": "mingw", "build_std":  true, "build_lb":  true, "build_all":  true, "build_lb_all":  true, "EXT": ".exe"},
+    {"os_name": "windows",  "arch": "x86-64-bmi2",   "run_os": "windows-2022", "COMPCXX": "g++",     "COMP": "mingw", "build_std":  true, "build_lb":  true, "build_all":  true, "build_lb_all":  true, "EXT": ".exe"},
+    {"os_name": "windows",  "arch": "x86-64-modern", "run_os": "windows-2022", "COMPCXX": "g++",     "COMP": "mingw", "build_std":  true, "build_lb":  true, "build_all":  true, "build_lb_all":  true, "EXT": ".exe"},
+    {"os_name": "ubuntu",   "arch": "x86-64",        "run_os": "ubuntu-20.04", "COMPCXX": "g++",     "COMP": "gcc",   "build_std": false, "build_lb": false, "build_all": false, "build_lb_all": false},
+    {"os_name": "ubuntu",   "arch": "x86-64-bmi2",   "run_os": "ubuntu-20.04", "COMPCXX": "g++",     "COMP": "gcc",   "build_std": false, "build_lb": false, "build_all": false, "build_lb_all": false},
+    {"os_name": "ubuntu",   "arch": "x86-64-modern", "run_os": "ubuntu-20.04", "COMPCXX": "g++",     "COMP": "gcc",   "build_std": false, "build_lb": false, "build_all": false, "build_lb_all": false},
+    {"os_name": "macos",    "arch": "x86-64",        "run_os": "macos-13",     "COMPCXX": "clang++", "COMP": "clang", "build_std": false, "build_lb": false, "build_all": false, "build_lb_all": false},
+    {"os_name": "macos",    "arch": "x86-64-bmi2",   "run_os": "macos-13",     "COMPCXX": "clang++", "COMP": "clang", "build_std": false, "build_lb": false, "build_all": false, "build_lb_all": false},
+    {"os_name": "macos",    "arch": "x86-64-modern", "run_os": "macos-13",     "COMPCXX": "clang++", "COMP": "clang", "build_std": false, "build_lb": false, "build_all": false, "build_lb_all": false},
+    {"os_name": "macos-m1", "arch": "apple-silicon", "run_os": "macos-14",     "COMPCXX": "clang++", "COMP": "clang", "build_std": false, "build_lb": false, "build_all": false, "build_lb_all": false}
   ]
 }
