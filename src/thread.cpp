@@ -30,6 +30,8 @@
 
 namespace Stockfish {
 
+size_t TH_STACK_SIZE = 8 * 1024 * 1024; // Default size.
+
 ThreadPool Threads; // Global object
 
 
