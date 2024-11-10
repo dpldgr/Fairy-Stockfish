@@ -62,7 +62,7 @@ void on_clear_hash(const Option&) { Search::clear(); }
 void on_hash_size(const Option& o) { TT.resize(size_t(o)); }
 void on_logger(const Option& o) { start_logger(o); }
 #if defined(__APPLE__) || defined(__MINGW32__) || defined(__MINGW64__) || defined(USE_PTHREADS)
-void on_stack_size(const Option& o) { TH_STACK_SIZE=size_t(o)*1024*1024; }
+void on_stack_size(const Option& o) { TH_STACK_SIZE = size_t(o) * 1024 * 1024; Threads.set(size_t(Options["Threads"])); }
 #endif
 void on_threads(const Option& o) { Threads.set(size_t(o)); }
 void on_tb_path(const Option& o) { Tablebases::init(o); }
