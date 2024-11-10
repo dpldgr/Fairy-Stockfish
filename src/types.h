@@ -234,7 +234,7 @@ constexpr int SQUARE_BITS = 6;
 constexpr int MAX_MOVES = 8*1024;
 constexpr int MAX_PLY = 246;
 #else
-constexpr int MAX_MOVES = 1024;
+constexpr int MAX_MOVES = 512;
 constexpr int MAX_PLY = 246;
 #endif
 /// endif ALLVARS
