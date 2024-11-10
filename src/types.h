@@ -230,7 +230,8 @@ constexpr int SQUARE_BITS = 6;
 //When defined, move list will be stored in heap. Delete this if you want to use stack to store move list. Using stack can cause overflow (Segmentation Fault) when the search is too deep.
 //#define USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
 
-extern int MAX_MOVES;
+//extern int MAX_MOVES;
+constexpr int MAX_MOVES = 1024;
 constexpr int MAX_PLY = 246;
 
 /// A move needs 16 bits to be stored

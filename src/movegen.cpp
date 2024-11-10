@@ -23,7 +23,7 @@
 
 namespace Stockfish {
 
-int MAX_MOVES = 1024;
+//int MAX_MOVES = 1024;
 size_t moveListSize = sizeof(ExtMove) * MAX_MOVES;
 
 namespace {
