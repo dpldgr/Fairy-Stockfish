@@ -144,7 +144,7 @@ public:
                                            int);
 
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
-    ~MoveList()
+    ~MovePicker()
     {
         free(this->moves);
     }
