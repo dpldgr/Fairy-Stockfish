@@ -70,7 +70,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
 
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
   this->moves = (ExtMove*)malloc(moveListSize);
-  if (this->moveList == 0)
+  if (this->moves == 0)
   {
     printf("Error: Failed to allocate memory in heap.");
     exit(1);
@@ -90,7 +90,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
 
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
   this->moves = (ExtMove*)malloc(moveListSize);
-  if (this->moveList == 0)
+  if (this->moves == 0)
   {
     printf("Error: Failed to allocate memory in heap.");
     exit(1);
@@ -112,7 +112,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory*
 
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
   this->moves = (ExtMove*)malloc(moveListSize);
-  if (this->moveList == 0)
+  if (this->moves == 0)
   {
     printf("Error: Failed to allocate memory in heap.");
     exit(1);
