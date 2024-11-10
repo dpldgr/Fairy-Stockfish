@@ -172,11 +172,13 @@ private:
   Depth depth;
   int ply;
 
+/*
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
   ExtMove* moves = 0;
 #else
   ExtMove moves[MAX_MOVES];
 #endif
+*/
 };
 
 } // namespace Stockfish
