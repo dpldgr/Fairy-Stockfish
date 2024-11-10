@@ -23,6 +23,9 @@
 
 namespace Stockfish {
 
+size_t MAX_MOVES = 1024;
+size_t moveListSize = sizeof(ExtMove) * MAX_MOVES;
+
 namespace {
 
   template<MoveType T>

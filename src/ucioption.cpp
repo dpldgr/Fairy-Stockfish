@@ -62,6 +62,7 @@ void on_clear_hash(const Option&) { Search::clear(); }
 void on_hash_size(const Option& o) { TT.resize(size_t(o)); }
 void on_logger(const Option& o) { start_logger(o); }
 void on_stack_size(const Option& o) { TH_STACK_SIZE=size_t(o)*1024*1024; }
+void on_max_moves(const Option& o) { MAX_MOVES = size_t(o); }
 void on_threads(const Option& o) { Threads.set(size_t(o)); }
 void on_tb_path(const Option& o) { Tablebases::init(o); }
 
@@ -183,7 +184,8 @@ void init(OptionsMap& o) {
 
   o["Debug Log File"]        << Option("", on_logger);
   o["Threads"]               << Option(1, 1, 512, on_threads);
-  o["Stack Size"]            << Option(8, 1, 64, on_stack_size);
+  o["StackSize"]             << Option(8, 1, 64, on_stack_size);
+  o["MaxMoves"]              << Option(1024, 256, 8192, on_max_moves);
   o["Hash"]                  << Option(16, 1, MaxHashMB, on_hash_size);
   o["Clear Hash"]            << Option(on_clear_hash);
   o["Ponder"]                << Option(false);
