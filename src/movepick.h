@@ -181,6 +181,7 @@ private:
   ExtMove moves[MAX_MOVES];
 #endif
 */
+  ExtMove moves[8192];
 };
 
 } // namespace Stockfish
