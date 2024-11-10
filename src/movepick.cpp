@@ -68,6 +68,15 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
            : pos(p), mainHistory(mh), gateHistory(dh), lowPlyHistory(lp), captureHistory(cph), continuationHistory(ch),
              ttMove(ttm), refutations{{killers[0], 0}, {killers[1], 0}, {cm, 0}}, depth(d), ply(pl) {
 
+#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+  this->moves = (ExtMove*)malloc(moveListSize);
+  if (this->moveList == 0)
+  {
+    printf("Error: Failed to allocate memory in heap.");
+    exit(1);
+  }
+#endif
+
   assert(d > 0);
 
   stage = (pos.checkers() ? EVASION_TT : MAIN_TT) +
@@ -78,6 +87,15 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
 MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHistory* mh, const GateHistory* dh,
                        const CapturePieceToHistory* cph, const PieceToHistory** ch, Square rs)
            : pos(p), mainHistory(mh), gateHistory(dh), captureHistory(cph), continuationHistory(ch), ttMove(ttm), recaptureSquare(rs), depth(d) {
+
+#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+  this->moves = (ExtMove*)malloc(moveListSize);
+  if (this->moveList == 0)
+  {
+    printf("Error: Failed to allocate memory in heap.");
+    exit(1);
+  }
+#endif
 
   assert(d <= 0);
 
@@ -91,6 +109,15 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
 /// than or equal to the given threshold.
 MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory* dh, const CapturePieceToHistory* cph)
            : pos(p), gateHistory(dh), captureHistory(cph), ttMove(ttm), threshold(th) {
+
+#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+  this->moves = (ExtMove*)malloc(moveListSize);
+  if (this->moveList == 0)
+  {
+    printf("Error: Failed to allocate memory in heap.");
+    exit(1);
+  }
+#endif
 
   assert(!pos.checkers());
 

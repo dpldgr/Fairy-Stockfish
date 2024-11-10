@@ -29,6 +29,8 @@
 
 namespace Stockfish {
 
+
+
 /// StatsEntry stores the stat table value. It is usually a number but could
 /// be a move or even a nested history. We use a class instead of naked value
 /// to directly call history update operator<<() on the entry so to use stats
@@ -140,6 +142,14 @@ public:
                                            Move,
                                            const Move*,
                                            int);
+
+#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+    ~MoveList()
+    {
+        free(this->moves);
+    }
+#endif
+
   Move next_move(bool skipQuiets = false);
 
 private:
@@ -161,7 +171,12 @@ private:
   Value threshold;
   Depth depth;
   int ply;
+
+#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+  ExtMove* moves = 0;
+#else
   ExtMove moves[MAX_MOVES];
+#endif
 };
 
 } // namespace Stockfish
