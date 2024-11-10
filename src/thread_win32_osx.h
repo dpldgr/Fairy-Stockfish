@@ -20,6 +20,7 @@
 #define THREAD_WIN32_OSX_H_INCLUDED
 
 #include <thread>
+#include <iostream>
 
 /// On OSX threads other than the main thread are created with a reduced stack
 /// size of 512KB by default, this is too low for deep searches, which require
@@ -33,7 +34,7 @@
 
 namespace Stockfish {
 
-static const size_t TH_STACK_SIZE = 8 * 1024 * 1024;
+static const size_t TH_STACK_SIZE = 32 * 1024 * 1024;
 
 template <class T, class P = std::pair<T*, void(T::*)()>>
 void* start_routine(void* ptr)
@@ -54,6 +55,7 @@ public:
     pthread_attr_t attr_storage, *attr = &attr_storage;
     pthread_attr_init(attr);
     pthread_attr_setstacksize(attr, TH_STACK_SIZE);
+    std::cout << "Stack Size: " << TH_STACK_SIZE << "\n";
     pthread_create(&thread, attr, start_routine<T>, new P(obj, fun));
   }
   void join() { pthread_join(thread, NULL); }
