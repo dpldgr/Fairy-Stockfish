@@ -72,7 +72,11 @@ namespace {
   }
 
   // Reductions lookup table, initialized at startup
+#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+  int* Reductions = 0;
+#else
   int Reductions[MAX_MOVES]; // [depth or moveNumber]
+#endif
 
   Depth reduction(bool i, Depth d, int mn) {
     int r = Reductions[d] * Reductions[mn];
@@ -153,6 +157,15 @@ namespace {
 /// Search::init() is called at startup to initialize various lookup tables
 
 void Search::init() {
+
+#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+  Reductions = (int*)malloc(sizeof(int)*MAX_MOVES);
+  if (Reductions == 0)
+  {
+    printf("Error: Failed to allocate memory in heap.");
+    exit(1);
+  }
+#endif
 
   for (int i = 1; i < MAX_MOVES; ++i)
       Reductions[i] = int(21.9 * std::log(i));
