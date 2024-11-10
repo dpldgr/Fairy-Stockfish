@@ -143,12 +143,14 @@ public:
                                            const Move*,
                                            int);
 
+/*
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
     ~MovePicker()
     {
         free(this->moves);
     }
 #endif
+*/
 
   Move next_move(bool skipQuiets = false);
 
