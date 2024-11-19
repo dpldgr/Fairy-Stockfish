@@ -23,8 +23,6 @@
 
 namespace Stockfish {
 
-movelist_buf mlb(MAX_MOVES,32);
-
 namespace {
 
   template<MoveType T>
