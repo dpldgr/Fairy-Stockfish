@@ -55,6 +55,76 @@ inline bool operator<(const ExtMove& f, const ExtMove& s) {
 template<GenType>
 ExtMove* generate(const Position& pos, ExtMove* moveList);
 
+    class movelist_buf
+    {
+    public:
+        movelist_buf(int move_count_, int list_count_)
+        {
+            this->move_count = move_count_;
+            this->list_count = list_count_;
+
+            constexpr std::size_t move_size = sizeof(ExtMove);
+            const std::size_t list_size = move_size * move_count;
+            const std::size_t malloc_size = list_size * list_count;
+
+            header = (ExtMove**)malloc(sizeof(ExtMove*) * list_count);
+            data = (ExtMove*)malloc(malloc_size);
+
+            for (int i = 0; i < list_count; i++)
+            {
+                header[i] = (ExtMove*)(data + i * move_count);
+            }
+        }
+
+        ~movelist_buf()
+        {
+            if (header) free(header);
+            if (data) free(data);
+        }
+
+        void resize(const int move_count_, int list_count_)
+        {
+            this->move_count = move_count_;
+            this->list_count = list_count_;
+
+            constexpr std::size_t move_size = sizeof(ExtMove);
+            const std::size_t list_size = move_size * move_count;
+            const std::size_t malloc_size = list_size * list_count;
+
+            if (header) free(header);
+            if (data) free(data);
+
+            header = (ExtMove**)malloc(sizeof(ExtMove*) * list_count);
+            data = (ExtMove*)malloc(malloc_size);
+
+            for (int i = 0; i < list_count; i++)
+            {
+                header[i] = (ExtMove*)(data + i * move_count);
+            }
+        }
+
+        ExtMove* acquire()
+        {
+            ExtMove* ret = header[top];
+            header[top++] = 0;
+
+            return ret;
+        }
+
+        void release(ExtMove* ptr)
+        {
+            header[--top] = ptr;
+        }
+
+        ExtMove** header = nullptr;
+        ExtMove* data = nullptr;
+        int top = 0;
+        int list_count = 0;
+        int move_count = 0;
+    };
+
+	extern movelist_buf mlb;
+
 constexpr size_t moveListSize = sizeof(ExtMove) * MAX_MOVES;
 
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
@@ -62,11 +132,12 @@ constexpr size_t moveListSize = sizeof(ExtMove) * MAX_MOVES;
 template<GenType T>
 struct MoveList {
 
-  
+
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
     explicit MoveList(const Position& pos)
     {
-        this->moveList = (ExtMove*)malloc(moveListSize);
+        this->moveList = mlb.acquire();
+
         if (this->moveList == 0)
         {
             printf("Error: Failed to allocate memory in heap.");
@@ -77,7 +148,7 @@ struct MoveList {
 
     ~MoveList()
     {
-        free(this->moveList);
+		mlb.release(this->moveList);
     }
 #else
     explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList))
@@ -85,7 +156,7 @@ struct MoveList {
         ;
     }
 #endif
-  
+
   const ExtMove* begin() const { return moveList; }
   const ExtMove* end() const { return last; }
   size_t size() const { return last - moveList; }
