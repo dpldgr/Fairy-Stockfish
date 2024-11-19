@@ -62,7 +62,7 @@ constexpr size_t moveListSize = sizeof(ExtMove) * MAX_MOVES;
 template<GenType T>
 struct MoveList {
 
-  
+
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
     explicit MoveList(const Position& pos)
     {
@@ -85,7 +85,7 @@ struct MoveList {
         ;
     }
 #endif
-  
+
   const ExtMove* begin() const { return moveList; }
   const ExtMove* end() const { return last; }
   size_t size() const { return last - moveList; }
@@ -98,7 +98,7 @@ private:
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
     ExtMove* moveList = 0;
 #else
-    ExtMove moveList[MAX_MOVES];
+    ExtMove moveList[8*MAX_MOVES];
 #endif
 };
 
