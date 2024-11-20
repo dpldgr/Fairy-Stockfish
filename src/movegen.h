@@ -22,7 +22,6 @@
 #include <algorithm>
 #include <iostream>
 
-#include "position.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -134,16 +133,15 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 template<GenType T>
 struct MoveList {
 
-    explicit MoveList(const Position& pos,movelist_buf &mlb)
-    :ml_buf(mlb)
+    explicit MoveList(const Position& pos)
     {
-        this->moveList = ml_buf.acquire();
+        this->moveList = mlb.acquire();
         this->last = generate<T>(pos, this->moveList);
     }
 
     ~MoveList()
     {
-		ml_buf.release(this->moveList);
+		mlb.release(this->moveList);
     }
 
   const ExtMove* begin() const { return moveList; }
@@ -154,7 +152,6 @@ struct MoveList {
   }
 
 private:
-	movelist_buf &ml_buf;
     ExtMove* last;
     ExtMove* moveList = nullptr;
 };
