@@ -20,6 +20,7 @@
 #define MOVEGEN_H_INCLUDED
 
 #include <algorithm>
+#include <iostream>
 
 #include "types.h"
 
@@ -67,13 +68,15 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
             const std::size_t list_size = move_size * move_count;
             const std::size_t malloc_size = list_size * list_count;
 
-            header = (ExtMove**)malloc(sizeof(ExtMove*) * list_count);
+            header = (ExtMove**)malloc(sizeof(ExtMove*) * (list_count + 1) ); // One extra slot for a nullptr guard.
             data = (ExtMove*)malloc(malloc_size);
 
             for (int i = 0; i < list_count; i++)
             {
                 header[i] = (ExtMove*)(data + i * move_count);
             }
+
+            header[list_count] = nullptr; // Guard value, this is how we tell that we've run out of stack memory.
         }
 
         ~movelist_buf()
@@ -94,21 +97,20 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
             if (header) free(header);
             if (data) free(data);
 
-            header = (ExtMove**)malloc(sizeof(ExtMove*) * list_count);
+            header = (ExtMove**)malloc(sizeof(ExtMove*) * (list_count + 1) ); // One extra slot for a nullptr guard.
             data = (ExtMove*)malloc(malloc_size);
 
             for (int i = 0; i < list_count; i++)
             {
                 header[i] = (ExtMove*)(data + i * move_count);
             }
+
+            header[list_count] = nullptr; // Guard value, this is how we tell that we've run out of stack memory.
         }
 
         ExtMove* acquire()
         {
-            ExtMove* ret = header[top];
-            header[top++] = 0;
-
-            return ret;
+            return header[top++];
         }
 
         void release(ExtMove* ptr)
@@ -137,12 +139,6 @@ struct MoveList {
     explicit MoveList(const Position& pos)
     {
         this->moveList = mlb.acquire();
-
-        if (this->moveList == 0)
-        {
-            printf("Error: Failed to allocate memory in heap.");
-            exit(1);
-        }
         this->last = generate<T>(pos, this->moveList);
     }
 
