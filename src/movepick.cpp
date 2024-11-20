@@ -69,7 +69,8 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
              ttMove(ttm), refutations{{killers[0], 0}, {killers[1], 0}, {cm, 0}}, depth(d), ply(pl) {
 
   assert(d > 0);
-  this->moves = mlb.acquire();
+  this->thread_id = get_thread_id(pos);
+  this->moves = mlb[thread_id].acquire();
 
   stage = (pos.checkers() ? EVASION_TT : MAIN_TT) +
           !(ttm && pos.pseudo_legal(ttm));
@@ -81,7 +82,8 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
            : pos(p), mainHistory(mh), gateHistory(dh), captureHistory(cph), continuationHistory(ch), ttMove(ttm), recaptureSquare(rs), depth(d) {
 
   assert(d <= 0);
-  this->moves = mlb.acquire();
+  this->thread_id = get_thread_id(pos);
+  this->moves = mlb[thread_id].acquire();
 
   stage = (pos.checkers() ? EVASION_TT : QSEARCH_TT) +
           !(   ttm
@@ -95,7 +97,8 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory*
            : pos(p), gateHistory(dh), captureHistory(cph), ttMove(ttm), threshold(th) {
 
   assert(!pos.checkers());
-  this->moves = mlb.acquire();
+  this->thread_id = get_thread_id(pos);
+  this->moves = mlb[thread_id].acquire();
 
   stage = PROBCUT_TT + !(ttm && pos.capture(ttm)
                              && pos.pseudo_legal(ttm)
@@ -104,7 +107,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory*
 
 MovePicker::~MovePicker() {
 
-  mlb.release(this->moves);
+  mlb[thread_id].release(this->moves);
 }
 
 

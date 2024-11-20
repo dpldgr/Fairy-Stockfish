@@ -162,6 +162,7 @@ private:
   Value threshold;
   Depth depth;
   int ply;
+  size_t thread_id;
   ExtMove* moves;
 };
 

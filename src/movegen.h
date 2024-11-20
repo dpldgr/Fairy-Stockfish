@@ -27,6 +27,7 @@
 namespace Stockfish {
 
 class Position;
+size_t get_thread_id( const Position& pos );
 
 enum GenType {
   CAPTURES,
@@ -125,7 +126,7 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
         int move_count = 0;
     };
 
-	extern movelist_buf mlb;
+	extern movelist_buf mlb[8];
 
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.
@@ -134,13 +135,14 @@ struct MoveList {
 
     explicit MoveList(const Position& pos)
     {
-        this->moveList = mlb.acquire();
+        this->thread_id = get_thread_id(pos);
+        this->moveList = mlb[thread_id].acquire();
         this->last = generate<T>(pos, this->moveList);
     }
 
     ~MoveList()
     {
-		mlb.release(this->moveList);
+        mlb[thread_id].release(this->moveList);
     }
 
   const ExtMove* begin() const { return moveList; }
@@ -151,6 +153,7 @@ struct MoveList {
   }
 
 private:
+    size_t thread_id;
     ExtMove* last;
     ExtMove* moveList = nullptr;
 };
