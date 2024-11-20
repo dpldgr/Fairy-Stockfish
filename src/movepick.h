@@ -140,6 +140,7 @@ public:
                                            Move,
                                            const Move*,
                                            int);
+  ~MovePicker();
   Move next_move(bool skipQuiets = false);
 
 private:
@@ -161,7 +162,7 @@ private:
   Value threshold;
   Depth depth;
   int ply;
-  ExtMove moves[MAX_MOVES];
+  ExtMove* moves;
 };
 
 } // namespace Stockfish

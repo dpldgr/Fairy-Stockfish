@@ -126,6 +126,7 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
     };
 
 	extern movelist_buf mlb;
+	extern movelist_buf mpb;
 
 constexpr size_t moveListSize = sizeof(ExtMove) * MAX_MOVES;
 
