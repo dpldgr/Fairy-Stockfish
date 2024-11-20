@@ -126,7 +126,6 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
     };
 
 	extern movelist_buf mlb;
-	extern movelist_buf mpb;
 
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.
