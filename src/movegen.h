@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <iostream>
 
+#include "position.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -68,20 +69,20 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
             const std::size_t list_size = move_size * move_count;
             const std::size_t malloc_size = list_size * list_count;
 
-            header = (ExtMove**)malloc(sizeof(ExtMove*) * (list_count + 1) ); // One extra slot for a nullptr guard.
+            ptr_stack = (ExtMove**)malloc(sizeof(ExtMove*) * list_count );
             data = (ExtMove*)malloc(malloc_size);
 
-            for (int i = 0; i < list_count; i++)
+            for (int i = 0; i < (list_count - 1); i++)
             {
-                header[i] = (ExtMove*)(data + i * move_count);
+                ptr_stack[i] = (ExtMove*)(data + i * move_count);
             }
 
-            header[list_count] = nullptr; // Guard value, this is how we tell that we've run out of stack memory.
+            ptr_stack[list_count - 1] = nullptr; // The last element is used as a guard value.
         }
 
         ~movelist_buf()
         {
-            if (header) free(header);
+            if (ptr_stack) free(ptr_stack);
             if (data) free(data);
         }
 
@@ -94,31 +95,31 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
             const std::size_t list_size = move_size * move_count;
             const std::size_t malloc_size = list_size * list_count;
 
-            if (header) free(header);
+            if (ptr_stack) free(ptr_stack);
             if (data) free(data);
 
-            header = (ExtMove**)malloc(sizeof(ExtMove*) * (list_count + 1) ); // One extra slot for a nullptr guard.
+            ptr_stack = (ExtMove**)malloc(sizeof(ExtMove*) * list_count );
             data = (ExtMove*)malloc(malloc_size);
 
-            for (int i = 0; i < list_count; i++)
+            for (int i = 0; i < (list_count - 1); i++)
             {
-                header[i] = (ExtMove*)(data + i * move_count);
+                ptr_stack[i] = (ExtMove*)(data + i * move_count);
             }
 
-            header[list_count] = nullptr; // Guard value, this is how we tell that we've run out of stack memory.
+            ptr_stack[list_count - 1] = nullptr; // The last element is used as a guard value.
         }
 
         ExtMove* acquire()
         {
-            return header[top++];
+            return ptr_stack[top++];
         }
 
         void release(ExtMove* ptr)
         {
-            header[--top] = ptr;
+            ptr_stack[--top] = ptr;
         }
 
-        ExtMove** header = nullptr;
+        ExtMove** ptr_stack = nullptr;
         ExtMove* data = nullptr;
         int top = 0;
         int list_count = 0;
@@ -128,31 +129,22 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 	extern movelist_buf mlb;
 	extern movelist_buf mpb;
 
-constexpr size_t moveListSize = sizeof(ExtMove) * MAX_MOVES;
-
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.
 template<GenType T>
 struct MoveList {
 
-
-#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
-    explicit MoveList(const Position& pos)
+    explicit MoveList(const Position& pos,movelist_buf &mlb)
+    :ml_buf(mlb)
     {
-        this->moveList = mlb.acquire();
+        this->moveList = ml_buf.acquire();
         this->last = generate<T>(pos, this->moveList);
     }
 
     ~MoveList()
     {
-		mlb.release(this->moveList);
+		ml_buf.release(this->moveList);
     }
-#else
-    explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList))
-    {
-        ;
-    }
-#endif
 
   const ExtMove* begin() const { return moveList; }
   const ExtMove* end() const { return last; }
@@ -162,12 +154,9 @@ struct MoveList {
   }
 
 private:
+	movelist_buf &ml_buf;
     ExtMove* last;
-#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
-    ExtMove* moveList = 0;
-#else
-    ExtMove moveList[MAX_MOVES];
-#endif
+    ExtMove* moveList = nullptr;
 };
 
 } // namespace Stockfish
