@@ -128,24 +128,21 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 
 	extern movelist_buf mlb[8];
 
-movelist_buf& get_thread_mlb( const Position& pos );
-
-
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.
 template<GenType T>
 struct MoveList {
 
     explicit MoveList(const Position& pos)
-    :mlb_(get_thread_mlb(pos))
     {
-        this->moveList = mlb_.acquire();
+        this->thread_id = get_thread_id(pos);
+        this->moveList = mlb[thread_id].acquire();
         this->last = generate<T>(pos, this->moveList);
     }
 
     ~MoveList()
     {
-        mlb_.release(this->moveList);
+        mlb[thread_id].release(this->moveList);
     }
 
   const ExtMove* begin() const { return moveList; }
@@ -156,7 +153,7 @@ struct MoveList {
   }
 
 private:
-    movelist_buf& mlb_;
+    size_t thread_id;
     ExtMove* last;
     ExtMove* moveList = nullptr;
 };
