@@ -151,6 +151,11 @@ size_t get_thread_id( const Position& pos )
 	return pos.this_thread()->id();
 }
 
+movelist_buf& get_thread_mlb( const Position& pos )
+{
+	return mlb[pos.this_thread()->id()];
+}
+
 /// Position::init() initializes at startup the various arrays used to compute hash keys
 
 void Position::init() {
@@ -2852,7 +2857,7 @@ bool Position::is_immediate_game_end(Value& result, int ply) const {
           current |= newBitboard;
       }
   }
-  
+
   if (connect_nxn())
   {
       Bitboard connectors = connectPieces;

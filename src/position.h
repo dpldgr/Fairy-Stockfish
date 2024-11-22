@@ -992,11 +992,11 @@ inline bool Position::flag_move() const {
 
 inline bool Position::flag_reached(Color c) const {
   assert(var != nullptr);
-  bool simpleResult = 
+  bool simpleResult =
         (flag_region(c) & pieces(c, flag_piece(c)))
         && (   popcount(flag_region(c) & pieces(c, flag_piece(c))) >= var->flagPieceCount
             || (var->flagPieceBlockedWin && !(flag_region(c) & ~pieces())));
-      
+
   if (simpleResult&&var->flagPieceSafe)
   {
       Bitboard piecesInFlagZone = flag_region(c) & pieces(c, flag_piece(c));
@@ -1006,7 +1006,7 @@ inline bool Position::flag_reached(Color c) const {
       pieces in the flag zone and they need to be safe: If I have 3 pieces there, but one is under
       threat, I don't think I can declare victory. If I have 4 there, but one is under threat, I
       think that's victory.
-      */      
+      */
       while (piecesInFlagZone)
       {
           Square sr = pop_lsb(piecesInFlagZone);
@@ -1417,6 +1417,7 @@ inline const std::string Position::piece_to_partner() const {
 }
 
 size_t get_thread_id( const Position& pos );
+movelist_buf& get_thread_mlb( const Position& pos );
 
 inline Thread* Position::this_thread() const {
   return thisThread;
