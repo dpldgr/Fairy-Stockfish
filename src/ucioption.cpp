@@ -65,19 +65,19 @@ void on_threads(const Option& o) { Threads.set(size_t(o)); }
 void on_tb_path(const Option& o) { Tablebases::init(o); }
 void on_max_moves(const Option& o)
 {
-	/*
-    if      (o == "256")  max_moves_index = 0;
-    else if (o == "512")  max_moves_index = 1;
-    else if (o == "1024") max_moves_index = 2;
-    else if (o == "2048") max_moves_index = 3;
-    else if (o == "4096") max_moves_index = 4;
-    else if (o == "8192") max_moves_index = 5;
-    else                  max_moves_index = 3;
-    //*/
+    if      (o == "256")   movelist_buf::max_moves = 256;
+    else if (o == "512")   movelist_buf::max_moves = 512;
+    else if (o == "1024")  movelist_buf::max_moves = 1024;
+    else if (o == "2048")  movelist_buf::max_moves = 2048;
+    else if (o == "4096")  movelist_buf::max_moves = 4096;
+    else if (o == "8192")  movelist_buf::max_moves = 8192;
+    else if (o == "16384") movelist_buf::max_moves = 16384;
+    else                   movelist_buf::max_moves = 1024;
+    Threads.set(size_t(Options["Threads"]));
 }
 
 #if defined(__APPLE__) || defined(__MINGW32__) || defined(__MINGW64__) || defined(USE_PTHREADS)
-void on_stack_size(const Option& o) { TH_STACK_SIZE=size_t(o)*1024*1024; }
+void on_stack_size(const Option& o) { TH_STACK_SIZE=size_t(o)*1024*1024; Threads.set(size_t(Options["Threads"])); }
 #endif
 
 void on_use_NNUE(const Option& ) { Eval::NNUE::init(); }

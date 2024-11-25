@@ -23,31 +23,29 @@
 
 namespace Stockfish {
 
-movelist_buf mlb[8] {movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64)};
-//movelist_buf* mlb = ::operator new(sizeof(movelist_buf)*MAX_THREADS);
+movelist_buf mlb[MAX_THREADS];
 
-/*
-void movelist_buf::Init()
+int movelist_buf::thread_count = 1;
+int movelist_buf::max_moves = MAX_MOVES;
+
+void movelist_buf::mlb_init( const size_t thread_cnt )
 {
-	int thread_count = Options["Threads"];
-	int max_moves = Options["MaxMoves"];
+	assert( thread_cnt<= MAX_THREADS );
+	thread_count = thread_cnt;
 
 	for ( int i = 0 ; i < thread_count ; i++ )
 	{
-      new (&mlb[i]) movelist_buf(max_moves,64);
+		mlb[i].init();
 	}
 }
 
-void movelist_buf::Shutdown()
+void movelist_buf::mlb_shutdown()
 {
-	int thread_count = Options["Threads"];
-
 	for ( int i = 0 ; i < thread_count ; i++ )
 	{
-      delete mlb[i];
+		mlb[i].shutdown();
 	}
 }
-//*/
 
 template<GenType T>
 MoveList<T>::MoveList(const Position& pos)

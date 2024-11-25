@@ -59,24 +59,33 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
     class movelist_buf
     {
     public:
-        movelist_buf(int move_count_, int list_count_)
-        {
-            this->move_count = move_count_;
-            this->list_count = list_count_;
+        movelist_buf() : movelist_buf(64) {}
+        movelist_buf(const int list_cnt) : list_count(list_cnt) {}
 
+        static void mlb_init( const size_t thread_cnt );
+        static void mlb_shutdown();
+
+        void init()
+        {
             constexpr std::size_t move_size = sizeof(ExtMove);
-            const std::size_t list_size = move_size * move_count;
+            const std::size_t list_size = move_size * movelist_buf::max_moves;
             const std::size_t malloc_size = list_size * list_count;
 
-            ptr_stack = (ExtMove**)malloc(sizeof(ExtMove*) * list_count );
+            ptr_stack = (ExtMove**)malloc(sizeof(ExtMove*) * list_count);
             data = (ExtMove*)malloc(malloc_size);
 
             for (int i = 0; i < (list_count - 1); i++)
             {
-                ptr_stack[i] = (ExtMove*)(data + i * move_count);
+                ptr_stack[i] = (ExtMove*)(data + i * movelist_buf::max_moves);
             }
 
             ptr_stack[list_count - 1] = nullptr; // The last element is used as a guard value.
+        }
+
+        void shutdown()
+        {
+            if (ptr_stack) { free(ptr_stack); ptr_stack = nullptr; }
+            if (data) { free(data); data = nullptr; }
         }
 
         ~movelist_buf()
@@ -85,13 +94,12 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
             if (data) free(data);
         }
 
-        void resize(const int move_count_, int list_count_)
+        void resize(const int list_cnt)
         {
-            this->move_count = move_count_;
-            this->list_count = list_count_;
+            this->list_count = list_cnt;
 
             constexpr std::size_t move_size = sizeof(ExtMove);
-            const std::size_t list_size = move_size * move_count;
+            const std::size_t list_size = move_size * movelist_buf::max_moves;
             const std::size_t malloc_size = list_size * list_count;
 
             if (ptr_stack) free(ptr_stack);
@@ -102,7 +110,7 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 
             for (int i = 0; i < (list_count - 1); i++)
             {
-                ptr_stack[i] = (ExtMove*)(data + i * move_count);
+                ptr_stack[i] = (ExtMove*)(data + i * movelist_buf::max_moves);
             }
 
             ptr_stack[list_count - 1] = nullptr; // The last element is used as a guard value.
@@ -118,15 +126,17 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
             ptr_stack[--top] = ptr;
         }
 
+        static int thread_count;
+        static int max_moves;
+
         ExtMove** ptr_stack = nullptr;
         ExtMove* data = nullptr;
         int top = 0;
-        int list_count = 0;
-        int move_count = 0;
+        int move_count;
+        int list_count;
     };
 
-	extern movelist_buf mlb[8];
-	//extern movelist_buf* mlb;
+	extern movelist_buf mlb[MAX_THREADS];
 
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.
