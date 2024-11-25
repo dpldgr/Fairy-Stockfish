@@ -36,6 +36,11 @@
 
 namespace Stockfish {
 
+class movelist_buf;
+
+size_t get_thread_id( const Position& pos );
+movelist_buf* get_thread_mlb( const Position& pos );
+
 /// StateInfo struct stores information needed to restore a Position object to
 /// its previous state when we retract a move. Whenever a move is made on the
 /// board (by calling Position::do_move), a StateInfo object must be passed.
@@ -338,6 +343,11 @@ public:
 
   void put_piece(Piece pc, Square s, bool isPromoted = false, Piece unpromotedPc = NO_PIECE);
   void remove_piece(Square s);
+
+  size_t thread_id;
+  movelist_buf* mlb;
+
+  movelist_buf* get_mlb() const;
 
 private:
   // Initialization helpers (used while setting up a position)
@@ -1416,8 +1426,6 @@ inline const std::string Position::piece_to_partner() const {
   return std::string(1, piece_to_char()[piece]);
 }
 
-size_t get_thread_id( const Position& pos );
-
 inline Thread* Position::this_thread() const {
   return thisThread;
 }
@@ -1567,6 +1575,21 @@ inline void Position::undrop_piece(Piece pc_hand, Square s) {
 
 inline bool Position::can_drop(Color c, PieceType pt) const {
   return variant()->freeDrops || count_in_hand(c, pt) > 0;
+}
+
+inline void set_thread_mlb(Position& pos)
+{
+	pos.mlb = &mlb[pos.thread_id];
+}
+
+inline movelist_buf* get_thread_mlb(const Position& pos)
+{
+	return &mlb[pos.thread_id];
+}
+
+inline movelist_buf* Position::get_mlb() const
+{
+	return &mlb[this->thread_id];
 }
 
 } // namespace Stockfish

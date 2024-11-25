@@ -20,14 +20,13 @@
 #define MOVEGEN_H_INCLUDED
 
 #include <algorithm>
-#include <iostream>
 
 #include "types.h"
 
 namespace Stockfish {
 
 class Position;
-size_t get_thread_id( const Position& pos );
+class movelist_buf;
 
 enum GenType {
   CAPTURES,
@@ -133,18 +132,8 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 template<GenType T>
 struct MoveList {
 
-    explicit MoveList(const Position& pos)
-    {
-        this->thread_id = get_thread_id(pos);
-        this->moveList = mlb[thread_id].acquire();
-        this->last = generate<T>(pos, this->moveList);
-    }
-
-    ~MoveList()
-    {
-        mlb[thread_id].release(this->moveList);
-    }
-
+  explicit MoveList(const Position& pos);
+  ~MoveList();
   const ExtMove* begin() const { return moveList; }
   const ExtMove* end() const { return last; }
   size_t size() const { return last - moveList; }
@@ -153,11 +142,13 @@ struct MoveList {
   }
 
 private:
-    size_t thread_id;
+    movelist_buf* mlb;
     ExtMove* last;
     ExtMove* moveList = nullptr;
 };
 
+movelist_buf* get_thread_mlb( const Position& pos );
 } // namespace Stockfish
+
 
 #endif // #ifndef MOVEGEN_H_INCLUDED

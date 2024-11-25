@@ -63,6 +63,22 @@ void on_hash_size(const Option& o) { TT.resize(size_t(o)); }
 void on_logger(const Option& o) { start_logger(o); }
 void on_threads(const Option& o) { Threads.set(size_t(o)); }
 void on_tb_path(const Option& o) { Tablebases::init(o); }
+void on_max_moves(const Option& o)
+{
+	/*
+    if      (o == "256")  max_moves_index = 0;
+    else if (o == "512")  max_moves_index = 1;
+    else if (o == "1024") max_moves_index = 2;
+    else if (o == "2048") max_moves_index = 3;
+    else if (o == "4096") max_moves_index = 4;
+    else if (o == "8192") max_moves_index = 5;
+    else                  max_moves_index = 3;
+    //*/
+}
+
+#if defined(__APPLE__) || defined(__MINGW32__) || defined(__MINGW64__) || defined(USE_PTHREADS)
+void on_stack_size(const Option& o) { TH_STACK_SIZE=size_t(o)*1024*1024; }
+#endif
 
 void on_use_NNUE(const Option& ) { Eval::NNUE::init(); }
 void on_eval_file(const Option& ) { Eval::NNUE::init(); }
@@ -209,6 +225,10 @@ void init(OptionsMap& o) {
   o["TsumeMode"]             << Option(false);
   o["VariantPath"]           << Option("<empty>", on_variant_path);
   o["usemillisec"]           << Option(true); // time unit for UCCI
+  o["MaxMoves"]              << Option("1024", {"256", "512", "1024", "2048", "4096", "8192", "16384"}, on_max_moves);
+#if defined(__APPLE__) || defined(__MINGW32__) || defined(__MINGW64__) || defined(USE_PTHREADS)
+  o["StackSize"]             << Option(8, 1, 64, on_stack_size);
+#endif
 }
 
 

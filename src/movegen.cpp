@@ -25,6 +25,20 @@ namespace Stockfish {
 
 movelist_buf mlb[8] {movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64)};
 
+template<GenType T>
+MoveList<T>::MoveList(const Position& pos)
+{
+    this->mlb = get_thread_mlb(pos);
+    this->moveList = this->mlb->acquire();
+    this->last = generate<T>(pos, this->moveList);
+}
+
+template<GenType T>
+MoveList<T>::~MoveList()
+{
+    this->mlb->release(this->moveList);
+}
+
 namespace {
 
   template<MoveType T>
@@ -504,7 +518,12 @@ template ExtMove* generate<QUIETS>(const Position&, ExtMove*);
 template ExtMove* generate<EVASIONS>(const Position&, ExtMove*);
 template ExtMove* generate<QUIET_CHECKS>(const Position&, ExtMove*);
 template ExtMove* generate<NON_EVASIONS>(const Position&, ExtMove*);
-
+template class MoveList<CAPTURES>;
+template class MoveList<QUIETS>;
+template class MoveList<EVASIONS>;
+template class MoveList<QUIET_CHECKS>;
+template class MoveList<NON_EVASIONS>;
+template class MoveList<LEGAL>;
 
 /// generate<LEGAL> generates all the legal moves in the given position
 

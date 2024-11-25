@@ -148,7 +148,7 @@ Move cuckooMove[8192];
 
 size_t get_thread_id( const Position& pos )
 {
-	return pos.this_thread()->id();
+	return pos.thread_id;
 }
 
 /// Position::init() initializes at startup the various arrays used to compute hash keys
@@ -533,6 +533,16 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   chess960 = isChess960 || v->chess960;
   tsumeMode = Options["TsumeMode"];
   thisThread = th;
+  if ( th )
+  {
+    this->thread_id = th->id();
+    this->mlb = &mlb[this->thread_id];
+  }
+  else
+  {
+    this->thread_id = 0;
+    this->mlb = nullptr;
+  }
   set_state(st);
 
   assert(pos_is_ok());

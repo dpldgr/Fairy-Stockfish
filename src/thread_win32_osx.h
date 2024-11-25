@@ -33,7 +33,7 @@
 
 namespace Stockfish {
 
-static const size_t TH_STACK_SIZE = 8 * 1024 * 1024;
+extern size_t TH_STACK_SIZE;
 
 template <class T, class P = std::pair<T*, void(T::*)()>>
 void* start_routine(void* ptr)
