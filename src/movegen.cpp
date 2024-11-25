@@ -27,7 +27,7 @@ movelist_buf mlb_pool[MAX_THREADS];
 
 int movelist_buf::thread_count = 1;
 int movelist_buf::list_count = 64;
-int movelist_buf::max_moves = MAX_MOVES;
+int movelist_buf::move_count = MAX_MOVES;
 
 void movelist_buf::mlb_init( const size_t thread_cnt )
 {
