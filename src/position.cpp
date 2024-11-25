@@ -536,7 +536,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   if ( th )
   {
     this->thread_id = th->id();
-    this->mlb = &mlb[this->thread_id];
+    this->mlb = &mlb_pool[this->thread_id];
   }
   else
   {

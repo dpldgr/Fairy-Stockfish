@@ -65,14 +65,14 @@ void on_threads(const Option& o) { Threads.set(size_t(o)); }
 void on_tb_path(const Option& o) { Tablebases::init(o); }
 void on_max_moves(const Option& o)
 {
-    if      (o == "256")   movelist_buf::max_moves = 256;
-    else if (o == "512")   movelist_buf::max_moves = 512;
-    else if (o == "1024")  movelist_buf::max_moves = 1024;
-    else if (o == "2048")  movelist_buf::max_moves = 2048;
-    else if (o == "4096")  movelist_buf::max_moves = 4096;
-    else if (o == "8192")  movelist_buf::max_moves = 8192;
-    else if (o == "16384") movelist_buf::max_moves = 16384;
-    else                   movelist_buf::max_moves = 1024;
+    if      (o == "256")   movelist_buf::move_count = 256;
+    else if (o == "512")   movelist_buf::move_count = 512;
+    else if (o == "1024")  movelist_buf::move_count = 1024;
+    else if (o == "2048")  movelist_buf::move_count = 2048;
+    else if (o == "4096")  movelist_buf::move_count = 4096;
+    else if (o == "8192")  movelist_buf::move_count = 8192;
+    else if (o == "16384") movelist_buf::move_count = 16384;
+    else                   movelist_buf::move_count = 1024;
     Threads.set(size_t(Options["Threads"]));
 }
 
@@ -227,10 +227,9 @@ void init(OptionsMap& o) {
   o["usemillisec"]           << Option(true); // time unit for UCCI
   o["MaxMoves"]              << Option("1024", {"256", "512", "1024", "2048", "4096", "8192", "16384"}, on_max_moves);
 #if defined(__APPLE__) || defined(__MINGW32__) || defined(__MINGW64__) || defined(USE_PTHREADS)
-  o["StackSize"]             << Option(8, 1, 64, on_stack_size);
+  o["StackSize"]             << Option(8, 1, 32, on_stack_size);
 #endif
 }
-
 
 /// operator<<() is used to print all the options default values in chronological
 /// insertion order (the idx field) and in the format defined by the UCI protocol.

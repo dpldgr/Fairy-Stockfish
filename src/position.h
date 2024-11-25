@@ -1579,17 +1579,17 @@ inline bool Position::can_drop(Color c, PieceType pt) const {
 
 inline void set_thread_mlb(Position& pos)
 {
-	pos.mlb = &mlb[pos.thread_id];
+	pos.mlb = &mlb_pool[pos.thread_id];
 }
 
 inline movelist_buf* get_thread_mlb(const Position& pos)
 {
-	return &mlb[pos.thread_id];
+	return &mlb_pool[pos.thread_id];
 }
 
 inline movelist_buf* Position::get_mlb() const
 {
-	return &mlb[this->thread_id];
+	return &mlb_pool[this->thread_id];
 }
 
 } // namespace Stockfish

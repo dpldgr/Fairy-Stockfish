@@ -23,9 +23,10 @@
 
 namespace Stockfish {
 
-movelist_buf mlb[MAX_THREADS];
+movelist_buf mlb_pool[MAX_THREADS];
 
 int movelist_buf::thread_count = 1;
+int movelist_buf::list_count = 64;
 int movelist_buf::max_moves = MAX_MOVES;
 
 void movelist_buf::mlb_init( const size_t thread_cnt )
@@ -35,7 +36,7 @@ void movelist_buf::mlb_init( const size_t thread_cnt )
 
 	for ( int i = 0 ; i < thread_count ; i++ )
 	{
-		mlb[i].init();
+		mlb_pool[i].init();
 	}
 }
 
@@ -43,7 +44,7 @@ void movelist_buf::mlb_shutdown()
 {
 	for ( int i = 0 ; i < thread_count ; i++ )
 	{
-		mlb[i].shutdown();
+		mlb_pool[i].shutdown();
 	}
 }
 
