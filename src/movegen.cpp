@@ -541,7 +541,6 @@ template ExtMove* generate<QUIETS>(const Position&, ExtMove*);
 template ExtMove* generate<EVASIONS>(const Position&, ExtMove*);
 template ExtMove* generate<QUIET_CHECKS>(const Position&, ExtMove*);
 template ExtMove* generate<NON_EVASIONS>(const Position&, ExtMove*);
-template ExtMove* generate<LEGAL>(const Position&, ExtMove*);
 template struct MoveList<CAPTURES>;
 template struct MoveList<QUIETS>;
 template struct MoveList<EVASIONS>;
