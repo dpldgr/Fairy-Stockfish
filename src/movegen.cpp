@@ -48,20 +48,6 @@ void movelist_buf::mlb_shutdown()
 	}
 }
 
-template<GenType T>
-MoveList<T>::MoveList(const Position& pos)
-{
-    this->mlb = get_thread_mlb(pos);
-    this->moveList = this->mlb->acquire();
-    this->last = generate<T>(pos, this->moveList);
-}
-
-template<GenType T>
-MoveList<T>::~MoveList()
-{
-    this->mlb->release(this->moveList);
-}
-
 namespace {
 
   template<MoveType T>
@@ -541,12 +527,6 @@ template ExtMove* generate<QUIETS>(const Position&, ExtMove*);
 template ExtMove* generate<EVASIONS>(const Position&, ExtMove*);
 template ExtMove* generate<QUIET_CHECKS>(const Position&, ExtMove*);
 template ExtMove* generate<NON_EVASIONS>(const Position&, ExtMove*);
-template struct MoveList<CAPTURES>;
-template struct MoveList<QUIETS>;
-template struct MoveList<EVASIONS>;
-template struct MoveList<QUIET_CHECKS>;
-template struct MoveList<NON_EVASIONS>;
-template struct MoveList<LEGAL>;
 
 /// generate<LEGAL> generates all the legal moves in the given position
 
