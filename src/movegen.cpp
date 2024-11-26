@@ -541,12 +541,12 @@ template ExtMove* generate<QUIETS>(const Position&, ExtMove*);
 template ExtMove* generate<EVASIONS>(const Position&, ExtMove*);
 template ExtMove* generate<QUIET_CHECKS>(const Position&, ExtMove*);
 template ExtMove* generate<NON_EVASIONS>(const Position&, ExtMove*);
-template class MoveList<CAPTURES>;
-template class MoveList<QUIETS>;
-template class MoveList<EVASIONS>;
-template class MoveList<QUIET_CHECKS>;
-template class MoveList<NON_EVASIONS>;
-template class MoveList<LEGAL>;
+template struct MoveList<CAPTURES>;
+template struct MoveList<QUIETS>;
+template struct MoveList<EVASIONS>;
+template struct MoveList<QUIET_CHECKS>;
+template struct MoveList<NON_EVASIONS>;
+template struct MoveList<LEGAL>;
 
 /// generate<LEGAL> generates all the legal moves in the given position
 
