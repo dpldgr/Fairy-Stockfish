@@ -343,9 +343,10 @@ public:
   void put_piece(Piece pc, Square s, bool isPromoted = false, Piece unpromotedPc = NO_PIECE);
   void remove_piece(Square s);
 
-  size_t thread_id;
+  int thread_id;
   movelist_buf* mlb;
 
+  void bind_mlb();
   movelist_buf* get_mlb() const;
 
 private:
@@ -1586,9 +1587,14 @@ inline movelist_buf* get_thread_mlb(const Position& pos)
 	return &mlb_pool[pos.thread_id];
 }
 
+inline void Position::bind_mlb()
+{
+	this->mlb = &mlb_pool[this->thread_id];
+}
+
 inline movelist_buf* Position::get_mlb() const
 {
-	return &mlb_pool[this->thread_id];
+	return this->mlb;
 }
 
 } // namespace Stockfish

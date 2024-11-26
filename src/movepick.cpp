@@ -69,7 +69,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
              ttMove(ttm), refutations{{killers[0], 0}, {killers[1], 0}, {cm, 0}}, depth(d), ply(pl) {
 
   assert(d > 0);
-  //this->mlb = get_thread_mlb(pos);
+
   this->mlb = pos.get_mlb();
   this->moves = this->mlb->acquire();
 
@@ -83,7 +83,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
            : pos(p), mainHistory(mh), gateHistory(dh), captureHistory(cph), continuationHistory(ch), ttMove(ttm), recaptureSquare(rs), depth(d) {
 
   assert(d <= 0);
-  //this->mlb = get_thread_mlb(pos);
+
   this->mlb = pos.get_mlb();
   this->moves = this->mlb->acquire();
 
@@ -99,7 +99,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory*
            : pos(p), gateHistory(dh), captureHistory(cph), ttMove(ttm), threshold(th) {
 
   assert(!pos.checkers());
-  //this->mlb = get_thread_mlb(pos);
+
   this->mlb = pos.get_mlb();
   this->moves = this->mlb->acquire();
 
@@ -108,11 +108,10 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory*
                              && pos.see_ge(ttm, threshold));
 }
 
-MovePicker::~MovePicker() {
-
+MovePicker::~MovePicker()
+{
   this->mlb->release(this->moves);
 }
-
 
 /// MovePicker::score() assigns a numerical value to each move in a list, used
 /// for sorting. Captures are ordered by Most Valuable Victim (MVV), preferring

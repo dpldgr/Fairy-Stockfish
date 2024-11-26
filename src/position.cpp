@@ -528,16 +528,18 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   chess960 = isChess960 || v->chess960;
   tsumeMode = Options["TsumeMode"];
   thisThread = th;
-  if ( th )
+
+  if ( thisThread )
   {
-    this->thread_id = th->id();
-    this->mlb = &mlb_pool[this->thread_id];
+    this->thread_id = thisThread->id();
+    this->bind_mlb();
   }
   else
   {
-    this->thread_id = 0;
+    this->thread_id = -1;
     this->mlb = nullptr;
   }
+
   set_state(st);
 
   assert(pos_is_ok());
