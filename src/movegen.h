@@ -148,7 +148,8 @@ struct MoveList {
 
   explicit MoveList(const Position& pos)
   {
-    this->mlb = get_thread_mlb(pos);
+    //this->mlb = get_thread_mlb(pos);
+    this->mlb = pos.get_mlb();
     this->moveList = this->mlb->acquire();
     this->last = generate<T>(pos, this->moveList);
   }

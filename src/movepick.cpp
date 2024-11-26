@@ -69,7 +69,8 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
              ttMove(ttm), refutations{{killers[0], 0}, {killers[1], 0}, {cm, 0}}, depth(d), ply(pl) {
 
   assert(d > 0);
-  this->mlb = get_thread_mlb(pos);
+  //this->mlb = get_thread_mlb(pos);
+  this->mlb = pos.get_mlb();
   this->moves = this->mlb->acquire();
 
   stage = (pos.checkers() ? EVASION_TT : MAIN_TT) +
@@ -82,7 +83,8 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
            : pos(p), mainHistory(mh), gateHistory(dh), captureHistory(cph), continuationHistory(ch), ttMove(ttm), recaptureSquare(rs), depth(d) {
 
   assert(d <= 0);
-  this->mlb = get_thread_mlb(pos);
+  //this->mlb = get_thread_mlb(pos);
+  this->mlb = pos.get_mlb();
   this->moves = this->mlb->acquire();
 
   stage = (pos.checkers() ? EVASION_TT : QSEARCH_TT) +
@@ -97,7 +99,8 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory*
            : pos(p), gateHistory(dh), captureHistory(cph), ttMove(ttm), threshold(th) {
 
   assert(!pos.checkers());
-  this->mlb = get_thread_mlb(pos);
+  //this->mlb = get_thread_mlb(pos);
+  this->mlb = pos.get_mlb();
   this->moves = this->mlb->acquire();
 
   stage = PROBCUT_TT + !(ttm && pos.capture(ttm)

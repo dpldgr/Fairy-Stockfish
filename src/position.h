@@ -38,7 +38,6 @@ namespace Stockfish {
 
 class movelist_buf;
 
-size_t get_thread_id( const Position& pos );
 movelist_buf* get_thread_mlb( const Position& pos );
 
 /// StateInfo struct stores information needed to restore a Position object to

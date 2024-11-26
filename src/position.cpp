@@ -146,11 +146,6 @@ Key cuckoo[8192];
 Move cuckooMove[8192];
 #endif
 
-size_t get_thread_id( const Position& pos )
-{
-	return pos.thread_id;
-}
-
 /// Position::init() initializes at startup the various arrays used to compute hash keys
 
 void Position::init() {
