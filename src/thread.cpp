@@ -143,6 +143,8 @@ void ThreadPool::set(size_t requested) {
 
       while (size() > 0)
           delete back(), pop_back();
+
+      mlb_destroy();
   }
 
   if (requested > 0)   // create new thread(s)
@@ -158,6 +160,8 @@ void ThreadPool::set(size_t requested) {
 
       // Init thread number dependent search params.
       Search::init();
+
+      mlb_create( requested );
   }
 }
 
