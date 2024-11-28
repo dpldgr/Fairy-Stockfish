@@ -38,8 +38,6 @@ namespace Stockfish {
 
 class movelist_buf;
 
-movelist_buf* get_thread_mlb( const Position& pos );
-
 /// StateInfo struct stores information needed to restore a Position object to
 /// its previous state when we retract a move. Whenever a move is made on the
 /// board (by calling Position::do_move), a StateInfo object must be passed.
@@ -346,8 +344,7 @@ public:
   int thread_id;
   movelist_buf* mlb;
 
-  void bind_mlb();
-  movelist_buf* get_mlb() const;
+  //void bind_mlb();
 
 private:
   // Initialization helpers (used while setting up a position)
@@ -1002,11 +999,11 @@ inline bool Position::flag_move() const {
 
 inline bool Position::flag_reached(Color c) const {
   assert(var != nullptr);
-  bool simpleResult = 
+  bool simpleResult =
         (flag_region(c) & pieces(c, flag_piece(c)))
         && (   popcount(flag_region(c) & pieces(c, flag_piece(c))) >= var->flagPieceCount
             || (var->flagPieceBlockedWin && !(flag_region(c) & ~pieces())));
-      
+
   if (simpleResult&&var->flagPieceSafe)
   {
       Bitboard piecesInFlagZone = flag_region(c) & pieces(c, flag_piece(c));
@@ -1016,7 +1013,7 @@ inline bool Position::flag_reached(Color c) const {
       pieces in the flag zone and they need to be safe: If I have 3 pieces there, but one is under
       threat, I don't think I can declare victory. If I have 4 there, but one is under threat, I
       think that's victory.
-      */      
+      */
       while (piecesInFlagZone)
       {
           Square sr = pop_lsb(piecesInFlagZone);
@@ -1577,25 +1574,20 @@ inline bool Position::can_drop(Color c, PieceType pt) const {
   return variant()->freeDrops || count_in_hand(c, pt) > 0;
 }
 
-inline void set_thread_mlb(Position& pos)
+//inline void set_thread_mlb(Position& pos)
+//{
+//	pos.mlb = &mlb_pool[pos.thread_id];
+//}
+
+inline movelist_buf& get_mlb(const Position& pos)
 {
-	pos.mlb = &mlb_pool[pos.thread_id];
+	return mlb_pool[pos.thread_id];
 }
 
-inline movelist_buf* get_thread_mlb(const Position& pos)
-{
-	return &mlb_pool[pos.thread_id];
-}
-
-inline void Position::bind_mlb()
-{
-	this->mlb = &mlb_pool[this->thread_id];
-}
-
-inline movelist_buf* Position::get_mlb() const
-{
-	return this->mlb;
-}
+//inline void Position::bind_mlb()
+//{
+//	this->mlb = &mlb_pool[this->thread_id];
+//}
 
 } // namespace Stockfish
 

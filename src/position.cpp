@@ -532,12 +532,12 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   if ( thisThread )
   {
     this->thread_id = thisThread->id();
-    this->bind_mlb();
+    //this->bind_mlb();
   }
   else
   {
     this->thread_id = -1;
-    this->mlb = nullptr;
+    //this->mlb = nullptr;
   }
 
   set_state(st);
@@ -2859,7 +2859,7 @@ bool Position::is_immediate_game_end(Value& result, int ply) const {
           current |= newBitboard;
       }
   }
-  
+
   if (connect_nxn())
   {
       Bitboard connectors = connectPieces;

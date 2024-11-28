@@ -162,7 +162,7 @@ private:
   Value threshold;
   Depth depth;
   int ply;
-  movelist_buf* mlb;
+  movelist_buf& mlb;
   ExtMove* moves;
 };
 

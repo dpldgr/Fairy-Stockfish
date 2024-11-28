@@ -28,7 +28,7 @@ namespace Stockfish {
 class Position;
 class movelist_buf;
 
-movelist_buf* get_thread_mlb( const Position& pos );
+movelist_buf& get_mlb( const Position& pos );
 
 enum GenType {
   CAPTURES,
@@ -147,15 +147,15 @@ template<GenType T>
 struct MoveList {
 
   explicit MoveList(const Position& pos)
+  :mlb(get_mlb(pos))
   {
-    this->mlb = pos.get_mlb();
-    this->moveList = this->mlb->acquire();
-    this->last = generate<T>(pos, this->moveList);
+    moveList = mlb.acquire();
+    last = generate<T>(pos, moveList);
   }
 
   ~MoveList()
   {
-    this->mlb->release(this->moveList);
+    mlb.release(moveList);
   }
 
   const ExtMove* begin() const { return moveList; }
@@ -166,7 +166,7 @@ struct MoveList {
   }
 
 private:
-    movelist_buf* mlb;
+    movelist_buf& mlb;
     ExtMove* last;
     ExtMove* moveList = nullptr;
 };

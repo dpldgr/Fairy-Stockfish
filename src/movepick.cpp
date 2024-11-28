@@ -66,13 +66,11 @@ namespace {
 MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHistory* mh, const GateHistory* dh, const LowPlyHistory* lp,
                        const CapturePieceToHistory* cph, const PieceToHistory** ch, Move cm, const Move* killers, int pl)
            : pos(p), mainHistory(mh), gateHistory(dh), lowPlyHistory(lp), captureHistory(cph), continuationHistory(ch),
-             ttMove(ttm), refutations{{killers[0], 0}, {killers[1], 0}, {cm, 0}}, depth(d), ply(pl) {
+             ttMove(ttm), refutations{{killers[0], 0}, {killers[1], 0}, {cm, 0}}, depth(d), ply(pl), mlb(get_mlb(p)) {
 
   assert(d > 0);
 
-  this->mlb = pos.get_mlb();
-  this->moves = this->mlb->acquire();
-
+  moves = mlb.acquire();
   stage = (pos.checkers() ? EVASION_TT : MAIN_TT) +
           !(ttm && pos.pseudo_legal(ttm));
 }
@@ -80,13 +78,11 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
 /// MovePicker constructor for quiescence search
 MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHistory* mh, const GateHistory* dh,
                        const CapturePieceToHistory* cph, const PieceToHistory** ch, Square rs)
-           : pos(p), mainHistory(mh), gateHistory(dh), captureHistory(cph), continuationHistory(ch), ttMove(ttm), recaptureSquare(rs), depth(d) {
+           : pos(p), mainHistory(mh), gateHistory(dh), captureHistory(cph), continuationHistory(ch), ttMove(ttm), recaptureSquare(rs), depth(d), mlb(get_mlb(p)) {
 
   assert(d <= 0);
 
-  this->mlb = pos.get_mlb();
-  this->moves = this->mlb->acquire();
-
+  moves = mlb.acquire();
   stage = (pos.checkers() ? EVASION_TT : QSEARCH_TT) +
           !(   ttm
             && (pos.checkers() || depth > DEPTH_QS_RECAPTURES || to_sq(ttm) == recaptureSquare)
@@ -96,13 +92,11 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
 /// MovePicker constructor for ProbCut: we generate captures with SEE greater
 /// than or equal to the given threshold.
 MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory* dh, const CapturePieceToHistory* cph)
-           : pos(p), gateHistory(dh), captureHistory(cph), ttMove(ttm), threshold(th) {
+           : pos(p), gateHistory(dh), captureHistory(cph), ttMove(ttm), threshold(th), mlb(get_mlb(p)) {
 
   assert(!pos.checkers());
 
-  this->mlb = pos.get_mlb();
-  this->moves = this->mlb->acquire();
-
+  moves = mlb.acquire();
   stage = PROBCUT_TT + !(ttm && pos.capture(ttm)
                              && pos.pseudo_legal(ttm)
                              && pos.see_ge(ttm, threshold));
@@ -110,7 +104,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory*
 
 MovePicker::~MovePicker()
 {
-  this->mlb->release(this->moves);
+  mlb.release(moves);
 }
 
 /// MovePicker::score() assigns a numerical value to each move in a list, used
