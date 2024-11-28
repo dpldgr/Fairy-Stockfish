@@ -60,6 +60,7 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
     class movelist_buf
     {
     public:
+        movelist_buf() : movelist_buf(MAX_MOVES,64) {}
         movelist_buf(int move_count_, int list_count_)
         {
             this->move_count = move_count_;
@@ -129,7 +130,6 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 	extern movelist_buf mlb[512];
 
 movelist_buf& get_thread_mlb( const Position& pos );
-
 
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.
