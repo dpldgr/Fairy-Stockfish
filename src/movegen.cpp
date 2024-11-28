@@ -24,6 +24,7 @@
 namespace Stockfish {
 
 movelist_buf mlb[512];
+int mlb_thread_count = 0;
 
 namespace {
 

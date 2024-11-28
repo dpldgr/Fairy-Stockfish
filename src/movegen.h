@@ -60,47 +60,28 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
     class movelist_buf
     {
     public:
-        movelist_buf() : movelist_buf(MAX_MOVES,64) {}
+        movelist_buf() : movelist_buf(MAX_MOVES,64)
+        {}
+
         movelist_buf(int move_count_, int list_count_)
         {
             this->move_count = move_count_;
             this->list_count = list_count_;
-
-            constexpr std::size_t move_size = sizeof(ExtMove);
-            const std::size_t list_size = move_size * move_count;
-            const std::size_t malloc_size = list_size * list_count;
-
-            ptr_stack = (ExtMove**)malloc(sizeof(ExtMove*) * list_count );
-            data = (ExtMove*)malloc(malloc_size);
-
-            for (int i = 0; i < (list_count - 1); i++)
-            {
-                ptr_stack[i] = (ExtMove*)(data + i * move_count);
-            }
-
-            ptr_stack[list_count - 1] = nullptr; // The last element is used as a guard value.
+			alloc();
         }
 
         ~movelist_buf()
         {
-            if (ptr_stack) free(ptr_stack);
-            if (data) free(data);
+			dealloc();
         }
 
-        void resize(const int move_count_, int list_count_)
+        void alloc()
         {
-            this->move_count = move_count_;
-            this->list_count = list_count_;
-
             constexpr std::size_t move_size = sizeof(ExtMove);
-            const std::size_t list_size = move_size * move_count;
-            const std::size_t malloc_size = list_size * list_count;
+            constexpr std::size_t move_ptr_size = sizeof(ExtMove*);
 
-            if (ptr_stack) free(ptr_stack);
-            if (data) free(data);
-
-            ptr_stack = (ExtMove**)malloc(sizeof(ExtMove*) * list_count );
-            data = (ExtMove*)malloc(malloc_size);
+            ptr_stack = static_cast<ExtMove**>( malloc(move_ptr_size * list_count) );
+            data = static_cast<ExtMove*>( malloc(move_size * move_count * list_count) );
 
             for (int i = 0; i < (list_count - 1); i++)
             {
@@ -108,6 +89,12 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
             }
 
             ptr_stack[list_count - 1] = nullptr; // The last element is used as a guard value.
+        }
+
+        void dealloc()
+        {
+            if (ptr_stack) { free(ptr_stack); ptr_stack = nullptr; }
+            if (data) { free(data); data = nullptr; }
         }
 
         ExtMove* acquire()
