@@ -23,7 +23,7 @@
 
 namespace Stockfish {
 
-movelist_buf mlb[1] { movelist_buf(MAX_MOVES,64) };
+movelist_buf* mlb = new movelist_buf[1]{ movelist_buf(MAX_MOVES,64) };
 /*
 movelist_buf mlb[512]
 {
