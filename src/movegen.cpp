@@ -23,8 +23,6 @@
 
 namespace Stockfish {
 
-movelist_buf mlb[1] { movelist_buf(MAX_MOVES,64) };
-/*
 movelist_buf mlb[512]
 {
 	movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),
@@ -60,7 +58,7 @@ movelist_buf mlb[512]
 	movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),
 	movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),movelist_buf(MAX_MOVES,64),
 };
-//*/
+
 namespace {
 
   template<MoveType T>
