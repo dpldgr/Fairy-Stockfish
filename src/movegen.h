@@ -129,10 +129,7 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 	extern movelist_buf* mlb;
 
 movelist_buf& get_thread_mlb( const Position& pos );
-void mlb_alloc();
-void mlb_dealloc();
-void mlb_create( int thread_count );
-void mlb_destroy();
+
 
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.

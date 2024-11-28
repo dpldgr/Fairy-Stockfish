@@ -49,7 +49,6 @@ int main(int argc, char* argv[]) {
   Position::init();
   Bitbases::init();
   Endgames::init();
-  mlb_alloc(); // Must be before first call to Threads.set().
   Threads.set(size_t(Options["Threads"]));
   Search::clear(); // After threads are up
   Eval::NNUE::init();
@@ -57,7 +56,6 @@ int main(int argc, char* argv[]) {
   UCI::loop(argc, argv);
 
   Threads.set(0);
-  mlb_dealloc(); // Must be after final call to Threads.set().
   variants.clear_all();
   pieceMap.clear_all();
   delete XBoard::stateMachine;

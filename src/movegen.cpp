@@ -23,38 +23,7 @@
 
 namespace Stockfish {
 
-//movelist_buf* mlb = new movelist_buf[1]{ movelist_buf(MAX_MOVES,64) };
-movelist_buf* mlb = nullptr;
-int mlb_threads = 0;
-
-void mlb_alloc()
-{
-    mlb = (movelist_buf*)malloc(sizeof(movelist_buf)*512);
-}
-
-void mlb_dealloc()
-{
-	if (mlb) { free(mlb); mlb = nullptr; }
-}
-
-void mlb_create( int thread_count )
-{
-	mlb_threads = thread_count;
-
-	for ( int i = 0 ; i < mlb_threads ; i++ )
-	{
-		new (&mlb[i]) movelist_buf(MAX_MOVES,64);
-	}
-}
-
-void mlb_destroy()
-{
-	for ( int i = 0 ; i < mlb_threads ; i++ )
-	{
-		mlb[i].~movelist_buf();
-	}
-}
-
+movelist_buf* mlb = new movelist_buf[1]{ movelist_buf(MAX_MOVES,64) };
 /*
 movelist_buf mlb[512]
 {
