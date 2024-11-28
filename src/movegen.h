@@ -126,7 +126,7 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
         int move_count = 0;
     };
 
-	extern movelist_buf* mlb;
+	extern movelist_buf mlb[1];
 
 movelist_buf& get_thread_mlb( const Position& pos );
 
