@@ -83,9 +83,10 @@ namespace {
                 : value == "unweighted" ? UNWEIGHTED_MATERIAL
                 : value == "whitedrawodds" ? WHITE_DRAW_ODDS
                 : value == "blackdrawodds" ? BLACK_DRAW_ODDS
+                : value == "weighted" ? WEIGHTED_MATERIAL
                 : NO_MATERIAL_COUNTING;
         return   value == "janggi" || value == "unweighted"
-              || value == "whitedrawodds" || value == "blackdrawodds" || value == "none";
+              || value == "whitedrawodds" || value == "blackdrawodds" || value == "weighted" || value == "none";
     }
 
     template <> bool set(const std::string& value, CountingRule& target) {
@@ -545,10 +546,38 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("collinearN", v->collinearN);
     parse_attribute("connectValue", v->connectValue);
     parse_attribute("materialCounting", v->materialCounting);
+	// materialCountingWeights
+	const auto& mc_weights = config.find("materialCountingWeights");
+	if (mc_weights != config.end())
+	{
+		char token;
+		size_t idx = 0;
+		std::stringstream ss(mc_weights->second);
+		while (!ss.eof() && ss >> token && (idx = v->pieceToChar.find(toupper(token))) != std::string::npos
+						 && ss >> token && ss >> v->materialCountingWeights[idx]) {}
+		if (DoCheck && idx == std::string::npos)
+			std::cerr << "materialCountingWeights - Invalid piece type: " << token << std::endl;
+		else if (DoCheck && !ss.eof())
+			std::cerr << "materialCountingWeights - Invalid weight value for type: " << v->pieceToChar[idx] << std::endl;
+	}
+    parse_attribute("materialCountingBonusWhite", v->materialCountingBonus[WHITE]);
+    parse_attribute("materialCountingBonusBlack", v->materialCountingBonus[BLACK]);
+    parse_attribute("materialCountingThreshold", v->materialCountingThreshold);
+
+	std::cout << "materialCounting: " << v->materialCounting << std::endl;
+	std::cout << "materialCountingWeights[1]: " << v->materialCountingWeights[1] << std::endl;
+	std::cout << "materialCountingWeights[2]: " << v->materialCountingWeights[2] << std::endl;
+	std::cout << "materialCountingWeights[3]: " << v->materialCountingWeights[3] << std::endl;
+	std::cout << "materialCountingWeights[4]: " << v->materialCountingWeights[4] << std::endl;
+	std::cout << "materialCountingWeights[5]: " << v->materialCountingWeights[5] << std::endl;
+	std::cout << "materialCountingBonusWhite: " << v->materialCountingBonus[WHITE] << std::endl;
+	std::cout << "materialCountingBonusBlack: " << v->materialCountingBonus[BLACK] << std::endl;
+	std::cout << "materialCountingThreshold: " << v->materialCountingThreshold << std::endl;
+
     parse_attribute("adjudicateFullBoard", v->adjudicateFullBoard);
     parse_attribute("countingRule", v->countingRule);
     parse_attribute("castlingWins", v->castlingWins);
-    
+
     // Report invalid options
     if (DoCheck)
     {

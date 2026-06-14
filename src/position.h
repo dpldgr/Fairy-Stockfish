@@ -22,6 +22,7 @@
 #include <cassert>
 #include <deque>
 #include <memory> // For std::unique_ptr
+#include <cstdlib>
 #include <string>
 #include <functional>
 
@@ -1060,7 +1061,7 @@ inline bool Position::flag_move() const {
 
 inline bool Position::flag_reached(Color c) const {
   assert(var != nullptr);
-  bool simpleResult = 
+  bool simpleResult =
         (flag_region(c) & pieces(c, flag_piece(c)))
         && (   popcount(flag_region(c) & pieces(c, flag_piece(c))) >= var->flagPieceCount
             || (var->flagPieceBlockedWin && !(flag_region(c) & ~pieces())));
@@ -1604,6 +1605,24 @@ inline Value Position::material_counting_result() const {
       break;
   case BLACK_DRAW_ODDS:
       result = -VALUE_MATE;
+      break;
+  case WEIGHTED_MATERIAL:
+      materialCount = 0;
+
+      for (PieceSet ps = var->pieceTypes; ps;)
+      {
+          PieceType pt = pop_lsb(ps);
+
+          materialCount += weight_count(pt,var->materialCountingWeights[pt]);
+      }
+
+      materialCount = materialCount + var->materialCountingBonus[WHITE] - var->materialCountingBonus[BLACK];
+
+      if ( std::abs(materialCount) > var->materialCountingThreshold )
+          result = materialCount > 0 ? VALUE_MATE : -VALUE_MATE;
+      else
+          result = VALUE_DRAW;
+
       break;
   default:
       assert(false);

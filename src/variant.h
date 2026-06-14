@@ -159,6 +159,9 @@ struct Variant {
   int collinearN = 0;
   Value connectValue = VALUE_MATE;
   MaterialCounting materialCounting = NO_MATERIAL_COUNTING;
+  int materialCountingWeights[PIECE_TYPE_NB] = {};
+  int materialCountingBonus[COLOR_NB] = {0, 0};
+  int materialCountingThreshold = 0;
   bool adjudicateFullBoard = false;
   CountingRule countingRule = NO_COUNTING;
   CastlingRights castlingWins = NO_CASTLING;
