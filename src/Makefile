@@ -95,6 +95,8 @@ endif
 
 ### 2.1. General and architecture defaults
 largeboards = no
+board_files = 8
+board_ranks = 8
 all = no
 precomputedmagics = yes
 nnue = no
@@ -334,14 +336,51 @@ LDFLAGS += $(EXTRALDFLAGS)
 # Ignore warning due to missing profile information from unused NNUE features
 CXXFLAGS += -Wno-profile-instr-out-of-date
 
-# Compile version with support for large board variants
-# Use precomputed magics by default if pext is not available
+# Compile version with configurable board dimensions.
+# largeboards=yes remains a compatibility alias for the historical 12x10 build.
 ifneq ($(largeboards),no)
-	CXXFLAGS += -DLARGEBOARDS
+	override board_files = 12
+	override board_ranks = 10
+endif
+
+requested_board_files := $(board_files)
+requested_board_ranks := $(board_ranks)
+requested_board_size := $(requested_board_files)x$(requested_board_ranks)
+
+# Map requested board sizes to supported capacity presets for magic tables.
+# Valid non-preset boards are embedded in the row-wise blue-cell capacity that fits them.
+ifneq ($(filter 9x8 10x8 11x8 12x8 13x8 14x8 15x8 16x8,$(requested_board_size)),)
+	override board_files = 16
+	override board_ranks = 8
+else ifneq ($(filter 8x9 9x9 10x9 11x9 12x9 13x9 14x9,$(requested_board_size)),)
+	override board_files = 14
+	override board_ranks = 9
+else ifneq ($(filter 8x10 9x10 10x10 11x10 12x10,$(requested_board_size)),)
+	override board_files = 12
+	override board_ranks = 10
+else ifneq ($(filter 8x11 9x11 10x11 11x11,$(requested_board_size)),)
+	override board_files = 11
+	override board_ranks = 11
+else ifneq ($(filter 8x12 9x12 10x12,$(requested_board_size)),)
+	override board_files = 10
+	override board_ranks = 12
+else ifneq ($(filter 8x13 9x13 8x14 9x14,$(requested_board_size)),)
+	override board_files = 9
+	override board_ranks = 14
+else ifneq ($(filter 8x15 8x16,$(requested_board_size)),)
+	override board_files = 8
+	override board_ranks = 16
+endif
+
+CXXFLAGS += -DBOARD_FILES=$(board_files) -DBOARD_RANKS=$(board_ranks)
+
+# Use precomputed magics by default if pext is not available for non-8x8 boards.
+ifneq ($(filter-out 8x8,$(board_files)x$(board_ranks)),)
 	ifeq ($(precomputedmagics),yes)
 		CXXFLAGS += -DPRECOMPUTED_MAGICS
 	endif
 endif
+
 
 # Embed and enable NNUE
 ifeq ($(nnue),no)
@@ -361,7 +400,7 @@ ifeq ($(COMP),gcc)
 	comp=gcc
 	CXX=g++
 	CXXFLAGS += -Wextra -Wshadow
-	ifeq ($(largeboards),no)
+	ifeq ($(board_files)x$(board_ranks),8x8)
 		CXXFLAGS += -pedantic
 	endif
 
@@ -778,6 +817,7 @@ else
 	@echo "Version for large boards: "
 	@echo ""
 	@echo "make build ARCH=x86-64 COMP=gcc largeboards=yes"
+	@echo "make build ARCH=x86-64 board_files=16 board_ranks=8"
 	@echo ""
 	@echo "Include all variants (adds Game of the Amazons): "
 	@echo ""
@@ -902,6 +942,10 @@ config-sanity: $(load_net)
 	@echo ""
 	@echo "Fairy-Stockfish specific:"
 	@echo "largeboards: '$(largeboards)'"
+	@echo "requested_board_files: '$(requested_board_files)'"
+	@echo "requested_board_ranks: '$(requested_board_ranks)'"
+	@echo "board_files: '$(board_files)'"
+	@echo "board_ranks: '$(board_ranks)'"
 	@echo "all: '$(all)'"
 	@echo "precomputedmagics: '$(precomputedmagics)'"
 	@echo "nnue: '$(nnue)'"
