@@ -40,63 +40,96 @@ std::string pretty(Bitboard b);
 
 } // namespace Stockfish::Bitboards
 
-#ifdef LARGEBOARDS
-constexpr Bitboard AllSquares = ((~Bitboard(0)) >> 8);
-#else
-constexpr Bitboard AllSquares = ~Bitboard(0);
-#endif
-#ifdef LARGEBOARDS
-constexpr Bitboard DarkSquares = (Bitboard(0xAAA555AAA555AAULL) << 64) ^ Bitboard(0xA555AAA555AAA555ULL);
-#else
-constexpr Bitboard DarkSquares = 0xAA55AA55AA55AA55ULL;
-#endif
+constexpr Bitboard square_bit(int s) {
+  return s >= 0 && s < SQUARE_NB ? Bitboard(1) << s : Bitboard(0);
+}
 
-#ifdef LARGEBOARDS
-constexpr Bitboard FileABB = (Bitboard(0x00100100100100ULL) << 64) ^ Bitboard(0x1001001001001001ULL);
-#else
-constexpr Bitboard FileABB = 0x0101010101010101ULL;
-#endif
-constexpr Bitboard FileBBB = FileABB << 1;
-constexpr Bitboard FileCBB = FileABB << 2;
-constexpr Bitboard FileDBB = FileABB << 3;
-constexpr Bitboard FileEBB = FileABB << 4;
-constexpr Bitboard FileFBB = FileABB << 5;
-constexpr Bitboard FileGBB = FileABB << 6;
-constexpr Bitboard FileHBB = FileABB << 7;
-#ifdef LARGEBOARDS
-constexpr Bitboard FileIBB = FileABB << 8;
-constexpr Bitboard FileJBB = FileABB << 9;
-constexpr Bitboard FileKBB = FileABB << 10;
-constexpr Bitboard FileLBB = FileABB << 11;
-#endif
+constexpr Bitboard make_board_mask(int files, int ranks) {
+  Bitboard b = 0;
+  for (int r = 0; r < ranks; ++r)
+      for (int f = 0; f < files; ++f)
+          b = b | square_bit(r * files + f);
+  return b;
+}
 
+constexpr Bitboard make_file_mask(int file) {
+  Bitboard b = 0;
+  for (int r = 0; r < RANK_NB; ++r)
+      b = b | square_bit(r * FILE_NB + file);
+  return b;
+}
 
-#ifdef LARGEBOARDS
-constexpr Bitboard Rank1BB = 0xFFF;
-#else
-constexpr Bitboard Rank1BB = 0xFF;
-#endif
-constexpr Bitboard Rank2BB = Rank1BB << (FILE_NB * 1);
-constexpr Bitboard Rank3BB = Rank1BB << (FILE_NB * 2);
-constexpr Bitboard Rank4BB = Rank1BB << (FILE_NB * 3);
-constexpr Bitboard Rank5BB = Rank1BB << (FILE_NB * 4);
-constexpr Bitboard Rank6BB = Rank1BB << (FILE_NB * 5);
-constexpr Bitboard Rank7BB = Rank1BB << (FILE_NB * 6);
-constexpr Bitboard Rank8BB = Rank1BB << (FILE_NB * 7);
-#ifdef LARGEBOARDS
-constexpr Bitboard Rank9BB = Rank1BB << (FILE_NB * 8);
-constexpr Bitboard Rank10BB = Rank1BB << (FILE_NB * 9);
-#endif
+constexpr Bitboard make_dark_squares() {
+  Bitboard b = 0;
+  for (int r = 0; r < RANK_NB; ++r)
+      for (int f = 0; f < FILE_NB; ++f)
+          if ((r + f) & 1)
+              b = b | square_bit(r * FILE_NB + f);
+  return b;
+}
+
+constexpr Bitboard AllSquares = make_board_mask(FILE_NB, RANK_NB);
+constexpr Bitboard DarkSquares = make_dark_squares();
+
+constexpr Bitboard FileABB = make_file_mask(FILE_A);
+constexpr Bitboard FileBBB = make_file_mask(FILE_B);
+constexpr Bitboard FileCBB = make_file_mask(FILE_C);
+constexpr Bitboard FileDBB = make_file_mask(FILE_D);
+constexpr Bitboard FileEBB = make_file_mask(FILE_E);
+constexpr Bitboard FileFBB = make_file_mask(FILE_F);
+constexpr Bitboard FileGBB = make_file_mask(FILE_G);
+constexpr Bitboard FileHBB = make_file_mask(FILE_H);
+constexpr Bitboard FileIBB = make_file_mask(FILE_I);
+constexpr Bitboard FileJBB = make_file_mask(FILE_J);
+constexpr Bitboard FileKBB = make_file_mask(FILE_K);
+constexpr Bitboard FileLBB = make_file_mask(FILE_L);
+constexpr Bitboard FileMBB = make_file_mask(FILE_M);
+constexpr Bitboard FileNBB = make_file_mask(FILE_N);
+constexpr Bitboard FileOBB = make_file_mask(FILE_O);
+constexpr Bitboard FilePBB = make_file_mask(FILE_P);
+
+constexpr Bitboard make_rank_mask(int rank) {
+  Bitboard b = 0;
+  for (int f = 0; f < FILE_NB; ++f)
+      b = b | square_bit(rank * FILE_NB + f);
+  return b;
+}
+
+constexpr Bitboard Rank1BB = make_rank_mask(RANK_1);
+constexpr Bitboard Rank2BB = make_rank_mask(RANK_2);
+constexpr Bitboard Rank3BB = make_rank_mask(RANK_3);
+constexpr Bitboard Rank4BB = make_rank_mask(RANK_4);
+constexpr Bitboard Rank5BB = make_rank_mask(RANK_5);
+constexpr Bitboard Rank6BB = make_rank_mask(RANK_6);
+constexpr Bitboard Rank7BB = make_rank_mask(RANK_7);
+constexpr Bitboard Rank8BB = make_rank_mask(RANK_8);
+constexpr Bitboard Rank9BB = make_rank_mask(RANK_9);
+constexpr Bitboard Rank10BB = make_rank_mask(RANK_10);
+constexpr Bitboard Rank11BB = make_rank_mask(RANK_11);
+constexpr Bitboard Rank12BB = make_rank_mask(RANK_12);
+constexpr Bitboard Rank13BB = make_rank_mask(RANK_13);
+constexpr Bitboard Rank14BB = make_rank_mask(RANK_14);
+constexpr Bitboard Rank15BB = make_rank_mask(RANK_15);
+constexpr Bitboard Rank16BB = make_rank_mask(RANK_16);
 
 constexpr Bitboard QueenSide   = FileABB | FileBBB | FileCBB | FileDBB;
 constexpr Bitboard CenterFiles = FileCBB | FileDBB | FileEBB | FileFBB;
 constexpr Bitboard KingSide    = FileEBB | FileFBB | FileGBB | FileHBB;
 constexpr Bitboard Center      = (FileDBB | FileEBB) & (Rank4BB | Rank5BB);
 
-constexpr Bitboard KingFlank[FILE_NB] = {
-  QueenSide ^ FileDBB, QueenSide, QueenSide,
-  CenterFiles, CenterFiles,
-  KingSide, KingSide, KingSide ^ FileEBB
+constexpr Bitboard make_king_flank(File f) {
+  return f == FILE_A ? QueenSide ^ FileDBB
+       : f <= FILE_C ? QueenSide
+       : f <= FILE_E ? CenterFiles
+       : f <= FILE_H ? KingSide
+                     : KingSide ^ FileEBB;
+}
+
+constexpr Bitboard KingFlank[16] = {
+  make_king_flank(FILE_A), make_king_flank(FILE_B), make_king_flank(FILE_C), make_king_flank(FILE_D),
+  make_king_flank(FILE_E), make_king_flank(FILE_F), make_king_flank(FILE_G), make_king_flank(FILE_H),
+  make_king_flank(FILE_I), make_king_flank(FILE_J), make_king_flank(FILE_K), make_king_flank(FILE_L),
+  make_king_flank(FILE_M), make_king_flank(FILE_N), make_king_flank(FILE_O), make_king_flank(FILE_P)
 };
 
 extern uint8_t PopCnt16[1 << 16];

@@ -282,7 +282,7 @@ void Bitboards::init_pieces() {
       // Initialize move/attack bitboards
       for (Color c : { WHITE, BLACK })
       {
-          for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+          for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
           {
               for (auto modality : {MODALITY_QUIET, MODALITY_CAPTURE})
               {
@@ -319,15 +319,15 @@ void Bitboards::init() {
   for (unsigned i = 0; i < (1 << 16); ++i)
       PopCnt16[i] = uint8_t(std::bitset<16>(i).count());
 
-  for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+  for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
       SquareBB[s] = make_bitboard(s);
 
   for (File f = FILE_A; f <= FILE_MAX; ++f)
       for (Rank r = RANK_1; r <= RANK_MAX; ++r)
           BoardSizeBB[f][r] = forward_file_bb(BLACK, make_square(f, r)) | SquareBB[make_square(f, r)] | (f > FILE_A ? BoardSizeBB[f - 1][r] : Bitboard(0));
 
-  for (Square s1 = SQ_A1; s1 <= SQ_MAX; ++s1)
-      for (Square s2 = SQ_A1; s2 <= SQ_MAX; ++s2)
+  for (Square s1 = SQ_MIN; s1 <= SQ_MAX; ++s1)
+      for (Square s2 = SQ_MIN; s2 <= SQ_MAX; ++s2)
               SquareDistance[s1][s2] = std::max(distance<File>(s1, s2), distance<Rank>(s1, s2));
 
 #ifdef PRECOMPUTED_MAGICS
@@ -364,10 +364,10 @@ void Bitboards::init() {
 
   init_pieces();
 
-  for (Square s1 = SQ_A1; s1 <= SQ_MAX; ++s1)
+  for (Square s1 = SQ_MIN; s1 <= SQ_MAX; ++s1)
   {
       for (PieceType pt : { BISHOP, ROOK })
-          for (Square s2 = SQ_A1; s2 <= SQ_MAX; ++s2)
+          for (Square s2 = SQ_MIN; s2 <= SQ_MAX; ++s2)
           {
               if (PseudoAttacks[WHITE][pt][s1] & s2)
               {
@@ -410,7 +410,7 @@ namespace {
     int* epoch = new int[1 << (FILE_NB + RANK_NB - 4)]();
     int cnt = 0, size = 0;
 
-    for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+    for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
     {
         // Board edges are not considered in the relevant occupancies
         edges = ((Rank1BB | rank_bb(RANK_MAX)) & ~rank_bb(s)) | ((FileABB | file_bb(FILE_MAX)) & ~file_bb(s));
@@ -431,7 +431,7 @@ namespace {
 
         // Set the offset for the attacks table of the square. We have individual
         // table sizes for each square with "Fancy Magic Bitboards".
-        m.attacks = s == SQ_A1 ? table : magics[s - 1].attacks + size;
+        m.attacks = s == SQ_MIN ? table : magics[s - 1].attacks + size;
 
         // Use Carry-Rippler trick to enumerate all subsets of masks[s] and
         // store the corresponding sliding attack bitboard in reference[].
