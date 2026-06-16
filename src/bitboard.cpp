@@ -107,6 +107,7 @@ namespace {
 
 // Some magics need to be split in order to reduce memory consumption.
 // Otherwise on a 12x10 board they can be >100 MB.
+#ifndef BITBOARD_256
 #ifdef LARGEBOARDS
   Bitboard RookTableH[magic_table_size(RookHTableDirections)];  // To store horizontal rook attacks
   Bitboard RookTableV[magic_table_size(RookVTableDirections)];  // To store vertical rook attacks
@@ -137,6 +138,7 @@ namespace {
   Bitboard GrasshopperTableH[magic_table_size(RookHTableDirections)];  // To store horizontal grasshopper attacks
   Bitboard GrasshopperTableV[magic_table_size(RookVTableDirections)];  // To store vertical grasshopper attacks
   Bitboard GrasshopperTableD[magic_table_size(BishopTableDirections)]; // To store diagonal grasshopper attacks
+#endif
 #endif
 
   // Rider directions
@@ -243,6 +245,29 @@ namespace {
 
 }
 
+#ifdef BITBOARD_256
+Bitboard rider_attacks_bb_256(RiderType R, Square s, Bitboard occupied) {
+  switch (R)
+  {
+  case RIDER_BISHOP: return sliding_attack<RIDER>(BishopDirections, s, occupied);
+  case RIDER_ROOK_H: return sliding_attack<RIDER>(RookDirectionsH, s, occupied);
+  case RIDER_ROOK_V: return sliding_attack<RIDER>(RookDirectionsV, s, occupied);
+  case RIDER_CANNON_H: return sliding_attack<HOPPER>(RookDirectionsH, s, occupied);
+  case RIDER_CANNON_V: return sliding_attack<HOPPER>(RookDirectionsV, s, occupied);
+  case RIDER_LAME_DABBABA: return lame_leaper_attack(LameDabbabaDirections, s, occupied);
+  case RIDER_HORSE: return lame_leaper_attack(HorseDirections, s, occupied);
+  case RIDER_ELEPHANT: return lame_leaper_attack(ElephantDirections, s, occupied);
+  case RIDER_JANGGI_ELEPHANT: return lame_leaper_attack(JanggiElephantDirections, s, occupied);
+  case RIDER_CANNON_DIAG: return sliding_attack<HOPPER>(BishopDirections, s, occupied);
+  case RIDER_NIGHTRIDER: return sliding_attack<RIDER>(HorseDirections, s, occupied);
+  case RIDER_GRASSHOPPER_H: return sliding_attack<HOPPER>(GrasshopperDirectionsH, s, occupied);
+  case RIDER_GRASSHOPPER_V: return sliding_attack<HOPPER>(GrasshopperDirectionsV, s, occupied);
+  case RIDER_GRASSHOPPER_D: return sliding_attack<HOPPER>(GrasshopperDirectionsD, s, occupied);
+  default: assert(false); return Bitboard(0);
+  }
+}
+#endif
+
 /// safe_destination() returns the bitboard of target square for the given step
 /// from the given square. If the step is off the board, returns empty bitboard.
 
@@ -274,6 +299,9 @@ std::string Bitboards::pretty(Bitboard b) {
 /// Bitboards::init_pieces() initializes piece move/attack bitboards and rider types
 
 void Bitboards::init_pieces() {
+
+  if (std::getenv("FSF_INIT_TELEMETRY"))
+      sync_cout << "info string Bitboards::init_pieces(): entered" << sync_endl;
 
   for (PieceType pt = PAWN; pt <= KING; ++pt)
   {
@@ -380,7 +408,10 @@ void Bitboards::init() {
   if (std::getenv("FSF_INIT_TELEMETRY"))
       sync_cout << "info string Bitboards::init(): init_magics begin" << sync_endl;
 
-#ifdef PRECOMPUTED_MAGICS
+#ifdef BITBOARD_256
+  if (std::getenv("FSF_INIT_TELEMETRY"))
+      sync_cout << "info string Bitboards::init(): skipping magic tables for 256-bit PEXT-only build" << sync_endl;
+#elif defined(PRECOMPUTED_MAGICS)
   init_magics<RIDER>(RookTableH, RookMagicsH, RookDirectionsH, RookMagicHInit);
   init_magics<RIDER>(RookTableV, RookMagicsV, RookDirectionsV, RookMagicVInit);
   init_magics<RIDER>(BishopTable, BishopMagics, BishopDirections, BishopMagicInit);
@@ -414,8 +445,38 @@ void Bitboards::init() {
 
   init_pieces();
 
+  if (std::getenv("FSF_INIT_TELEMETRY"))
+      sync_cout << "info string Bitboards::init(): init_pieces done" << sync_endl;
+
   for (Square s1 = SQ_MIN; s1 <= SQ_MAX; ++s1)
   {
+#ifdef BITBOARD_256
+      for (Square s2 = SQ_MIN; s2 <= SQ_MAX; ++s2)
+      {
+          int df = file_of(s2) - file_of(s1);
+          int dr = rank_of(s2) - rank_of(s1);
+          int stepFile = (df > 0) - (df < 0);
+          int stepRank = (dr > 0) - (dr < 0);
+
+          if (s1 != s2 && (df == 0 || dr == 0 || std::abs(df) == std::abs(dr)))
+          {
+              int step = stepRank * FILE_NB + stepFile;
+              int s = s1;
+              while (is_ok(Square(s - step)) && distance(Square(s), Square(s - step)) <= 2)
+                  s -= step;
+              for (; is_ok(Square(s)); s += step)
+              {
+                  LineBB[s1][s2] |= Square(s);
+                  if (!is_ok(Square(s + step)) || distance(Square(s), Square(s + step)) > 2)
+                      break;
+              }
+
+              for (s = s1 + step; s != s2; s += step)
+                  BetweenBB[s1][s2] |= Square(s);
+          }
+          BetweenBB[s1][s2] |= s2;
+      }
+#else
       for (PieceType pt : { BISHOP, ROOK })
           for (Square s2 = SQ_MIN; s2 <= SQ_MAX; ++s2)
           {
@@ -426,6 +487,7 @@ void Bitboards::init() {
               }
               BetweenBB[s1][s2] |= s2;
           }
+#endif
   }
 }
 

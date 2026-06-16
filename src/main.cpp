@@ -65,12 +65,19 @@ int main(int argc, char* argv[]) {
   PSQT::init(variants.find(Options["UCI_Variant"])->second);
   startup_telemetry("main(): before Bitboards::init()");
   Bitboards::init();
+  startup_telemetry("main(): before Position::init()");
   Position::init();
+  startup_telemetry("main(): before Bitbases::init()");
   Bitbases::init();
+  startup_telemetry("main(): before Endgames::init()");
   Endgames::init();
+  startup_telemetry("main(): before Threads.set()");
   Threads.set(size_t(Options["Threads"]));
+  startup_telemetry("main(): before Search::clear()");
   Search::clear(); // After threads are up
+  startup_telemetry("main(): before Eval::NNUE::init()");
   Eval::NNUE::init();
+  startup_telemetry("main(): before UCI::loop()");
 
   UCI::loop(argc, argv);
 

@@ -376,12 +376,17 @@ else ifneq ($(filter 15x8,$(requested_board_size)),)
 else ifneq ($(filter 16x8,$(requested_board_size)),)
 	override board_files = 16
 	override board_ranks = 8
+else ifneq ($(filter 16x16,$(requested_board_size)),)
+	override board_files = 16
+	override board_ranks = 16
+	override pext = yes
+	override precomputedmagics = no
 endif
 
 CXXFLAGS += -DBOARD_FILES=$(board_files) -DBOARD_RANKS=$(board_ranks)
 
 # Use precomputed magics by default if pext is not available for non-8x8 boards.
-ifneq ($(filter-out 8x8,$(board_files)x$(board_ranks)),)
+ifneq ($(filter-out 8x8 16x16,$(board_files)x$(board_ranks)),)
 	ifeq ($(precomputedmagics),yes)
 		CXXFLAGS += -DPRECOMPUTED_MAGICS
 	endif

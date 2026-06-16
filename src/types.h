@@ -58,8 +58,17 @@
 #if BOARD_RANKS < 8 || BOARD_RANKS > 16
 #error "BOARD_RANKS must be between 8 and 16"
 #endif
-#if BOARD_SQUARES < 64 || BOARD_SQUARES > 128
-#error "BOARD_SQUARES must be between 64 and 128"
+#if BOARD_SQUARES < 64 || BOARD_SQUARES > 256
+#error "BOARD_SQUARES must be between 64 and 256"
+#endif
+#if BOARD_SQUARES > 128 && (BOARD_FILES != 16 || BOARD_RANKS != 16)
+#error "Only the 16x16 PEXT-only build supports more than 128 squares"
+#endif
+#if BOARD_SQUARES > 128 && !defined(USE_PEXT)
+#error "The 16x16 build requires USE_PEXT"
+#endif
+#if BOARD_SQUARES > 128
+#define BITBOARD_256
 #endif
 #if (defined(LARGEBOARDS) && (BOARD_FILES != 12 || BOARD_RANKS != 10))
 #error "LARGEBOARDS is a compatibility alias for BOARD_FILES=12 and BOARD_RANKS=10; define BOARD_FILES/BOARD_RANKS instead"
@@ -107,7 +116,12 @@
 
 #if defined(USE_PEXT)
 #  include <immintrin.h> // Header for _pext_u64() intrinsic
-#  ifdef LARGEBOARDS
+#  ifdef BITBOARD_256
+#    define pext(b, m) (_pext_u64((b).b64[3], (m).b64[3]) \
+                      ^ (_pext_u64((b).b64[2], (m).b64[2]) << popcount(Bitboard(0, 0, 0, (m).b64[3]))) \
+                      ^ (_pext_u64((b).b64[1], (m).b64[1]) << popcount(Bitboard(0, 0, (m).b64[2], (m).b64[3]))) \
+                      ^ (_pext_u64((b).b64[0], (m).b64[0]) << popcount(Bitboard(0, (m).b64[1], (m).b64[2], (m).b64[3]))))
+#  elif defined(LARGEBOARDS)
 #    define pext(b, m) (_pext_u64(b, m) ^ (_pext_u64(b >> 64, m >> 64) << popcount((m << 64) >> 64)))
 #  else
 #    define pext(b, m) _pext_u64(b, m)
@@ -137,7 +151,75 @@ constexpr bool Is64Bit = false;
 #endif
 
 typedef uint64_t Key;
-#ifdef LARGEBOARDS
+#ifdef BITBOARD_256
+struct Bitboard {
+    uint64_t b64[4];
+
+    constexpr Bitboard() : b64 {0, 0, 0, 0} {}
+    constexpr Bitboard(uint64_t i) : b64 {0, 0, 0, i} {}
+    constexpr Bitboard(uint64_t a, uint64_t b, uint64_t c, uint64_t d) : b64 {a, b, c, d} {}
+
+    constexpr operator bool() const { return b64[0] || b64[1] || b64[2] || b64[3]; }
+    constexpr operator long long unsigned () const { return b64[3]; }
+    constexpr operator unsigned() const { return unsigned(b64[3]); }
+
+    constexpr Bitboard operator << (const unsigned int bits) const {
+        Bitboard out;
+        if (bits >= 256)
+            return out;
+        const unsigned word = bits / 64;
+        const unsigned rem = bits % 64;
+        for (int i = 0; i < 4; ++i)
+        {
+            const int src = i + word;
+            if (src < 4)
+                out.b64[i] |= b64[src] << rem;
+            if (rem && src + 1 < 4)
+                out.b64[i] |= b64[src + 1] >> (64 - rem);
+        }
+        return out;
+    }
+
+    constexpr Bitboard operator >> (const unsigned int bits) const {
+        Bitboard out;
+        if (bits >= 256)
+            return out;
+        const unsigned word = bits / 64;
+        const unsigned rem = bits % 64;
+        for (int i = 3; i >= 0; --i)
+        {
+            const int src = i - word;
+            if (src >= 0)
+                out.b64[i] |= b64[src] >> rem;
+            if (rem && src - 1 >= 0)
+                out.b64[i] |= b64[src - 1] << (64 - rem);
+        }
+        return out;
+    }
+
+    constexpr Bitboard operator << (const int bits) const { return *this << unsigned(bits); }
+    constexpr Bitboard operator >> (const int bits) const { return *this >> unsigned(bits); }
+    constexpr bool operator == (const Bitboard y) const { return b64[0] == y.b64[0] && b64[1] == y.b64[1] && b64[2] == y.b64[2] && b64[3] == y.b64[3]; }
+    constexpr bool operator != (const Bitboard y) const { return !(*this == y); }
+    inline Bitboard& operator |=(const Bitboard x) { b64[0] |= x.b64[0]; b64[1] |= x.b64[1]; b64[2] |= x.b64[2]; b64[3] |= x.b64[3]; return *this; }
+    inline Bitboard& operator &=(const Bitboard x) { b64[0] &= x.b64[0]; b64[1] &= x.b64[1]; b64[2] &= x.b64[2]; b64[3] &= x.b64[3]; return *this; }
+    inline Bitboard& operator ^=(const Bitboard x) { b64[0] ^= x.b64[0]; b64[1] ^= x.b64[1]; b64[2] ^= x.b64[2]; b64[3] ^= x.b64[3]; return *this; }
+    constexpr Bitboard operator ~ () const { return Bitboard(~b64[0], ~b64[1], ~b64[2], ~b64[3]); }
+    constexpr Bitboard operator - () const { return Bitboard(~*this + Bitboard(1)); }
+    constexpr Bitboard operator | (const Bitboard x) const { return Bitboard(b64[0] | x.b64[0], b64[1] | x.b64[1], b64[2] | x.b64[2], b64[3] | x.b64[3]); }
+    constexpr Bitboard operator & (const Bitboard x) const { return Bitboard(b64[0] & x.b64[0], b64[1] & x.b64[1], b64[2] & x.b64[2], b64[3] & x.b64[3]); }
+    constexpr Bitboard operator ^ (const Bitboard x) const { return Bitboard(b64[0] ^ x.b64[0], b64[1] ^ x.b64[1], b64[2] ^ x.b64[2], b64[3] ^ x.b64[3]); }
+    constexpr Bitboard operator + (const Bitboard x) const {
+        uint64_t d = b64[3] + x.b64[3], c = b64[2] + x.b64[2] + (d < b64[3]);
+        uint64_t b = b64[1] + x.b64[1] + (c < b64[2] || (c == b64[2] && d < b64[3]));
+        return Bitboard(b64[0] + x.b64[0] + (b < b64[1] || (b == b64[1] && (c < b64[2] || (c == b64[2] && d < b64[3])))), b, c, d);
+    }
+    constexpr Bitboard operator - (const Bitboard x) const { return *this + (-x); }
+    constexpr Bitboard operator - (const int x) const { return *this - Bitboard(x); }
+    constexpr Bitboard operator * (const Bitboard) const { return Bitboard(0); }
+};
+constexpr int SQUARE_BITS = 8;
+#elif defined(LARGEBOARDS)
 #if defined(__GNUC__) && defined(IS_64BIT)
 typedef unsigned __int128 Bitboard;
 #else
