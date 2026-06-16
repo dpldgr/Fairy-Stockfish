@@ -161,7 +161,7 @@ void Position::init() {
 
   for (Color c : {WHITE, BLACK})
       for (PieceType pt = PAWN; pt <= KING; ++pt)
-          for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+          for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
               Zobrist::psq[make_piece(c, pt)][s] = rng.rand<Key>();
 
   for (File f = FILE_A; f <= FILE_MAX; ++f)
@@ -182,7 +182,7 @@ void Position::init() {
           for (int n = 0; n < SQUARE_NB; ++n)
               Zobrist::inHand[make_piece(c, pt)][n] = rng.rand<Key>();
 
-  for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+  for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
       Zobrist::wall[s] = rng.rand<Key>();
 
   for (int i = NO_EG_EVAL; i < EG_EVAL_NB; ++i)
@@ -196,7 +196,7 @@ void Position::init() {
       for (PieceSet ps = CHESS_PIECES & ~piece_set(PAWN); ps;)
       {
       Piece pc = make_piece(c, pop_lsb(ps));
-      for (Square s1 = SQ_A1; s1 <= SQ_MAX; ++s1)
+      for (Square s1 = SQ_MIN; s1 <= SQ_MAX; ++s1)
           for (Square s2 = Square(s1 + 1); s2 <= SQ_MAX; ++s2)
               if ((type_of(pc) != PAWN) && (attacks_bb(c, type_of(pc), s1, 0) & s2))
               {
