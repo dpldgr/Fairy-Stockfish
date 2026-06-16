@@ -246,12 +246,34 @@ namespace {
 }
 
 #ifdef BITBOARD_256
+  enum RayIndex {
+    RAY_NORTH, RAY_SOUTH, RAY_EAST, RAY_WEST,
+    RAY_NORTH_EAST, RAY_SOUTH_WEST, RAY_NORTH_WEST, RAY_SOUTH_EAST,
+    RAY_NB
+  };
+
+  Bitboard RayBB[RAY_NB][SQUARE_NB];
+
+  Bitboard ray_attacks(RayIndex idx, Square s, Bitboard occupied) {
+    Bitboard attacks = RayBB[idx][s];
+    Bitboard blockers = attacks & occupied;
+    if (!blockers)
+        return attacks;
+
+    Square blocker = idx == RAY_NORTH || idx == RAY_EAST || idx == RAY_NORTH_EAST || idx == RAY_NORTH_WEST
+                   ? lsb(blockers) : msb(blockers);
+    return attacks ^ RayBB[idx][blocker];
+  }
+
 Bitboard rider_attacks_bb_256(RiderType R, Square s, Bitboard occupied) {
   switch (R)
   {
-  case RIDER_BISHOP: return sliding_attack<RIDER>(BishopDirections, s, occupied);
-  case RIDER_ROOK_H: return sliding_attack<RIDER>(RookDirectionsH, s, occupied);
-  case RIDER_ROOK_V: return sliding_attack<RIDER>(RookDirectionsV, s, occupied);
+  case RIDER_BISHOP: return   ray_attacks(RAY_NORTH_EAST, s, occupied)
+                            | ray_attacks(RAY_SOUTH_WEST, s, occupied)
+                            | ray_attacks(RAY_NORTH_WEST, s, occupied)
+                            | ray_attacks(RAY_SOUTH_EAST, s, occupied);
+  case RIDER_ROOK_H: return ray_attacks(RAY_EAST, s, occupied) | ray_attacks(RAY_WEST, s, occupied);
+  case RIDER_ROOK_V: return ray_attacks(RAY_NORTH, s, occupied) | ray_attacks(RAY_SOUTH, s, occupied);
   case RIDER_CANNON_H: return sliding_attack<HOPPER>(RookDirectionsH, s, occupied);
   case RIDER_CANNON_V: return sliding_attack<HOPPER>(RookDirectionsV, s, occupied);
   case RIDER_LAME_DABBABA: return lame_leaper_attack(LameDabbabaDirections, s, occupied);
@@ -410,7 +432,15 @@ void Bitboards::init() {
 
 #ifdef BITBOARD_256
   if (std::getenv("FSF_INIT_TELEMETRY"))
-      sync_cout << "info string Bitboards::init(): skipping magic tables for 256-bit PEXT-only build" << sync_endl;
+      sync_cout << "info string Bitboards::init(): init 256-bit ray attack masks" << sync_endl;
+  const std::map<RayIndex, Direction> rayDirections {
+      { RAY_NORTH, NORTH }, { RAY_SOUTH, SOUTH }, { RAY_EAST, EAST }, { RAY_WEST, WEST },
+      { RAY_NORTH_EAST, NORTH_EAST }, { RAY_SOUTH_WEST, SOUTH_WEST },
+      { RAY_NORTH_WEST, NORTH_WEST }, { RAY_SOUTH_EAST, SOUTH_EAST }
+  };
+  for (const auto& [idx, d] : rayDirections)
+      for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
+          RayBB[idx][s] = sliding_attack<RIDER>({ { d, 0 } }, s, 0);
 #elif defined(PRECOMPUTED_MAGICS)
   init_magics<RIDER>(RookTableH, RookMagicsH, RookDirectionsH, RookMagicHInit);
   init_magics<RIDER>(RookTableV, RookMagicsV, RookDirectionsV, RookMagicVInit);
