@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <cstdlib>
 
 #include "bitboard.h"
 #include "magic.h"
@@ -61,38 +62,81 @@ Magic* magics[] = {BishopMagics, RookMagicsH, RookMagicsV, CannonMagicsH, Cannon
 
 namespace {
 
+  constexpr int square_file(int s) { return s % FILE_NB; }
+  constexpr int square_rank(int s) { return s / FILE_NB; }
+  constexpr int abs_int(int x) { return x < 0 ? -x : x; }
+  constexpr int square_distance(int s1, int s2) {
+    return std::max(abs_int(square_file(s1) - square_file(s2)), abs_int(square_rank(s1) - square_rank(s2)));
+  }
+  constexpr bool square_is_ok(int s) { return s >= SQ_MIN && s <= SQ_MAX; }
+
+  template <size_t N>
+  constexpr size_t magic_table_size(const int (&directions)[N]) {
+    size_t tableSize = 0;
+
+    for (int sq = SQ_MIN; sq <= SQ_MAX; ++sq)
+    {
+        size_t bits = 0;
+
+        for (int s = SQ_MIN; s <= SQ_MAX; ++s)
+        {
+            bool edge = (((square_rank(s) == RANK_1 || square_rank(s) == RANK_MAX) && square_rank(s) != square_rank(sq))
+                      || ((square_file(s) == FILE_A || square_file(s) == FILE_MAX) && square_file(s) != square_file(sq)));
+            bool inMask = false;
+
+            for (int d : directions)
+                for (int to = sq + d; square_is_ok(to) && square_distance(to, to - d) <= 2; to += d)
+                    if (to == s)
+                        inMask = true;
+
+            if (inMask && !edge)
+                ++bits;
+        }
+
+        tableSize += size_t(1) << bits;
+    }
+
+    return tableSize;
+  }
+
+  constexpr int RookHTableDirections[] = { EAST, WEST };
+  constexpr int RookVTableDirections[] = { NORTH, SOUTH };
+  constexpr int BishopTableDirections[] = { NORTH_EAST, SOUTH_EAST, SOUTH_WEST, NORTH_WEST };
+  constexpr int NightriderTableDirections[] = { 2 * SOUTH + WEST, 2 * SOUTH + EAST, SOUTH + 2 * WEST, SOUTH + 2 * EAST,
+                                                NORTH + 2 * WEST, NORTH + 2 * EAST, 2 * NORTH + WEST, 2 * NORTH + EAST };
+
 // Some magics need to be split in order to reduce memory consumption.
 // Otherwise on a 12x10 board they can be >100 MB.
 #ifdef LARGEBOARDS
-  Bitboard RookTableH[0x11800];  // To store horizontal rook attacks
-  Bitboard RookTableV[0x4800];  // To store vertical rook attacks
-  Bitboard BishopTable[0x33C00]; // To store bishop attacks
-  Bitboard CannonTableH[0x11800];  // To store horizontal cannon attacks
-  Bitboard CannonTableV[0x4800];  // To store vertical cannon attacks
-  Bitboard LameDabbabaTable[0x500];  // To store lame dabbaba attacks
-  Bitboard HorseTable[0x500];  // To store horse attacks
-  Bitboard ElephantTable[0x400];  // To store elephant attacks
-  Bitboard JanggiElephantTable[0x1C000];  // To store janggi elephant attacks
-  Bitboard CannonDiagTable[0x33C00]; // To store diagonal cannon attacks
-  Bitboard NightriderTable[0x70200]; // To store nightrider attacks
-  Bitboard GrasshopperTableH[0x11800];  // To store horizontal grasshopper attacks
-  Bitboard GrasshopperTableV[0x4800];  // To store vertical grasshopper attacks
-  Bitboard GrasshopperTableD[0x33C00]; // To store diagonal grasshopper attacks
+  Bitboard RookTableH[magic_table_size(RookHTableDirections)];  // To store horizontal rook attacks
+  Bitboard RookTableV[magic_table_size(RookVTableDirections)];  // To store vertical rook attacks
+  Bitboard BishopTable[magic_table_size(BishopTableDirections)]; // To store bishop attacks
+  Bitboard CannonTableH[magic_table_size(RookHTableDirections)];  // To store horizontal cannon attacks
+  Bitboard CannonTableV[magic_table_size(RookVTableDirections)];  // To store vertical cannon attacks
+  Bitboard LameDabbabaTable[0x800];  // To store lame dabbaba attacks
+  Bitboard HorseTable[0x2000];  // To store horse attacks
+  Bitboard ElephantTable[0x800];  // To store elephant attacks
+  Bitboard JanggiElephantTable[0x40000];  // To store janggi elephant attacks
+  Bitboard CannonDiagTable[magic_table_size(BishopTableDirections)]; // To store diagonal cannon attacks
+  Bitboard NightriderTable[magic_table_size(NightriderTableDirections)]; // To store nightrider attacks
+  Bitboard GrasshopperTableH[magic_table_size(RookHTableDirections)];  // To store horizontal grasshopper attacks
+  Bitboard GrasshopperTableV[magic_table_size(RookVTableDirections)];  // To store vertical grasshopper attacks
+  Bitboard GrasshopperTableD[magic_table_size(BishopTableDirections)]; // To store diagonal grasshopper attacks
 #else
-  Bitboard RookTableH[0xA00];  // To store horizontal rook attacks
-  Bitboard RookTableV[0xA00];  // To store vertical rook attacks
-  Bitboard BishopTable[0x1480]; // To store bishop attacks
-  Bitboard CannonTableH[0xA00];  // To store horizontal cannon attacks
-  Bitboard CannonTableV[0xA00];  // To store vertical cannon attacks
+  Bitboard RookTableH[magic_table_size(RookHTableDirections)];  // To store horizontal rook attacks
+  Bitboard RookTableV[magic_table_size(RookVTableDirections)];  // To store vertical rook attacks
+  Bitboard BishopTable[magic_table_size(BishopTableDirections)]; // To store bishop attacks
+  Bitboard CannonTableH[magic_table_size(RookHTableDirections)];  // To store horizontal cannon attacks
+  Bitboard CannonTableV[magic_table_size(RookVTableDirections)];  // To store vertical cannon attacks
   Bitboard LameDabbabaTable[0x240];  // To store lame dabbaba attacks
   Bitboard HorseTable[0x240];  // To store horse attacks
   Bitboard ElephantTable[0x1A0];  // To store elephant attacks
   Bitboard JanggiElephantTable[0x5C00];  // To store janggi elephant attacks
-  Bitboard CannonDiagTable[0x1480]; // To store diagonal cannon attacks
-  Bitboard NightriderTable[0x1840]; // To store nightrider attacks
-  Bitboard GrasshopperTableH[0xA00];  // To store horizontal grasshopper attacks
-  Bitboard GrasshopperTableV[0xA00];  // To store vertical grasshopper attacks
-  Bitboard GrasshopperTableD[0x1480]; // To store diagonal grasshopper attacks
+  Bitboard CannonDiagTable[magic_table_size(BishopTableDirections)]; // To store diagonal cannon attacks
+  Bitboard NightriderTable[magic_table_size(NightriderTableDirections)]; // To store nightrider attacks
+  Bitboard GrasshopperTableH[magic_table_size(RookHTableDirections)];  // To store horizontal grasshopper attacks
+  Bitboard GrasshopperTableV[magic_table_size(RookVTableDirections)];  // To store vertical grasshopper attacks
+  Bitboard GrasshopperTableD[magic_table_size(BishopTableDirections)]; // To store diagonal grasshopper attacks
 #endif
 
   // Rider directions
@@ -282,7 +326,7 @@ void Bitboards::init_pieces() {
       // Initialize move/attack bitboards
       for (Color c : { WHITE, BLACK })
       {
-          for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+          for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
           {
               for (auto modality : {MODALITY_QUIET, MODALITY_CAPTURE})
               {
@@ -316,19 +360,25 @@ void Bitboards::init_pieces() {
 
 void Bitboards::init() {
 
+  if (std::getenv("FSF_INIT_TELEMETRY"))
+      sync_cout << "info string Bitboards::init(): entered" << sync_endl;
+
   for (unsigned i = 0; i < (1 << 16); ++i)
       PopCnt16[i] = uint8_t(std::bitset<16>(i).count());
 
-  for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+  for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
       SquareBB[s] = make_bitboard(s);
 
   for (File f = FILE_A; f <= FILE_MAX; ++f)
       for (Rank r = RANK_1; r <= RANK_MAX; ++r)
           BoardSizeBB[f][r] = forward_file_bb(BLACK, make_square(f, r)) | SquareBB[make_square(f, r)] | (f > FILE_A ? BoardSizeBB[f - 1][r] : Bitboard(0));
 
-  for (Square s1 = SQ_A1; s1 <= SQ_MAX; ++s1)
-      for (Square s2 = SQ_A1; s2 <= SQ_MAX; ++s2)
+  for (Square s1 = SQ_MIN; s1 <= SQ_MAX; ++s1)
+      for (Square s2 = SQ_MIN; s2 <= SQ_MAX; ++s2)
               SquareDistance[s1][s2] = std::max(distance<File>(s1, s2), distance<Rank>(s1, s2));
+
+  if (std::getenv("FSF_INIT_TELEMETRY"))
+      sync_cout << "info string Bitboards::init(): init_magics begin" << sync_endl;
 
 #ifdef PRECOMPUTED_MAGICS
   init_magics<RIDER>(RookTableH, RookMagicsH, RookDirectionsH, RookMagicHInit);
@@ -364,10 +414,10 @@ void Bitboards::init() {
 
   init_pieces();
 
-  for (Square s1 = SQ_A1; s1 <= SQ_MAX; ++s1)
+  for (Square s1 = SQ_MIN; s1 <= SQ_MAX; ++s1)
   {
       for (PieceType pt : { BISHOP, ROOK })
-          for (Square s2 = SQ_A1; s2 <= SQ_MAX; ++s2)
+          for (Square s2 = SQ_MIN; s2 <= SQ_MAX; ++s2)
           {
               if (PseudoAttacks[WHITE][pt][s1] & s2)
               {
@@ -410,7 +460,7 @@ namespace {
     int* epoch = new int[1 << (FILE_NB + RANK_NB - 4)]();
     int cnt = 0, size = 0;
 
-    for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+    for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
     {
         // Board edges are not considered in the relevant occupancies
         edges = ((Rank1BB | rank_bb(RANK_MAX)) & ~rank_bb(s)) | ((FileABB | file_bb(FILE_MAX)) & ~file_bb(s));
@@ -431,7 +481,7 @@ namespace {
 
         // Set the offset for the attacks table of the square. We have individual
         // table sizes for each square with "Fancy Magic Bitboards".
-        m.attacks = s == SQ_A1 ? table : magics[s - 1].attacks + size;
+        m.attacks = s == SQ_MIN ? table : magics[s - 1].attacks + size;
 
         // Use Carry-Rippler trick to enumerate all subsets of masks[s] and
         // store the corresponding sliding attack bitboard in reference[].
