@@ -16,6 +16,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <algorithm>
 #include <string>
 #include <sstream>
 
@@ -261,8 +262,10 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         const auto& keyValue = config.find(name);
         if (keyValue != config.end() && !keyValue->second.empty())
         {
-            if (isalpha(keyValue->second.at(0)))
-                v->add_piece(pt, keyValue->second.at(0));
+            size_t separator = keyValue->second.find(':');
+            std::string symbol = separator == std::string::npos ? keyValue->second : keyValue->second.substr(0, separator);
+            if (!symbol.empty() && std::all_of(symbol.begin(), symbol.end(), [](unsigned char c) { return isalpha(c); }))
+                v->add_piece(pt, symbol);
             else
             {
                 if (DoCheck && keyValue->second.at(0) != '-')
@@ -272,9 +275,9 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             // betza
             if (is_custom(pt))
             {
-                if (keyValue->second.size() > 1)
+                if (separator != std::string::npos && separator + 1 < keyValue->second.size())
                 {
-                    v->customPiece[pt - CUSTOM_PIECES] = keyValue->second.substr(2);
+                    v->customPiece[pt - CUSTOM_PIECES] = keyValue->second.substr(separator + 1);
                     // Is there an en passant flag in the Betza notation?
                     if (v->customPiece[pt - CUSTOM_PIECES].find('e') != std::string::npos)
                     {
@@ -287,10 +290,10 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             }
             else if (pt == KING)
             {
-                if (keyValue->second.size() > 1)
+                if (separator != std::string::npos && separator + 1 < keyValue->second.size())
                 {
                     // custom royal piece
-                    v->customPiece[CUSTOM_PIECES_ROYAL - CUSTOM_PIECES] = keyValue->second.substr(2);
+                    v->customPiece[CUSTOM_PIECES_ROYAL - CUSTOM_PIECES] = keyValue->second.substr(separator + 1);
                     v->kingType = CUSTOM_PIECES_ROYAL;
                 }
                 else
@@ -565,8 +568,23 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         {
             PieceType pt = pop_lsb(ps);
             for (Color c : {WHITE, BLACK})
-                if (std::count(v->pieceToChar.begin(), v->pieceToChar.end(), v->pieceToChar[make_piece(c, pt)]) != 1)
-                    std::cerr << piece_name(pt) << " - Ambiguous piece character: " << v->pieceToChar[make_piece(c, pt)] << std::endl;
+            {
+                const std::string& symbol = v->pieceToSymbol[make_piece(c, pt)];
+                if (symbol.empty())
+                    std::cerr << piece_name(pt) << " - Missing piece symbol" << std::endl;
+                else
+                {
+                    int symbolCount = 0;
+                    for (PieceSet ps2 = v->pieceTypes; ps2;)
+                    {
+                        PieceType pt2 = pop_lsb(ps2);
+                        if (v->pieceToSymbol[make_piece(c, pt2)] == symbol)
+                            ++symbolCount;
+                    }
+                    if (symbolCount != 1)
+                        std::cerr << piece_name(pt) << " - Ambiguous piece symbol: " << symbol << std::endl;
+                }
+            }
         }
 
         v->conclude(); // In preparation for the consistency checks below
@@ -587,6 +605,8 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             for (PieceSet ps = v->pieceTypes; ps;)
             {
                 PieceType pt = pop_lsb(ps);
+                if (v->pieceToChar[pt] == ' ')
+                    continue;
                 char ptl = tolower(v->pieceToChar[pt]);
                 if (v->pieceToCharTable.find(ptl) == std::string::npos && fenBoard.find(ptl) != std::string::npos)
                     std::cerr << "pieceToCharTable - Missing piece type: " << ptl << std::endl;
