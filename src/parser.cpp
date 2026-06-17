@@ -17,6 +17,7 @@
 */
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <sstream>
 
@@ -235,6 +236,14 @@ namespace {
                 return pt;
         }
         return NO_PIECE_TYPE;
+    }
+
+    bool parse_lion_move_mask(const std::string& value, uint64_t& mask) {
+        if (value.size() != 16 || !std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isxdigit(c); }))
+            return false;
+
+        mask = std::stoull(value, nullptr, 16);
+        return true;
     }
 
     PieceType next_free_custom_piece(const Variant* v, const Config& config, PieceType preferred = NO_PIECE_TYPE) {
@@ -539,6 +548,24 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("mandatoryPawnPromotion", v->mandatoryPawnPromotion);
     parse_attribute("mandatoryPiecePromotion", v->mandatoryPiecePromotion);
     parse_attribute("pieceDemotion", v->pieceDemotion);
+    const auto& it_lion_pieces = config.find("lionMovePieces");
+    if (it_lion_pieces != config.end())
+    {
+        std::string token;
+        std::stringstream ss(it_lion_pieces->second);
+        while (ss >> token)
+        {
+            std::string symbol, maskString;
+            uint64_t mask = 0;
+            PieceType pt = NO_PIECE_TYPE;
+            if (   split_piece_definition(token, symbol, maskString)
+                && (pt = piece_type_by_symbol(v, symbol)) != NO_PIECE_TYPE
+                && parse_lion_move_mask(maskString, mask))
+                v->lionMoveMask[pt] = mask;
+            else if (DoCheck)
+                std::cerr << "lionMovePieces - Invalid piece/mask: " << token << std::endl;
+        }
+    }
     parse_attribute("blastOnCapture", v->blastOnCapture);
     parse_attribute("blastImmuneTypes", v->blastImmuneTypes, v->pieceToChar);
     parse_attribute("mutuallyImmuneTypes", v->mutuallyImmuneTypes, v->pieceToChar);
@@ -784,6 +811,13 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         }
         if (v->flagPieceSafe && v->blastOnCapture)
             std::cerr << "Can not use flagPieceSafe with blastOnCapture (flagPieceSafe uses simple assessment that does not see blast)." << std::endl;
+        if (v->gating)
+            for (PieceType pt = PAWN; pt < PIECE_TYPE_NB; ++pt)
+                if (v->lionMoveMask[pt])
+                {
+                    std::cerr << "Can not use gating with lionMovePieces." << std::endl;
+                    break;
+                }
     }
     return v;
 }

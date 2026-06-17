@@ -379,6 +379,7 @@ enum MoveType : int {
   PIECE_PROMOTION    = 5 << (2 * SQUARE_BITS),
   PIECE_DEMOTION     = 6 << (2 * SQUARE_BITS),
   SPECIAL            = 7 << (2 * SQUARE_BITS),
+  LION               = 8 << (2 * SQUARE_BITS),
 };
 
 constexpr int MOVE_TYPE_BITS = 4;
@@ -900,6 +901,10 @@ inline Square gating_square(Move m) {
   return Square((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) & SQUARE_BIT_MASK);
 }
 
+inline int lion_path_index(Move m) {
+  return (m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & 63;
+}
+
 inline bool is_gating(Move m) {
   return gating_type(m) && (type_of(m) == NORMAL || type_of(m) == CASTLING);
 }
@@ -928,6 +933,10 @@ constexpr Move reverse_move(Move m) {
 template<MoveType T>
 constexpr Move make_gating(Square from, Square to, PieceType pt, Square gate) {
   return Move((gate << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (pt << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + T + (from << SQUARE_BITS) + to);
+}
+
+constexpr Move make_lion(Square from, int path, Square to) {
+  return Move((path << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + LION + (from << SQUARE_BITS) + to);
 }
 
 constexpr PieceType dropped_piece_type(Move m) {

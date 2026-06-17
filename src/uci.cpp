@@ -531,8 +531,9 @@ string UCI::move(const Position& pos, Move m) {
           to = to_sq(m);
   }
 
-  string move = (type_of(m) == DROP ? UCI::dropped_piece(pos, m) + (CurrentProtocol == USI ? '*' : '@')
-                                    : UCI::square(pos, from)) + UCI::square(pos, to);
+  string move = type_of(m) == DROP ? UCI::dropped_piece(pos, m) + (CurrentProtocol == USI ? '*' : '@') + UCI::square(pos, to)
+              : type_of(m) == LION ? UCI::square(pos, from) + UCI::square(pos, LionVia[from][lion_path_index(m)]) + UCI::square(pos, to)
+                                   : UCI::square(pos, from) + UCI::square(pos, to);
 
   // Wall square
   if (pos.walling() && CurrentProtocol == XBOARD)

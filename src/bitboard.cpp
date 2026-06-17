@@ -37,6 +37,11 @@ Bitboard PseudoAttacks[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB];
 Bitboard PseudoMoves[2][COLOR_NB][PIECE_TYPE_NB][SQUARE_NB];
 Bitboard LeaperAttacks[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB];
 Bitboard LeaperMoves[2][COLOR_NB][PIECE_TYPE_NB][SQUARE_NB];
+Bitboard LionLocalMask[SQUARE_NB];
+uint64_t LionValidPathMask[SQUARE_NB];
+uint32_t LionPathLocalMask[SQUARE_NB][64];
+Square LionVia[SQUARE_NB][64];
+Square LionTo[SQUARE_NB][64];
 Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 RiderType AttackRiderTypes[PIECE_TYPE_NB];
 RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
@@ -61,6 +66,10 @@ Magic* magics[] = {BishopMagics, RookMagicsH, RookMagicsV, CannonMagicsH, Cannon
                    GrasshopperMagicsH, GrasshopperMagicsV, GrasshopperMagicsD};
 
 namespace {
+
+  constexpr Direction LionDirections[8] = {
+    NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST
+  };
 
   constexpr int square_file(int s) { return s % FILE_NB; }
   constexpr int square_rank(int s) { return s / FILE_NB; }
@@ -418,6 +427,48 @@ void Bitboards::init() {
 
   for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
       SquareBB[s] = make_bitboard(s);
+
+  for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+  {
+      int localIndex[5][5] = {};
+      int idx = 0;
+      for (int dr = -2; dr <= 2; ++dr)
+          for (int df = -2; df <= 2; ++df)
+          {
+              int f = file_of(from) + df;
+              int r = rank_of(from) + dr;
+              if (f >= FILE_A && f <= FILE_MAX && r >= RANK_1 && r <= RANK_MAX)
+              {
+                  Square s = make_square(File(f), Rank(r));
+                  LionLocalMask[from] |= s;
+                  localIndex[df + 2][dr + 2] = 1 << idx++;
+              }
+          }
+
+      for (int first = 0; first < 8; ++first)
+      {
+          Square via = Square(int(from) + int(LionDirections[first]));
+          if (!is_ok(via) || square_distance(from, via) != 1)
+              continue;
+
+          for (int second = 0; second < 8; ++second)
+          {
+              int path = first * 8 + second;
+              Square to = Square(int(via) + int(LionDirections[second]));
+              if (!is_ok(to) || square_distance(via, to) != 1 || square_distance(from, to) > 2)
+                  continue;
+
+              LionValidPathMask[from] |= 1ULL << path;
+              LionVia[from][path] = via;
+              LionTo[from][path] = to;
+              int viaDf = file_of(via) - file_of(from);
+              int viaDr = rank_of(via) - rank_of(from);
+              int toDf = file_of(to) - file_of(from);
+              int toDr = rank_of(to) - rank_of(from);
+              LionPathLocalMask[from][path] = localIndex[viaDf + 2][viaDr + 2] | localIndex[toDf + 2][toDr + 2];
+          }
+      }
+  }
 
   for (File f = FILE_A; f <= FILE_MAX; ++f)
       for (Rank r = RANK_1; r <= RANK_MAX; ++r)

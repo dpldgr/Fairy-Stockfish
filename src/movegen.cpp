@@ -17,6 +17,7 @@
 */
 
 #include <cassert>
+#include <cstdint>
 
 #include "movegen.h"
 #include "position.h"
@@ -24,6 +25,12 @@
 namespace Stockfish {
 
 namespace {
+
+  inline int pop_lsb64(uint64_t& b) {
+    int idx = __builtin_ctzll(b);
+    b &= b - 1;
+    return idx;
+  }
 
   template<MoveType T>
   ExtMove* make_move_and_gating(const Position& pos, ExtMove* moveList, Color us, Square from, Square to, PieceType pt = NO_PIECE_TYPE) {
@@ -366,6 +373,29 @@ namespace {
         if (Type == CAPTURES || Type == EVASIONS || Type == NON_EVASIONS)
             while (epSquares)
                 moveList = make_move_and_gating<EN_PASSANT>(pos, moveList, Us, from, pop_lsb(epSquares));
+
+        uint64_t lionMask = pos.lion_move_mask(Pt) & LionValidPathMask[from];
+        if (lionMask && Type != QUIET_CHECKS)
+        {
+            uint32_t localFriendly = uint32_t(pext(pos.pieces(Us) - from, LionLocalMask[from]));
+            while (lionMask)
+            {
+                int path = pop_lsb64(lionMask);
+                if (localFriendly & LionPathLocalMask[from][path])
+                    continue;
+
+                Square via = LionVia[from][path];
+                Square to = LionTo[from][path];
+                Bitboard pathSquares = square_bb(via) | to;
+                bool isCapture = bool(pathSquares & pos.pieces(~Us));
+                bool include = Type == NON_EVASIONS
+                            || (Type == CAPTURES && isCapture)
+                            || (Type == QUIETS && !isCapture)
+                            || (Type == EVASIONS && ((target & to) || (pathSquares & pos.checkers())));
+                if (include)
+                    *moveList++ = make_lion(from, path, to);
+            }
+        }
     }
 
     return moveList;

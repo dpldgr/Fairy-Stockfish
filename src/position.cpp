@@ -1342,6 +1342,16 @@ bool Position::legal(Move m) const {
       return !attackers_to(to, pieces() ^ to_sq(m), ~us);
   }
 
+  if (type_of(m) == LION && count<KING>(us))
+  {
+      Square ksq = type_of(moved_piece(m)) == KING ? to : square<KING>(us);
+      Bitboard occupied = (pieces() ^ from) | to;
+      Square via = LionVia[from][lion_path_index(m)];
+      if (!empty(via) && color_of(piece_on(via)) == ~us)
+          occupied ^= via;
+      return !(attackers_to(ksq, occupied, ~us) & occupied);
+  }
+
   Bitboard occupied = (type_of(m) != DROP ? pieces() ^ from : pieces()) | to;
 
   // Flying general rule and bikjang
@@ -1662,14 +1672,20 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Square from = from_sq(m);
   Square to = to_sq(m);
   Piece pc = moved_piece(m);
-  Piece captured = piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
+  Piece captured = type_of(m) == LION && to == from ? NO_PIECE : piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
+  Square lionCapsq = type_of(m) == LION ? LionVia[from][lion_path_index(m)] : SQ_NONE;
+  Piece lionCaptured = type_of(m) == LION && !empty(lionCapsq) && color_of(piece_on(lionCapsq)) == them ? piece_on(lionCapsq) : NO_PIECE;
   if (to == from)
   {
-      assert((type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && (pass(us) || var->wallOrMove )));
+      assert(type_of(m) == LION || (type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && (pass(us) || var->wallOrMove )));
       captured = NO_PIECE;
   }
-  st->capturedpromoted = is_promoted(to);
+  st->capturedpromoted = captured && is_promoted(to);
   st->unpromotedCapturedPiece = captured ? unpromoted_piece_on(to) : NO_PIECE;
+  st->lionCapturedPiece = lionCaptured;
+  st->lionCaptureSquare = lionCapsq;
+  st->lionCapturedPromoted = lionCaptured && is_promoted(lionCapsq);
+  st->lionUnpromotedCapturedPiece = lionCaptured ? unpromoted_piece_on(lionCapsq) : NO_PIECE;
   st->pass = is_pass(m);
 
   assert(color_of(pc) == us);
@@ -1748,6 +1764,57 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       // Update material hash key and prefetch access to materialTable
       k ^= Zobrist::psq[captured][capsq];
       st->materialKey ^= Zobrist::psq[captured][pieceCount[captured]];
+#ifndef NO_THREADS
+      prefetch(thisThread->materialTable[material_key(var->endgameEval)]);
+#endif
+      // Reset rule 50 counter
+      st->rule50 = 0;
+  }
+
+  if (lionCaptured)
+  {
+      // If the captured piece is a pawn, update pawn hash key, otherwise
+      // update non-pawn material.
+      if (type_of(lionCaptured) == PAWN)
+          st->pawnKey ^= Zobrist::psq[lionCaptured][lionCapsq];
+      else
+          st->nonPawnMaterial[them] -= PieceValue[MG][lionCaptured];
+
+      if (Eval::useNNUE)
+      {
+          dp.piece[dp.dirty_num] = lionCaptured;
+          dp.from[dp.dirty_num] = lionCapsq;
+          dp.to[dp.dirty_num] = SQ_NONE;
+      }
+
+      bool capturedPromoted = is_promoted(lionCapsq);
+      Piece unpromotedCaptured = unpromoted_piece_on(lionCapsq);
+      remove_piece(lionCapsq);
+
+      if (captures_to_hand())
+      {
+          Piece pieceToHand = !capturedPromoted || drop_loop() ? ~lionCaptured
+                             : unpromotedCaptured ? ~unpromotedCaptured
+                                                  : make_piece(~color_of(lionCaptured), main_promotion_pawn_type(color_of(lionCaptured)));
+          add_to_hand(pieceToHand);
+          k ^=  Zobrist::inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)] - 1]
+              ^ Zobrist::inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)]];
+
+          if (Eval::useNNUE)
+          {
+              dp.handPiece[dp.dirty_num] = pieceToHand;
+              dp.handCount[dp.dirty_num] = pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)];
+          }
+      }
+      else if (Eval::useNNUE)
+          dp.handPiece[dp.dirty_num] = NO_PIECE;
+
+      if (Eval::useNNUE)
+          dp.dirty_num++;
+
+      // Update material hash key and prefetch access to materialTable
+      k ^= Zobrist::psq[lionCaptured][lionCapsq];
+      st->materialKey ^= Zobrist::psq[lionCaptured][pieceCount[lionCaptured]];
 #ifndef NO_THREADS
       prefetch(thisThread->materialTable[material_key(var->endgameEval)]);
 #endif
@@ -2233,10 +2300,11 @@ void Position::undo_move(Move m) {
   Square to = to_sq(m);
   Piece pc = piece_on(to);
 
-  assert(type_of(m) == DROP || empty(from) || type_of(m) == CASTLING || is_gating(m)
+  assert(type_of(m) == DROP || empty(from) || type_of(m) == CASTLING || is_gating(m) || type_of(m) == LION
          || (type_of(m) == PROMOTION && sittuyin_promotion())
          || (is_pass(m) && (pass(us) || var->wallOrMove)));
   assert(type_of(st->capturedPiece) != KING);
+  assert(type_of(st->lionCapturedPiece) != KING);
 
   // Reset wall squares
   byTypeBB[ALL_PIECES] ^= st->wallSquares ^ st->previous->wallSquares;
@@ -2332,6 +2400,14 @@ void Position::undo_move(Move m) {
               remove_from_hand(!drop_loop() && st->capturedpromoted ? (st->unpromotedCapturedPiece ? ~st->unpromotedCapturedPiece
                                                                                                    : make_piece(~color_of(st->capturedPiece), main_promotion_pawn_type(us)))
                                                                     : ~st->capturedPiece);
+      }
+      if (st->lionCapturedPiece)
+      {
+          put_piece(st->lionCapturedPiece, st->lionCaptureSquare, st->lionCapturedPromoted, st->lionUnpromotedCapturedPiece);
+          if (captures_to_hand())
+              remove_from_hand(!drop_loop() && st->lionCapturedPromoted ? (st->lionUnpromotedCapturedPiece ? ~st->lionUnpromotedCapturedPiece
+                                                                                                            : make_piece(~color_of(st->lionCapturedPiece), main_promotion_pawn_type(us)))
+                                                                         : ~st->lionCapturedPiece);
       }
   }
 
