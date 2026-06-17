@@ -200,6 +200,11 @@ struct Variant {
       return s;
   }
 
+  static std::string white_symbol(std::string s) {
+      std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::toupper(c); });
+      return s;
+  }
+
   void add_piece(PieceType pt, char c, std::string betza = "", char c2 = ' ') {
       add_piece(pt, std::string(1, c), betza, c2 == ' ' ? "" : std::string(1, c2));
   }
@@ -210,11 +215,11 @@ struct Variant {
       if (symbol.size() == 1 && (idx = pieceToChar.find(toupper(symbol[0]))) != std::string::npos)
           remove_piece(PieceType(idx));
       // Now add new piece
-      pieceToSymbol[make_piece(WHITE, pt)] = symbol;
+      pieceToSymbol[make_piece(WHITE, pt)] = white_symbol(symbol);
       pieceToSymbol[make_piece(BLACK, pt)] = black_symbol(symbol);
       pieceToChar[make_piece(WHITE, pt)] = symbol.size() == 1 ? toupper(symbol[0]) : ' ';
       pieceToChar[make_piece(BLACK, pt)] = symbol.size() == 1 ? tolower(symbol[0]) : ' ';
-      pieceToSymbolSynonyms[make_piece(WHITE, pt)] = symbol2;
+      pieceToSymbolSynonyms[make_piece(WHITE, pt)] = white_symbol(symbol2);
       pieceToSymbolSynonyms[make_piece(BLACK, pt)] = black_symbol(symbol2);
       pieceToCharSynonyms[make_piece(WHITE, pt)] = symbol2.size() == 1 ? toupper(symbol2[0]) : ' ';
       pieceToCharSynonyms[make_piece(BLACK, pt)] = symbol2.size() == 1 ? tolower(symbol2[0]) : ' ';
