@@ -303,7 +303,7 @@ namespace {
                        | (quiets & ~pos.pieces()));
         Bitboard b1 = b & target;
         Bitboard promotion_zone = pos.promotion_zone(Us);
-        PieceType promPt = pos.promoted_piece_type(Pt);
+        PieceType promPt = pos.is_promoted(from) ? NO_PIECE_TYPE : pos.promoted_piece_type(Pt);
         Bitboard b2 = promPt && (!pos.promotion_limit(promPt) || pos.promotion_limit(promPt) > pos.count(Us, promPt)) ? b1 : Bitboard(0);
         Bitboard b3 = pos.piece_demotion() && pos.is_promoted(from) ? b1 : Bitboard(0);
         Bitboard pawnPromotions = (pos.promotion_pawn_types(Us) & Pt) ? (b & (Type == EVASIONS ? target : ~pos.pieces(Us)) & promotion_zone) : Bitboard(0);
@@ -336,7 +336,7 @@ namespace {
         {
             b1 &= pos.check_squares(Pt);
             if (b2)
-                b2 &= pos.check_squares(pos.promoted_piece_type(Pt));
+                b2 &= pos.check_squares(promPt);
             if (b3)
                 b3 &= pos.check_squares(type_of(pos.unpromoted_piece_on(from)));
         }
