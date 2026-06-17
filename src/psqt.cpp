@@ -315,7 +315,7 @@ void init(const Variant* v) {
               pawnRank = rc;
       }
 
-      for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+      for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
       {
           File f = std::max(File(edge_distance(file_of(s), v->maxFile)), FILE_A);
           Rank r = rank_of(s);

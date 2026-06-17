@@ -128,6 +128,8 @@ public:
   PieceSet piece_types() const;
   const std::string& piece_to_char() const;
   const std::string& piece_to_char_synonyms() const;
+  const std::string& piece_symbol(Piece pc) const;
+  const std::string& piece_symbol_synonym(Piece pc) const;
   Bitboard promotion_zone(Color c) const;
   Square promotion_square(Color c, Square s) const;
   PieceType main_promotion_pawn_type(Color c) const;
@@ -445,6 +447,16 @@ inline const std::string& Position::piece_to_char() const {
 inline const std::string& Position::piece_to_char_synonyms() const {
   assert(var != nullptr);
   return var->pieceToCharSynonyms;
+}
+
+inline const std::string& Position::piece_symbol(Piece pc) const {
+  assert(var != nullptr);
+  return var->pieceToSymbol[pc];
+}
+
+inline const std::string& Position::piece_symbol_synonym(Piece pc) const {
+  assert(var != nullptr);
+  return var->pieceToSymbolSynonyms[pc];
 }
 
 inline Bitboard Position::promotion_zone(Color c) const {
@@ -1491,7 +1503,7 @@ inline const std::string Position::piece_to_partner() const {
   Piece piece = st->capturedpromoted ?
       (st->unpromotedCapturedPiece ? st->unpromotedCapturedPiece : make_piece(color, main_promotion_pawn_type(color))) :
       st->capturedPiece;
-  return std::string(1, piece_to_char()[piece]);
+  return piece_symbol(piece);
 }
 
 inline Thread* Position::this_thread() const {
