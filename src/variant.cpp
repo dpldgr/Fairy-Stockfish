@@ -2055,7 +2055,7 @@ Variant* Variant::conclude() {
     // therefore skip proper initialization in case of invalid board size.
     int nnueKingSquare = 0;
     if (nnueKing && nnueSquares <= SQUARE_NB)
-        for (Square s = SQ_A1; s < nnueSquares; ++s)
+        for (Square s = SQ_MIN; s < nnueSquares; ++s)
         {
             Square bitboardSquare = Square(s + s / (maxFile + 1) * (FILE_MAX - maxFile));
             if (   !mobilityRegion[WHITE][nnueKing] || !mobilityRegion[BLACK][nnueKing]
