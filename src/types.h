@@ -42,6 +42,42 @@
 #include <cstdlib>
 #include <algorithm>
 
+#ifndef BOARD_FILES
+#define BOARD_FILES 8
+#endif
+#ifndef BOARD_RANKS
+#define BOARD_RANKS 8
+#endif
+#ifndef BOARD_SQUARES
+#define BOARD_SQUARES (BOARD_FILES * BOARD_RANKS)
+#endif
+
+#if BOARD_FILES < 8 || BOARD_FILES > 16
+#error "BOARD_FILES must be between 8 and 16"
+#endif
+#if BOARD_RANKS < 8 || BOARD_RANKS > 16
+#error "BOARD_RANKS must be between 8 and 16"
+#endif
+#if BOARD_SQUARES < 64 || BOARD_SQUARES > 256
+#error "BOARD_SQUARES must be between 64 and 256"
+#endif
+#if BOARD_SQUARES > 128 && (BOARD_FILES != 16 || BOARD_RANKS != 16)
+#error "Only the 16x16 PEXT-only build supports more than 128 squares"
+#endif
+#if BOARD_SQUARES > 128 && !defined(USE_PEXT)
+#error "The 16x16 build requires USE_PEXT"
+#endif
+#if BOARD_SQUARES > 128
+#define BITBOARD_256
+#endif
+#if (defined(LARGEBOARDS) && (BOARD_FILES != 12 || BOARD_RANKS != 10))
+#error "LARGEBOARDS is a compatibility alias for BOARD_FILES=12 and BOARD_RANKS=10; define BOARD_FILES/BOARD_RANKS instead"
+#endif
+#if BOARD_SQUARES > 64 && !defined(LARGEBOARDS)
+#define LARGEBOARDS
+#endif
+
+
 #if defined(_MSC_VER)
 // Disable some silly and noisy warning from MSVC compiler
 #pragma warning(disable: 4127) // Conditional expression is constant
@@ -80,7 +116,12 @@
 
 #if defined(USE_PEXT)
 #  include <immintrin.h> // Header for _pext_u64() intrinsic
-#  ifdef LARGEBOARDS
+#  ifdef BITBOARD_256
+#    define pext(b, m) (_pext_u64((b).b64[3], (m).b64[3]) \
+                      ^ (_pext_u64((b).b64[2], (m).b64[2]) << popcount(Bitboard(0, 0, 0, (m).b64[3]))) \
+                      ^ (_pext_u64((b).b64[1], (m).b64[1]) << popcount(Bitboard(0, 0, (m).b64[2], (m).b64[3]))) \
+                      ^ (_pext_u64((b).b64[0], (m).b64[0]) << popcount(Bitboard(0, (m).b64[1], (m).b64[2], (m).b64[3]))))
+#  elif defined(LARGEBOARDS)
 #    define pext(b, m) (_pext_u64(b, m) ^ (_pext_u64(b >> 64, m >> 64) << popcount((m << 64) >> 64)))
 #  else
 #    define pext(b, m) _pext_u64(b, m)
@@ -110,7 +151,75 @@ constexpr bool Is64Bit = false;
 #endif
 
 typedef uint64_t Key;
-#ifdef LARGEBOARDS
+#ifdef BITBOARD_256
+struct Bitboard {
+    uint64_t b64[4];
+
+    constexpr Bitboard() : b64 {0, 0, 0, 0} {}
+    constexpr Bitboard(uint64_t i) : b64 {0, 0, 0, i} {}
+    constexpr Bitboard(uint64_t a, uint64_t b, uint64_t c, uint64_t d) : b64 {a, b, c, d} {}
+
+    constexpr operator bool() const { return b64[0] || b64[1] || b64[2] || b64[3]; }
+    constexpr operator long long unsigned () const { return b64[3]; }
+    constexpr operator unsigned() const { return unsigned(b64[3]); }
+
+    constexpr Bitboard operator << (const unsigned int bits) const {
+        Bitboard out;
+        if (bits >= 256)
+            return out;
+        const unsigned word = bits / 64;
+        const unsigned rem = bits % 64;
+        for (int i = 0; i < 4; ++i)
+        {
+            const int src = i + word;
+            if (src < 4)
+                out.b64[i] |= b64[src] << rem;
+            if (rem && src + 1 < 4)
+                out.b64[i] |= b64[src + 1] >> (64 - rem);
+        }
+        return out;
+    }
+
+    constexpr Bitboard operator >> (const unsigned int bits) const {
+        Bitboard out;
+        if (bits >= 256)
+            return out;
+        const unsigned word = bits / 64;
+        const unsigned rem = bits % 64;
+        for (int i = 3; i >= 0; --i)
+        {
+            const int src = i - word;
+            if (src >= 0)
+                out.b64[i] |= b64[src] >> rem;
+            if (rem && src - 1 >= 0)
+                out.b64[i] |= b64[src - 1] << (64 - rem);
+        }
+        return out;
+    }
+
+    constexpr Bitboard operator << (const int bits) const { return *this << unsigned(bits); }
+    constexpr Bitboard operator >> (const int bits) const { return *this >> unsigned(bits); }
+    constexpr bool operator == (const Bitboard y) const { return b64[0] == y.b64[0] && b64[1] == y.b64[1] && b64[2] == y.b64[2] && b64[3] == y.b64[3]; }
+    constexpr bool operator != (const Bitboard y) const { return !(*this == y); }
+    inline Bitboard& operator |=(const Bitboard x) { b64[0] |= x.b64[0]; b64[1] |= x.b64[1]; b64[2] |= x.b64[2]; b64[3] |= x.b64[3]; return *this; }
+    inline Bitboard& operator &=(const Bitboard x) { b64[0] &= x.b64[0]; b64[1] &= x.b64[1]; b64[2] &= x.b64[2]; b64[3] &= x.b64[3]; return *this; }
+    inline Bitboard& operator ^=(const Bitboard x) { b64[0] ^= x.b64[0]; b64[1] ^= x.b64[1]; b64[2] ^= x.b64[2]; b64[3] ^= x.b64[3]; return *this; }
+    constexpr Bitboard operator ~ () const { return Bitboard(~b64[0], ~b64[1], ~b64[2], ~b64[3]); }
+    constexpr Bitboard operator - () const { return Bitboard(~*this + Bitboard(1)); }
+    constexpr Bitboard operator | (const Bitboard x) const { return Bitboard(b64[0] | x.b64[0], b64[1] | x.b64[1], b64[2] | x.b64[2], b64[3] | x.b64[3]); }
+    constexpr Bitboard operator & (const Bitboard x) const { return Bitboard(b64[0] & x.b64[0], b64[1] & x.b64[1], b64[2] & x.b64[2], b64[3] & x.b64[3]); }
+    constexpr Bitboard operator ^ (const Bitboard x) const { return Bitboard(b64[0] ^ x.b64[0], b64[1] ^ x.b64[1], b64[2] ^ x.b64[2], b64[3] ^ x.b64[3]); }
+    constexpr Bitboard operator + (const Bitboard x) const {
+        uint64_t d = b64[3] + x.b64[3], c = b64[2] + x.b64[2] + (d < b64[3]);
+        uint64_t b = b64[1] + x.b64[1] + (c < b64[2] || (c == b64[2] && d < b64[3]));
+        return Bitboard(b64[0] + x.b64[0] + (b < b64[1] || (b == b64[1] && (c < b64[2] || (c == b64[2] && d < b64[3])))), b, c, d);
+    }
+    constexpr Bitboard operator - (const Bitboard x) const { return *this + (-x); }
+    constexpr Bitboard operator - (const int x) const { return *this - Bitboard(x); }
+    constexpr Bitboard operator * (const Bitboard) const { return Bitboard(0); }
+};
+constexpr int SQUARE_BITS = 8;
+#elif defined(LARGEBOARDS)
 #if defined(__GNUC__) && defined(IS_64BIT)
 typedef unsigned __int128 Bitboard;
 #else
@@ -492,48 +601,34 @@ enum : int {
 };
 
 enum Square : int {
-#ifdef LARGEBOARDS
-  SQ_A1, SQ_B1, SQ_C1, SQ_D1, SQ_E1, SQ_F1, SQ_G1, SQ_H1, SQ_I1, SQ_J1, SQ_K1, SQ_L1,
-  SQ_A2, SQ_B2, SQ_C2, SQ_D2, SQ_E2, SQ_F2, SQ_G2, SQ_H2, SQ_I2, SQ_J2, SQ_K2, SQ_L2,
-  SQ_A3, SQ_B3, SQ_C3, SQ_D3, SQ_E3, SQ_F3, SQ_G3, SQ_H3, SQ_I3, SQ_J3, SQ_K3, SQ_L3,
-  SQ_A4, SQ_B4, SQ_C4, SQ_D4, SQ_E4, SQ_F4, SQ_G4, SQ_H4, SQ_I4, SQ_J4, SQ_K4, SQ_L4,
-  SQ_A5, SQ_B5, SQ_C5, SQ_D5, SQ_E5, SQ_F5, SQ_G5, SQ_H5, SQ_I5, SQ_J5, SQ_K5, SQ_L5,
-  SQ_A6, SQ_B6, SQ_C6, SQ_D6, SQ_E6, SQ_F6, SQ_G6, SQ_H6, SQ_I6, SQ_J6, SQ_K6, SQ_L6,
-  SQ_A7, SQ_B7, SQ_C7, SQ_D7, SQ_E7, SQ_F7, SQ_G7, SQ_H7, SQ_I7, SQ_J7, SQ_K7, SQ_L7,
-  SQ_A8, SQ_B8, SQ_C8, SQ_D8, SQ_E8, SQ_F8, SQ_G8, SQ_H8, SQ_I8, SQ_J8, SQ_K8, SQ_L8,
-  SQ_A9, SQ_B9, SQ_C9, SQ_D9, SQ_E9, SQ_F9, SQ_G9, SQ_H9, SQ_I9, SQ_J9, SQ_K9, SQ_L9,
-  SQ_A10, SQ_B10, SQ_C10, SQ_D10, SQ_E10, SQ_F10, SQ_G10, SQ_H10, SQ_I10, SQ_J10, SQ_K10, SQ_L10,
-#else
-  SQ_A1, SQ_B1, SQ_C1, SQ_D1, SQ_E1, SQ_F1, SQ_G1, SQ_H1,
-  SQ_A2, SQ_B2, SQ_C2, SQ_D2, SQ_E2, SQ_F2, SQ_G2, SQ_H2,
-  SQ_A3, SQ_B3, SQ_C3, SQ_D3, SQ_E3, SQ_F3, SQ_G3, SQ_H3,
-  SQ_A4, SQ_B4, SQ_C4, SQ_D4, SQ_E4, SQ_F4, SQ_G4, SQ_H4,
-  SQ_A5, SQ_B5, SQ_C5, SQ_D5, SQ_E5, SQ_F5, SQ_G5, SQ_H5,
-  SQ_A6, SQ_B6, SQ_C6, SQ_D6, SQ_E6, SQ_F6, SQ_G6, SQ_H6,
-  SQ_A7, SQ_B7, SQ_C7, SQ_D7, SQ_E7, SQ_F7, SQ_G7, SQ_H7,
-  SQ_A8, SQ_B8, SQ_C8, SQ_D8, SQ_E8, SQ_F8, SQ_G8, SQ_H8,
-#endif
-  SQ_NONE,
+  SQ_A1 = 0 * BOARD_FILES + 0,   SQ_B1 = 0 * BOARD_FILES + 1,   SQ_C1 = 0 * BOARD_FILES + 2,   SQ_D1 = 0 * BOARD_FILES + 3,   SQ_E1 = 0 * BOARD_FILES + 4,   SQ_F1 = 0 * BOARD_FILES + 5,   SQ_G1 = 0 * BOARD_FILES + 6,   SQ_H1 = 0 * BOARD_FILES + 7,   SQ_I1 = 0 * BOARD_FILES + 8,   SQ_J1 = 0 * BOARD_FILES + 9,   SQ_K1 = 0 * BOARD_FILES + 10,   SQ_L1 = 0 * BOARD_FILES + 11,   SQ_M1 = 0 * BOARD_FILES + 12,   SQ_N1 = 0 * BOARD_FILES + 13,   SQ_O1 = 0 * BOARD_FILES + 14,   SQ_P1 = 0 * BOARD_FILES + 15,
+  SQ_A2 = 1 * BOARD_FILES + 0,   SQ_B2 = 1 * BOARD_FILES + 1,   SQ_C2 = 1 * BOARD_FILES + 2,   SQ_D2 = 1 * BOARD_FILES + 3,   SQ_E2 = 1 * BOARD_FILES + 4,   SQ_F2 = 1 * BOARD_FILES + 5,   SQ_G2 = 1 * BOARD_FILES + 6,   SQ_H2 = 1 * BOARD_FILES + 7,   SQ_I2 = 1 * BOARD_FILES + 8,   SQ_J2 = 1 * BOARD_FILES + 9,   SQ_K2 = 1 * BOARD_FILES + 10,   SQ_L2 = 1 * BOARD_FILES + 11,   SQ_M2 = 1 * BOARD_FILES + 12,   SQ_N2 = 1 * BOARD_FILES + 13,   SQ_O2 = 1 * BOARD_FILES + 14,   SQ_P2 = 1 * BOARD_FILES + 15,
+  SQ_A3 = 2 * BOARD_FILES + 0,   SQ_B3 = 2 * BOARD_FILES + 1,   SQ_C3 = 2 * BOARD_FILES + 2,   SQ_D3 = 2 * BOARD_FILES + 3,   SQ_E3 = 2 * BOARD_FILES + 4,   SQ_F3 = 2 * BOARD_FILES + 5,   SQ_G3 = 2 * BOARD_FILES + 6,   SQ_H3 = 2 * BOARD_FILES + 7,   SQ_I3 = 2 * BOARD_FILES + 8,   SQ_J3 = 2 * BOARD_FILES + 9,   SQ_K3 = 2 * BOARD_FILES + 10,   SQ_L3 = 2 * BOARD_FILES + 11,   SQ_M3 = 2 * BOARD_FILES + 12,   SQ_N3 = 2 * BOARD_FILES + 13,   SQ_O3 = 2 * BOARD_FILES + 14,   SQ_P3 = 2 * BOARD_FILES + 15,
+  SQ_A4 = 3 * BOARD_FILES + 0,   SQ_B4 = 3 * BOARD_FILES + 1,   SQ_C4 = 3 * BOARD_FILES + 2,   SQ_D4 = 3 * BOARD_FILES + 3,   SQ_E4 = 3 * BOARD_FILES + 4,   SQ_F4 = 3 * BOARD_FILES + 5,   SQ_G4 = 3 * BOARD_FILES + 6,   SQ_H4 = 3 * BOARD_FILES + 7,   SQ_I4 = 3 * BOARD_FILES + 8,   SQ_J4 = 3 * BOARD_FILES + 9,   SQ_K4 = 3 * BOARD_FILES + 10,   SQ_L4 = 3 * BOARD_FILES + 11,   SQ_M4 = 3 * BOARD_FILES + 12,   SQ_N4 = 3 * BOARD_FILES + 13,   SQ_O4 = 3 * BOARD_FILES + 14,   SQ_P4 = 3 * BOARD_FILES + 15,
+  SQ_A5 = 4 * BOARD_FILES + 0,   SQ_B5 = 4 * BOARD_FILES + 1,   SQ_C5 = 4 * BOARD_FILES + 2,   SQ_D5 = 4 * BOARD_FILES + 3,   SQ_E5 = 4 * BOARD_FILES + 4,   SQ_F5 = 4 * BOARD_FILES + 5,   SQ_G5 = 4 * BOARD_FILES + 6,   SQ_H5 = 4 * BOARD_FILES + 7,   SQ_I5 = 4 * BOARD_FILES + 8,   SQ_J5 = 4 * BOARD_FILES + 9,   SQ_K5 = 4 * BOARD_FILES + 10,   SQ_L5 = 4 * BOARD_FILES + 11,   SQ_M5 = 4 * BOARD_FILES + 12,   SQ_N5 = 4 * BOARD_FILES + 13,   SQ_O5 = 4 * BOARD_FILES + 14,   SQ_P5 = 4 * BOARD_FILES + 15,
+  SQ_A6 = 5 * BOARD_FILES + 0,   SQ_B6 = 5 * BOARD_FILES + 1,   SQ_C6 = 5 * BOARD_FILES + 2,   SQ_D6 = 5 * BOARD_FILES + 3,   SQ_E6 = 5 * BOARD_FILES + 4,   SQ_F6 = 5 * BOARD_FILES + 5,   SQ_G6 = 5 * BOARD_FILES + 6,   SQ_H6 = 5 * BOARD_FILES + 7,   SQ_I6 = 5 * BOARD_FILES + 8,   SQ_J6 = 5 * BOARD_FILES + 9,   SQ_K6 = 5 * BOARD_FILES + 10,   SQ_L6 = 5 * BOARD_FILES + 11,   SQ_M6 = 5 * BOARD_FILES + 12,   SQ_N6 = 5 * BOARD_FILES + 13,   SQ_O6 = 5 * BOARD_FILES + 14,   SQ_P6 = 5 * BOARD_FILES + 15,
+  SQ_A7 = 6 * BOARD_FILES + 0,   SQ_B7 = 6 * BOARD_FILES + 1,   SQ_C7 = 6 * BOARD_FILES + 2,   SQ_D7 = 6 * BOARD_FILES + 3,   SQ_E7 = 6 * BOARD_FILES + 4,   SQ_F7 = 6 * BOARD_FILES + 5,   SQ_G7 = 6 * BOARD_FILES + 6,   SQ_H7 = 6 * BOARD_FILES + 7,   SQ_I7 = 6 * BOARD_FILES + 8,   SQ_J7 = 6 * BOARD_FILES + 9,   SQ_K7 = 6 * BOARD_FILES + 10,   SQ_L7 = 6 * BOARD_FILES + 11,   SQ_M7 = 6 * BOARD_FILES + 12,   SQ_N7 = 6 * BOARD_FILES + 13,   SQ_O7 = 6 * BOARD_FILES + 14,   SQ_P7 = 6 * BOARD_FILES + 15,
+  SQ_A8 = 7 * BOARD_FILES + 0,   SQ_B8 = 7 * BOARD_FILES + 1,   SQ_C8 = 7 * BOARD_FILES + 2,   SQ_D8 = 7 * BOARD_FILES + 3,   SQ_E8 = 7 * BOARD_FILES + 4,   SQ_F8 = 7 * BOARD_FILES + 5,   SQ_G8 = 7 * BOARD_FILES + 6,   SQ_H8 = 7 * BOARD_FILES + 7,   SQ_I8 = 7 * BOARD_FILES + 8,   SQ_J8 = 7 * BOARD_FILES + 9,   SQ_K8 = 7 * BOARD_FILES + 10,   SQ_L8 = 7 * BOARD_FILES + 11,   SQ_M8 = 7 * BOARD_FILES + 12,   SQ_N8 = 7 * BOARD_FILES + 13,   SQ_O8 = 7 * BOARD_FILES + 14,   SQ_P8 = 7 * BOARD_FILES + 15,
+  SQ_A9 = 8 * BOARD_FILES + 0,   SQ_B9 = 8 * BOARD_FILES + 1,   SQ_C9 = 8 * BOARD_FILES + 2,   SQ_D9 = 8 * BOARD_FILES + 3,   SQ_E9 = 8 * BOARD_FILES + 4,   SQ_F9 = 8 * BOARD_FILES + 5,   SQ_G9 = 8 * BOARD_FILES + 6,   SQ_H9 = 8 * BOARD_FILES + 7,   SQ_I9 = 8 * BOARD_FILES + 8,   SQ_J9 = 8 * BOARD_FILES + 9,   SQ_K9 = 8 * BOARD_FILES + 10,   SQ_L9 = 8 * BOARD_FILES + 11,   SQ_M9 = 8 * BOARD_FILES + 12,   SQ_N9 = 8 * BOARD_FILES + 13,   SQ_O9 = 8 * BOARD_FILES + 14,   SQ_P9 = 8 * BOARD_FILES + 15,
+  SQ_A10 = 9 * BOARD_FILES + 0,   SQ_B10 = 9 * BOARD_FILES + 1,   SQ_C10 = 9 * BOARD_FILES + 2,   SQ_D10 = 9 * BOARD_FILES + 3,   SQ_E10 = 9 * BOARD_FILES + 4,   SQ_F10 = 9 * BOARD_FILES + 5,   SQ_G10 = 9 * BOARD_FILES + 6,   SQ_H10 = 9 * BOARD_FILES + 7,   SQ_I10 = 9 * BOARD_FILES + 8,   SQ_J10 = 9 * BOARD_FILES + 9,   SQ_K10 = 9 * BOARD_FILES + 10,   SQ_L10 = 9 * BOARD_FILES + 11,   SQ_M10 = 9 * BOARD_FILES + 12,   SQ_N10 = 9 * BOARD_FILES + 13,   SQ_O10 = 9 * BOARD_FILES + 14,   SQ_P10 = 9 * BOARD_FILES + 15,
+  SQ_A11 = 10 * BOARD_FILES + 0,   SQ_B11 = 10 * BOARD_FILES + 1,   SQ_C11 = 10 * BOARD_FILES + 2,   SQ_D11 = 10 * BOARD_FILES + 3,   SQ_E11 = 10 * BOARD_FILES + 4,   SQ_F11 = 10 * BOARD_FILES + 5,   SQ_G11 = 10 * BOARD_FILES + 6,   SQ_H11 = 10 * BOARD_FILES + 7,   SQ_I11 = 10 * BOARD_FILES + 8,   SQ_J11 = 10 * BOARD_FILES + 9,   SQ_K11 = 10 * BOARD_FILES + 10,   SQ_L11 = 10 * BOARD_FILES + 11,   SQ_M11 = 10 * BOARD_FILES + 12,   SQ_N11 = 10 * BOARD_FILES + 13,   SQ_O11 = 10 * BOARD_FILES + 14,   SQ_P11 = 10 * BOARD_FILES + 15,
+  SQ_A12 = 11 * BOARD_FILES + 0,   SQ_B12 = 11 * BOARD_FILES + 1,   SQ_C12 = 11 * BOARD_FILES + 2,   SQ_D12 = 11 * BOARD_FILES + 3,   SQ_E12 = 11 * BOARD_FILES + 4,   SQ_F12 = 11 * BOARD_FILES + 5,   SQ_G12 = 11 * BOARD_FILES + 6,   SQ_H12 = 11 * BOARD_FILES + 7,   SQ_I12 = 11 * BOARD_FILES + 8,   SQ_J12 = 11 * BOARD_FILES + 9,   SQ_K12 = 11 * BOARD_FILES + 10,   SQ_L12 = 11 * BOARD_FILES + 11,   SQ_M12 = 11 * BOARD_FILES + 12,   SQ_N12 = 11 * BOARD_FILES + 13,   SQ_O12 = 11 * BOARD_FILES + 14,   SQ_P12 = 11 * BOARD_FILES + 15,
+  SQ_A13 = 12 * BOARD_FILES + 0,   SQ_B13 = 12 * BOARD_FILES + 1,   SQ_C13 = 12 * BOARD_FILES + 2,   SQ_D13 = 12 * BOARD_FILES + 3,   SQ_E13 = 12 * BOARD_FILES + 4,   SQ_F13 = 12 * BOARD_FILES + 5,   SQ_G13 = 12 * BOARD_FILES + 6,   SQ_H13 = 12 * BOARD_FILES + 7,   SQ_I13 = 12 * BOARD_FILES + 8,   SQ_J13 = 12 * BOARD_FILES + 9,   SQ_K13 = 12 * BOARD_FILES + 10,   SQ_L13 = 12 * BOARD_FILES + 11,   SQ_M13 = 12 * BOARD_FILES + 12,   SQ_N13 = 12 * BOARD_FILES + 13,   SQ_O13 = 12 * BOARD_FILES + 14,   SQ_P13 = 12 * BOARD_FILES + 15,
+  SQ_A14 = 13 * BOARD_FILES + 0,   SQ_B14 = 13 * BOARD_FILES + 1,   SQ_C14 = 13 * BOARD_FILES + 2,   SQ_D14 = 13 * BOARD_FILES + 3,   SQ_E14 = 13 * BOARD_FILES + 4,   SQ_F14 = 13 * BOARD_FILES + 5,   SQ_G14 = 13 * BOARD_FILES + 6,   SQ_H14 = 13 * BOARD_FILES + 7,   SQ_I14 = 13 * BOARD_FILES + 8,   SQ_J14 = 13 * BOARD_FILES + 9,   SQ_K14 = 13 * BOARD_FILES + 10,   SQ_L14 = 13 * BOARD_FILES + 11,   SQ_M14 = 13 * BOARD_FILES + 12,   SQ_N14 = 13 * BOARD_FILES + 13,   SQ_O14 = 13 * BOARD_FILES + 14,   SQ_P14 = 13 * BOARD_FILES + 15,
+  SQ_A15 = 14 * BOARD_FILES + 0,   SQ_B15 = 14 * BOARD_FILES + 1,   SQ_C15 = 14 * BOARD_FILES + 2,   SQ_D15 = 14 * BOARD_FILES + 3,   SQ_E15 = 14 * BOARD_FILES + 4,   SQ_F15 = 14 * BOARD_FILES + 5,   SQ_G15 = 14 * BOARD_FILES + 6,   SQ_H15 = 14 * BOARD_FILES + 7,   SQ_I15 = 14 * BOARD_FILES + 8,   SQ_J15 = 14 * BOARD_FILES + 9,   SQ_K15 = 14 * BOARD_FILES + 10,   SQ_L15 = 14 * BOARD_FILES + 11,   SQ_M15 = 14 * BOARD_FILES + 12,   SQ_N15 = 14 * BOARD_FILES + 13,   SQ_O15 = 14 * BOARD_FILES + 14,   SQ_P15 = 14 * BOARD_FILES + 15,
+  SQ_A16 = 15 * BOARD_FILES + 0,   SQ_B16 = 15 * BOARD_FILES + 1,   SQ_C16 = 15 * BOARD_FILES + 2,   SQ_D16 = 15 * BOARD_FILES + 3,   SQ_E16 = 15 * BOARD_FILES + 4,   SQ_F16 = 15 * BOARD_FILES + 5,   SQ_G16 = 15 * BOARD_FILES + 6,   SQ_H16 = 15 * BOARD_FILES + 7,   SQ_I16 = 15 * BOARD_FILES + 8,   SQ_J16 = 15 * BOARD_FILES + 9,   SQ_K16 = 15 * BOARD_FILES + 10,   SQ_L16 = 15 * BOARD_FILES + 11,   SQ_M16 = 15 * BOARD_FILES + 12,   SQ_N16 = 15 * BOARD_FILES + 13,   SQ_O16 = 15 * BOARD_FILES + 14,   SQ_P16 = 15 * BOARD_FILES + 15,
+  SQ_NONE = BOARD_SQUARES,
 
   SQUARE_ZERO = 0,
-#ifdef LARGEBOARDS
-  SQUARE_NB = 120,
-  SQUARE_BIT_MASK = 127,
-#else
-  SQUARE_NB = 64,
-  SQUARE_BIT_MASK = 63,
-#endif
+  SQ_MIN = SQ_A1,
+  SQUARE_NB = BOARD_SQUARES,
+  SQUARE_BIT_MASK = (1 << SQUARE_BITS) - 1,
   SQ_MAX = SQUARE_NB - 1,
   SQUARE_NB_CHESS = 64,
   SQUARE_NB_SHOGI = 81,
 };
-
 enum Direction : int {
-#ifdef LARGEBOARDS
-  NORTH =  12,
-#else
-  NORTH =  8,
-#endif
+  NORTH = BOARD_FILES,
   EAST  =  1,
   SOUTH = -NORTH,
   WEST  = -EAST,
@@ -545,25 +640,15 @@ enum Direction : int {
 };
 
 enum File : int {
-#ifdef LARGEBOARDS
-  FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H, FILE_I, FILE_J, FILE_K, FILE_L,
-#else
-  FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H,
-#endif
-  FILE_NB,
+  FILE_A = 0, FILE_B = 1, FILE_C = 2, FILE_D = 3, FILE_E = 4, FILE_F = 5, FILE_G = 6, FILE_H = 7, FILE_I = 8, FILE_J = 9, FILE_K = 10, FILE_L = 11, FILE_M = 12, FILE_N = 13, FILE_O = 14, FILE_P = 15,
+  FILE_NB = BOARD_FILES,
   FILE_MAX = FILE_NB - 1
 };
-
 enum Rank : int {
-#ifdef LARGEBOARDS
-  RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8, RANK_9, RANK_10,
-#else
-  RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8,
-#endif
-  RANK_NB,
+  RANK_1 = 0, RANK_2 = 1, RANK_3 = 2, RANK_4 = 3, RANK_5 = 4, RANK_6 = 5, RANK_7 = 6, RANK_8 = 7, RANK_9 = 8, RANK_10 = 9, RANK_11 = 10, RANK_12 = 11, RANK_13 = 12, RANK_14 = 13, RANK_15 = 14, RANK_16 = 15,
+  RANK_NB = BOARD_RANKS,
   RANK_MAX = RANK_NB - 1
 };
-
 // Keep track of what a move changes on the board (used by NNUE)
 struct DirtyPiece {
 
@@ -760,7 +845,7 @@ inline Color color_of(Piece pc) {
 }
 
 constexpr bool is_ok(Square s) {
-  return s >= SQ_A1 && s <= SQ_MAX;
+  return s >= SQ_MIN && s <= SQ_MAX;
 }
 
 constexpr File file_of(Square s) {

@@ -569,6 +569,13 @@ inline Validation check_for_valid_characters(const std::string& firstFenPart, co
     return OK;
 }
 
+inline bool uses_multi_character_piece_symbols(const Variant* v) {
+    for (const std::string& symbol : v->pieceToSymbol)
+        if (symbol.size() > 1)
+            return true;
+    return false;
+}
+
 inline Validation check_promoted_pieces(const std::string& firstFenPart, const Variant* v) {
     // Only check promoted pieces if the variant supports shogi-style promotions
     if (!v || !v->shogiStylePromotions)
@@ -1014,6 +1021,9 @@ inline FenValidation validate_fen(const std::string& fen, const Variant* v, bool
     }
 
     // 1) Part
+    if (uses_multi_character_piece_symbols(v))
+        return FEN_OK;
+
     // check for valid characters
     if (check_for_valid_characters(fenParts[0], validSpecialCharactersFirstField, v) == NOK)
         return FEN_INVALID_CHAR;

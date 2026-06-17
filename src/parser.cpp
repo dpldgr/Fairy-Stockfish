@@ -16,6 +16,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <algorithm>
 #include <string>
 #include <sstream>
 
@@ -187,6 +188,66 @@ namespace {
         target |= pt;
     }
 
+    bool valid_piece_symbol(const std::string& symbol) {
+        return !symbol.empty() && std::all_of(symbol.begin(), symbol.end(), [](unsigned char c) { return isalpha(c); });
+    }
+
+    bool split_piece_definition(const std::string& token, std::string& symbol, std::string& betza) {
+        size_t separator = token.find(':');
+        symbol = separator == std::string::npos ? token : token.substr(0, separator);
+        betza = separator == std::string::npos ? "" : token.substr(separator + 1);
+        return separator == std::string::npos || separator + 1 < token.size();
+    }
+
+    bool piece_reference(const std::string& value, std::string& name) {
+        if (value.size() >= 3 && value.front() == '<' && value.back() == '>')
+        {
+            name = value.substr(1, value.size() - 2);
+            return true;
+        }
+        return false;
+    }
+
+    PieceType piece_type_by_name(const std::string& name) {
+        for (PieceType pt = PAWN; pt <= KING; ++pt)
+            if (piece_name(pt) == name)
+                return pt;
+        return NO_PIECE_TYPE;
+    }
+
+    void set_custom_piece_betza(Variant* v, PieceType pt, const std::string& betza) {
+        v->customPiece[pt - CUSTOM_PIECES] = betza;
+        // Is there an en passant flag in the Betza notation?
+        if (betza.find('e') != std::string::npos)
+        {
+            v->enPassantTypes[WHITE] |= piece_set(pt);
+            v->enPassantTypes[BLACK] |= piece_set(pt);
+        }
+    }
+
+    PieceType piece_type_by_symbol(const Variant* v, const std::string& symbol) {
+        std::string whiteSymbol = Variant::white_symbol(symbol);
+        for (PieceSet ps = v->pieceTypes; ps;)
+        {
+            PieceType pt = pop_lsb(ps);
+            if (   v->pieceToSymbol[make_piece(WHITE, pt)] == whiteSymbol
+                || v->pieceToSymbolSynonyms[make_piece(WHITE, pt)] == whiteSymbol)
+                return pt;
+        }
+        return NO_PIECE_TYPE;
+    }
+
+    PieceType next_free_custom_piece(const Variant* v, const Config& config, PieceType preferred = NO_PIECE_TYPE) {
+        if (is_custom(preferred) && !(v->pieceTypes & preferred))
+            return preferred;
+
+        const auto& entries = static_cast<const std::map<std::string, std::string>&>(config);
+        for (PieceType pt = CUSTOM_PIECES; pt < CUSTOM_PIECES_END; ++pt)
+            if (!(v->pieceTypes & pt) && entries.find(piece_name(pt)) == entries.end())
+                return pt;
+        return NO_PIECE_TYPE;
+    }
+
 } // namespace
 
 template <bool DoCheck>
@@ -261,8 +322,27 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         const auto& keyValue = config.find(name);
         if (keyValue != config.end() && !keyValue->second.empty())
         {
-            if (isalpha(keyValue->second.at(0)))
-                v->add_piece(pt, keyValue->second.at(0));
+            std::stringstream pieceDefinitions(keyValue->second);
+            std::string token, symbol, betza;
+            pieceDefinitions >> token;
+            bool validDefinition = split_piece_definition(token, symbol, betza);
+            PieceType basePt = pt;
+            bool baseUsesCurrentSlot = true;
+            if (validDefinition && valid_piece_symbol(symbol))
+            {
+                std::string reference;
+                if (piece_reference(betza, reference))
+                {
+                    basePt = piece_type_by_name(reference);
+                    baseUsesCurrentSlot = false;
+                    if (basePt != NO_PIECE_TYPE)
+                        v->add_piece(basePt, symbol);
+                    else if (DoCheck)
+                        std::cerr << name << " - Invalid piece reference: " << betza << std::endl;
+                }
+                else
+                    v->add_piece(pt, symbol);
+            }
             else
             {
                 if (DoCheck && keyValue->second.at(0) != '-')
@@ -272,14 +352,52 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             // betza
             if (is_custom(pt))
             {
-                if (keyValue->second.size() > 1)
+                std::string reference;
+                if (basePt != NO_PIECE_TYPE && (!betza.empty() || !baseUsesCurrentSlot))
                 {
-                    v->customPiece[pt - CUSTOM_PIECES] = keyValue->second.substr(2);
-                    // Is there an en passant flag in the Betza notation?
-                    if (v->customPiece[pt - CUSTOM_PIECES].find('e') != std::string::npos)
+                    if (baseUsesCurrentSlot)
+                        set_custom_piece_betza(v, pt, betza);
+
+                    if (pieceDefinitions >> token)
                     {
-                        v->enPassantTypes[WHITE] |= piece_set(pt);
-                        v->enPassantTypes[BLACK] |= piece_set(pt);
+                        std::string promotedSymbol, promotedBetza;
+                        if (   split_piece_definition(token, promotedSymbol, promotedBetza)
+                            && !promotedSymbol.empty()
+                            && !promotedBetza.empty())
+                        {
+                            bool shogiStylePromotion = promotedSymbol[0] == '+';
+                            if (shogiStylePromotion)
+                                promotedSymbol.erase(0, 1);
+
+                            if (   valid_piece_symbol(promotedSymbol)
+                                && (!shogiStylePromotion || Variant::white_symbol(promotedSymbol) == Variant::white_symbol(symbol)))
+                            {
+                                PieceType promotedPt = NO_PIECE_TYPE;
+                                if (piece_reference(promotedBetza, reference))
+                                    promotedPt = piece_type_by_name(reference);
+                                else
+                                    promotedPt = next_free_custom_piece(v, config, baseUsesCurrentSlot ? NO_PIECE_TYPE : pt);
+
+                                if (promotedPt != NO_PIECE_TYPE)
+                                {
+                                    if (!piece_reference(promotedBetza, reference))
+                                    {
+                                        v->add_piece(promotedPt, shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol, promotedBetza);
+                                        set_custom_piece_betza(v, promotedPt, promotedBetza);
+                                    }
+                                    v->promotedPieceType[basePt] = promotedPt;
+                                }
+                                else if (DoCheck)
+                                    std::cerr << name << " - No free custom piece slot for promoted piece" << std::endl;
+                            }
+                            else if (DoCheck)
+                                std::cerr << name << " - Invalid promoted piece symbol: " << token << std::endl;
+                        }
+                        else if (DoCheck)
+                            std::cerr << name << " - Invalid promoted piece definition: " << token << std::endl;
+
+                        if (DoCheck && pieceDefinitions >> token)
+                            std::cerr << name << " - Multiple inline promotions are not supported: " << token << std::endl;
                     }
                 }
                 else if (DoCheck)
@@ -287,10 +405,10 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             }
             else if (pt == KING)
             {
-                if (keyValue->second.size() > 1)
+                if (!betza.empty())
                 {
                     // custom royal piece
-                    v->customPiece[CUSTOM_PIECES_ROYAL - CUSTOM_PIECES] = keyValue->second.substr(2);
+                    v->customPiece[CUSTOM_PIECES_ROYAL - CUSTOM_PIECES] = betza;
                     v->kingType = CUSTOM_PIECES_ROYAL;
                 }
                 else
@@ -403,14 +521,19 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     const auto& it_prom_pt = config.find("promotedPieceType");
     if (it_prom_pt != config.end())
     {
-        char token;
-        size_t idx = 0, idx2 = 0;
+        std::string token;
+        PieceType pt = NO_PIECE_TYPE, promotedPt = NO_PIECE_TYPE;
         std::stringstream ss(it_prom_pt->second);
-        while (   ss >> token && (idx = v->pieceToChar.find(toupper(token))) != std::string::npos && ss >> token
-               && ss >> token && (idx2 = (token == '-' ? 0 : v->pieceToChar.find(toupper(token)))) != std::string::npos)
-            v->promotedPieceType[idx] = PieceType(idx2);
-        if (DoCheck && (idx == std::string::npos || idx2 == std::string::npos))
-            std::cerr << "promotedPieceType - Invalid piece type: " << token << std::endl;
+        while (ss >> token)
+        {
+            std::string symbol, promotedSymbol;
+            if (   split_piece_definition(token, symbol, promotedSymbol)
+                && (pt = piece_type_by_symbol(v, symbol)) != NO_PIECE_TYPE
+                && (promotedSymbol == "-" || (promotedPt = piece_type_by_symbol(v, promotedSymbol)) != NO_PIECE_TYPE))
+                v->promotedPieceType[pt] = promotedSymbol == "-" ? NO_PIECE_TYPE : promotedPt;
+            else if (DoCheck)
+                std::cerr << "promotedPieceType - Invalid piece type: " << token << std::endl;
+        }
     }
     parse_attribute("piecePromotionOnCapture", v->piecePromotionOnCapture);
     parse_attribute("mandatoryPawnPromotion", v->mandatoryPawnPromotion);
@@ -565,8 +688,23 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         {
             PieceType pt = pop_lsb(ps);
             for (Color c : {WHITE, BLACK})
-                if (std::count(v->pieceToChar.begin(), v->pieceToChar.end(), v->pieceToChar[make_piece(c, pt)]) != 1)
-                    std::cerr << piece_name(pt) << " - Ambiguous piece character: " << v->pieceToChar[make_piece(c, pt)] << std::endl;
+            {
+                const std::string& symbol = v->pieceToSymbol[make_piece(c, pt)];
+                if (symbol.empty())
+                    std::cerr << piece_name(pt) << " - Missing piece symbol" << std::endl;
+                else
+                {
+                    int symbolCount = 0;
+                    for (PieceSet ps2 = v->pieceTypes; ps2;)
+                    {
+                        PieceType pt2 = pop_lsb(ps2);
+                        if (v->pieceToSymbol[make_piece(c, pt2)] == symbol)
+                            ++symbolCount;
+                    }
+                    if (symbolCount != 1)
+                        std::cerr << piece_name(pt) << " - Ambiguous piece symbol: " << symbol << std::endl;
+                }
+            }
         }
 
         v->conclude(); // In preparation for the consistency checks below
@@ -587,6 +725,8 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             for (PieceSet ps = v->pieceTypes; ps;)
             {
                 PieceType pt = pop_lsb(ps);
+                if (v->pieceToChar[pt] == ' ')
+                    continue;
                 char ptl = tolower(v->pieceToChar[pt]);
                 if (v->pieceToCharTable.find(ptl) == std::string::npos && fenBoard.find(ptl) != std::string::npos)
                     std::cerr << "pieceToCharTable - Missing piece type: " << ptl << std::endl;
