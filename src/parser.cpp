@@ -188,6 +188,47 @@ namespace {
         target |= pt;
     }
 
+    bool valid_piece_symbol(const std::string& symbol) {
+        return !symbol.empty() && std::all_of(symbol.begin(), symbol.end(), [](unsigned char c) { return isalpha(c); });
+    }
+
+    bool split_piece_definition(const std::string& token, std::string& symbol, std::string& betza) {
+        size_t separator = token.find(':');
+        symbol = separator == std::string::npos ? token : token.substr(0, separator);
+        betza = separator == std::string::npos ? "" : token.substr(separator + 1);
+        return separator == std::string::npos || separator + 1 < token.size();
+    }
+
+    void set_custom_piece_betza(Variant* v, PieceType pt, const std::string& betza) {
+        v->customPiece[pt - CUSTOM_PIECES] = betza;
+        // Is there an en passant flag in the Betza notation?
+        if (betza.find('e') != std::string::npos)
+        {
+            v->enPassantTypes[WHITE] |= piece_set(pt);
+            v->enPassantTypes[BLACK] |= piece_set(pt);
+        }
+    }
+
+    PieceType piece_type_by_symbol(const Variant* v, const std::string& symbol) {
+        std::string whiteSymbol = Variant::white_symbol(symbol);
+        for (PieceSet ps = v->pieceTypes; ps;)
+        {
+            PieceType pt = pop_lsb(ps);
+            if (   v->pieceToSymbol[make_piece(WHITE, pt)] == whiteSymbol
+                || v->pieceToSymbolSynonyms[make_piece(WHITE, pt)] == whiteSymbol)
+                return pt;
+        }
+        return NO_PIECE_TYPE;
+    }
+
+    PieceType next_free_custom_piece(const Variant* v, const Config& config) {
+        const auto& entries = static_cast<const std::map<std::string, std::string>&>(config);
+        for (PieceType pt = CUSTOM_PIECES; pt < CUSTOM_PIECES_END; ++pt)
+            if (!(v->pieceTypes & pt) && entries.find(piece_name(pt)) == entries.end())
+                return pt;
+        return NO_PIECE_TYPE;
+    }
+
 } // namespace
 
 template <bool DoCheck>
@@ -262,9 +303,11 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         const auto& keyValue = config.find(name);
         if (keyValue != config.end() && !keyValue->second.empty())
         {
-            size_t separator = keyValue->second.find(':');
-            std::string symbol = separator == std::string::npos ? keyValue->second : keyValue->second.substr(0, separator);
-            if (!symbol.empty() && std::all_of(symbol.begin(), symbol.end(), [](unsigned char c) { return isalpha(c); }))
+            std::stringstream pieceDefinitions(keyValue->second);
+            std::string token, symbol, betza;
+            pieceDefinitions >> token;
+            bool validDefinition = split_piece_definition(token, symbol, betza);
+            if (validDefinition && valid_piece_symbol(symbol))
                 v->add_piece(pt, symbol);
             else
             {
@@ -275,14 +318,42 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             // betza
             if (is_custom(pt))
             {
-                if (separator != std::string::npos && separator + 1 < keyValue->second.size())
+                if (!betza.empty())
                 {
-                    v->customPiece[pt - CUSTOM_PIECES] = keyValue->second.substr(separator + 1);
-                    // Is there an en passant flag in the Betza notation?
-                    if (v->customPiece[pt - CUSTOM_PIECES].find('e') != std::string::npos)
+                    set_custom_piece_betza(v, pt, betza);
+
+                    if (pieceDefinitions >> token)
                     {
-                        v->enPassantTypes[WHITE] |= piece_set(pt);
-                        v->enPassantTypes[BLACK] |= piece_set(pt);
+                        std::string promotedSymbol, promotedBetza;
+                        if (   split_piece_definition(token, promotedSymbol, promotedBetza)
+                            && !promotedSymbol.empty()
+                            && !promotedBetza.empty())
+                        {
+                            bool shogiStylePromotion = promotedSymbol[0] == '+';
+                            if (shogiStylePromotion)
+                                promotedSymbol.erase(0, 1);
+
+                            if (   valid_piece_symbol(promotedSymbol)
+                                && (!shogiStylePromotion || Variant::white_symbol(promotedSymbol) == Variant::white_symbol(symbol)))
+                            {
+                                PieceType promotedPt = next_free_custom_piece(v, config);
+                                if (promotedPt != NO_PIECE_TYPE)
+                                {
+                                    v->add_piece(promotedPt, shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol, promotedBetza);
+                                    set_custom_piece_betza(v, promotedPt, promotedBetza);
+                                    v->promotedPieceType[pt] = promotedPt;
+                                }
+                                else if (DoCheck)
+                                    std::cerr << name << " - No free custom piece slot for promoted piece" << std::endl;
+                            }
+                            else if (DoCheck)
+                                std::cerr << name << " - Invalid promoted piece symbol: " << token << std::endl;
+                        }
+                        else if (DoCheck)
+                            std::cerr << name << " - Invalid promoted piece definition: " << token << std::endl;
+
+                        if (DoCheck && pieceDefinitions >> token)
+                            std::cerr << name << " - Multiple inline promotions are not supported: " << token << std::endl;
                     }
                 }
                 else if (DoCheck)
@@ -290,10 +361,10 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             }
             else if (pt == KING)
             {
-                if (separator != std::string::npos && separator + 1 < keyValue->second.size())
+                if (!betza.empty())
                 {
                     // custom royal piece
-                    v->customPiece[CUSTOM_PIECES_ROYAL - CUSTOM_PIECES] = keyValue->second.substr(separator + 1);
+                    v->customPiece[CUSTOM_PIECES_ROYAL - CUSTOM_PIECES] = betza;
                     v->kingType = CUSTOM_PIECES_ROYAL;
                 }
                 else
@@ -406,14 +477,19 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     const auto& it_prom_pt = config.find("promotedPieceType");
     if (it_prom_pt != config.end())
     {
-        char token;
-        size_t idx = 0, idx2 = 0;
+        std::string token;
+        PieceType pt = NO_PIECE_TYPE, promotedPt = NO_PIECE_TYPE;
         std::stringstream ss(it_prom_pt->second);
-        while (   ss >> token && (idx = v->pieceToChar.find(toupper(token))) != std::string::npos && ss >> token
-               && ss >> token && (idx2 = (token == '-' ? 0 : v->pieceToChar.find(toupper(token)))) != std::string::npos)
-            v->promotedPieceType[idx] = PieceType(idx2);
-        if (DoCheck && (idx == std::string::npos || idx2 == std::string::npos))
-            std::cerr << "promotedPieceType - Invalid piece type: " << token << std::endl;
+        while (ss >> token)
+        {
+            std::string symbol, promotedSymbol;
+            if (   split_piece_definition(token, symbol, promotedSymbol)
+                && (pt = piece_type_by_symbol(v, symbol)) != NO_PIECE_TYPE
+                && (promotedSymbol == "-" || (promotedPt = piece_type_by_symbol(v, promotedSymbol)) != NO_PIECE_TYPE))
+                v->promotedPieceType[pt] = promotedSymbol == "-" ? NO_PIECE_TYPE : promotedPt;
+            else if (DoCheck)
+                std::cerr << "promotedPieceType - Invalid piece type: " << token << std::endl;
+        }
     }
     parse_attribute("piecePromotionOnCapture", v->piecePromotionOnCapture);
     parse_attribute("mandatoryPawnPromotion", v->mandatoryPawnPromotion);
