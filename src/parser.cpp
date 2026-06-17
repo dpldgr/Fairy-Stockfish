@@ -199,6 +199,22 @@ namespace {
         return separator == std::string::npos || separator + 1 < token.size();
     }
 
+    bool piece_reference(const std::string& value, std::string& name) {
+        if (value.size() >= 3 && value.front() == '<' && value.back() == '>')
+        {
+            name = value.substr(1, value.size() - 2);
+            return true;
+        }
+        return false;
+    }
+
+    PieceType piece_type_by_name(const std::string& name) {
+        for (PieceType pt = PAWN; pt <= KING; ++pt)
+            if (piece_name(pt) == name)
+                return pt;
+        return NO_PIECE_TYPE;
+    }
+
     void set_custom_piece_betza(Variant* v, PieceType pt, const std::string& betza) {
         v->customPiece[pt - CUSTOM_PIECES] = betza;
         // Is there an en passant flag in the Betza notation?
@@ -221,7 +237,10 @@ namespace {
         return NO_PIECE_TYPE;
     }
 
-    PieceType next_free_custom_piece(const Variant* v, const Config& config) {
+    PieceType next_free_custom_piece(const Variant* v, const Config& config, PieceType preferred = NO_PIECE_TYPE) {
+        if (is_custom(preferred) && !(v->pieceTypes & preferred))
+            return preferred;
+
         const auto& entries = static_cast<const std::map<std::string, std::string>&>(config);
         for (PieceType pt = CUSTOM_PIECES; pt < CUSTOM_PIECES_END; ++pt)
             if (!(v->pieceTypes & pt) && entries.find(piece_name(pt)) == entries.end())
@@ -307,8 +326,23 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             std::string token, symbol, betza;
             pieceDefinitions >> token;
             bool validDefinition = split_piece_definition(token, symbol, betza);
+            PieceType basePt = pt;
+            bool baseUsesCurrentSlot = true;
             if (validDefinition && valid_piece_symbol(symbol))
-                v->add_piece(pt, symbol);
+            {
+                std::string reference;
+                if (piece_reference(betza, reference))
+                {
+                    basePt = piece_type_by_name(reference);
+                    baseUsesCurrentSlot = false;
+                    if (basePt != NO_PIECE_TYPE)
+                        v->add_piece(basePt, symbol);
+                    else if (DoCheck)
+                        std::cerr << name << " - Invalid piece reference: " << betza << std::endl;
+                }
+                else
+                    v->add_piece(pt, symbol);
+            }
             else
             {
                 if (DoCheck && keyValue->second.at(0) != '-')
@@ -318,9 +352,11 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             // betza
             if (is_custom(pt))
             {
-                if (!betza.empty())
+                std::string reference;
+                if (basePt != NO_PIECE_TYPE && (!betza.empty() || !baseUsesCurrentSlot))
                 {
-                    set_custom_piece_betza(v, pt, betza);
+                    if (baseUsesCurrentSlot)
+                        set_custom_piece_betza(v, pt, betza);
 
                     if (pieceDefinitions >> token)
                     {
@@ -336,12 +372,20 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
                             if (   valid_piece_symbol(promotedSymbol)
                                 && (!shogiStylePromotion || Variant::white_symbol(promotedSymbol) == Variant::white_symbol(symbol)))
                             {
-                                PieceType promotedPt = next_free_custom_piece(v, config);
+                                PieceType promotedPt = NO_PIECE_TYPE;
+                                if (piece_reference(promotedBetza, reference))
+                                    promotedPt = piece_type_by_name(reference);
+                                else
+                                    promotedPt = next_free_custom_piece(v, config, baseUsesCurrentSlot ? NO_PIECE_TYPE : pt);
+
                                 if (promotedPt != NO_PIECE_TYPE)
                                 {
-                                    v->add_piece(promotedPt, shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol, promotedBetza);
-                                    set_custom_piece_betza(v, promotedPt, promotedBetza);
-                                    v->promotedPieceType[pt] = promotedPt;
+                                    if (!piece_reference(promotedBetza, reference))
+                                    {
+                                        v->add_piece(promotedPt, shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol, promotedBetza);
+                                        set_custom_piece_betza(v, promotedPt, promotedBetza);
+                                    }
+                                    v->promotedPieceType[basePt] = promotedPt;
                                 }
                                 else if (DoCheck)
                                     std::cerr << name << " - No free custom piece slot for promoted piece" << std::endl;
