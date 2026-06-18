@@ -27,6 +27,8 @@ CXX=emcc
 CXXFLAGS += --bind -DNNUE_EMBEDDING_OFF -DNO_THREADS -std=c++17 -Wall
 
 largeboards = yes
+board_files = 8
+board_ranks = 8
 all = yes
 optimize = yes
 debug = no
@@ -46,7 +48,49 @@ endif
 # Compile version with support for large board variants
 # Use precomputed magics by default
 ifneq ($(largeboards),no)
-	CXXFLAGS += -DLARGEBOARDS -DPRECOMPUTED_MAGICS -s TOTAL_MEMORY=32MB -s ALLOW_MEMORY_GROWTH=1 -s WASM_MEM_MAX=1GB
+	override board_files = 12
+	override board_ranks = 10
+endif
+
+requested_board_files := $(board_files)
+requested_board_ranks := $(board_ranks)
+requested_board_size := $(requested_board_files)x$(requested_board_ranks)
+
+# Map requested board sizes to supported capacity presets for magic tables.
+# Each requested board is embedded in the preset with matching file count.
+ifneq ($(filter 8x9 8x10 8x11 8x12 8x13 8x14 8x15 8x16,$(requested_board_size)),)
+	override board_files = 8
+	override board_ranks = 16
+else ifneq ($(filter 9x8 9x9 9x10 9x11 9x12 9x13 9x14,$(requested_board_size)),)
+	override board_files = 9
+	override board_ranks = 14
+else ifneq ($(filter 10x8 10x9 10x10 10x11 10x12,$(requested_board_size)),)
+	override board_files = 10
+	override board_ranks = 12
+else ifneq ($(filter 11x8 11x9 11x10 11x11,$(requested_board_size)),)
+	override board_files = 11
+	override board_ranks = 11
+else ifneq ($(filter 12x8 12x9 12x10,$(requested_board_size)),)
+	override board_files = 12
+	override board_ranks = 10
+else ifneq ($(filter 13x8 13x9,$(requested_board_size)),)
+	override board_files = 13
+	override board_ranks = 9
+else ifneq ($(filter 14x8 14x9,$(requested_board_size)),)
+	override board_files = 14
+	override board_ranks = 9
+else ifneq ($(filter 15x8,$(requested_board_size)),)
+	override board_files = 15
+	override board_ranks = 8
+else ifneq ($(filter 16x8,$(requested_board_size)),)
+	override board_files = 16
+	override board_ranks = 8
+endif
+
+CXXFLAGS += -DBOARD_FILES=$(board_files) -DBOARD_RANKS=$(board_ranks)
+
+ifneq ($(filter-out 8x8,$(board_files)x$(board_ranks)),)
+	CXXFLAGS += -DPRECOMPUTED_MAGICS -s TOTAL_MEMORY=32MB -s ALLOW_MEMORY_GROWTH=1 -s WASM_MEM_MAX=1GB
 endif
 
 # Enable all variants, even heavyweight ones like duck and amazons
