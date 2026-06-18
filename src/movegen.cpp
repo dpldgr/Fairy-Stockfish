@@ -378,6 +378,7 @@ namespace {
         uint64_t lionMask = pos.lion_move_mask(Us, Pt) & LionValidPathMask[from];
         if (lionMask && Type != QUIET_CHECKS)
         {
+            Bitboard board = pos.board_bb();
             uint32_t localFriendly = uint32_t(pext(pos.pieces(Us) - from, LionLocalMask[from]));
             while (lionMask)
             {
@@ -387,6 +388,9 @@ namespace {
 
                 Square via = LionVia[from][path];
                 Square to = LionTo[from][path];
+                if (!(board & via) || !(board & to))
+                    continue;
+
                 Bitboard pathSquares = square_bb(via) | to;
                 PieceSet prohibited = pos.prohibited_capture_types(Us, Pt);
                 if (   prohibited
