@@ -17,6 +17,7 @@
 */
 
 #include <cassert>
+#include <cstdint>
 
 #include "movegen.h"
 #include "position.h"
@@ -24,6 +25,12 @@
 namespace Stockfish {
 
 namespace {
+
+  inline int pop_lsb64(uint64_t& b) {
+    int idx = __builtin_ctzll(b);
+    b &= b - 1;
+    return idx;
+  }
 
   template<MoveType T>
   ExtMove* make_move_and_gating(const Position& pos, ExtMove* moveList, Color us, Square from, Square to, PieceType pt = NO_PIECE_TYPE) {
@@ -149,7 +156,7 @@ namespace {
 
     const Bitboard pawns      = pos.pieces(Us, PAWN);
     const Bitboard movable    = pos.board_bb(Us, PAWN) & ~pos.pieces();
-    const Bitboard capturable = pos.board_bb(Us, PAWN) &  pos.pieces(Them);
+    const Bitboard capturable = pos.board_bb(Us, PAWN) &  pos.pieces(Them) & ~pos.prohibited_capture_targets(Us, PAWN);
 
     target = Type == EVASIONS ? target : AllSquares;
 
@@ -272,7 +279,8 @@ namespace {
             if (Type == EVASIONS && (target & (epSquare + Up)) && !pos.non_sliding_riders())
                 return moveList;
 
-            Bitboard b = pawns & pawn_attacks_bb(Them, epSquare);
+            Bitboard b = (pos.prohibited_capture_types(Us, PAWN) & type_of(pos.piece_on(pos.capture_square(epSquare))))
+                       ? Bitboard(0) : pawns & pawn_attacks_bb(Them, epSquare);
 
             // En passant square is already disabled for non-fairy variants if there is no attacker
             assert(b || !pos.fast_attacks());
@@ -297,13 +305,13 @@ namespace {
     {
         Square from = pop_lsb(bb);
 
-        Bitboard attacks = pos.attacks_from(Us, Pt, from);
+        Bitboard attacks = pos.attacks_from(Us, Pt, from) & ~pos.prohibited_capture_targets(Us, Pt);
         Bitboard quiets = pos.moves_from(Us, Pt, from);
         Bitboard b = (  (attacks & pos.pieces())
                        | (quiets & ~pos.pieces()));
         Bitboard b1 = b & target;
         Bitboard promotion_zone = pos.promotion_zone(Us);
-        PieceType promPt = pos.promoted_piece_type(Pt);
+        PieceType promPt = pos.is_promoted(from) ? NO_PIECE_TYPE : pos.promoted_piece_type(Pt);
         Bitboard b2 = promPt && (!pos.promotion_limit(promPt) || pos.promotion_limit(promPt) > pos.count(Us, promPt)) ? b1 : Bitboard(0);
         Bitboard b3 = pos.piece_demotion() && pos.is_promoted(from) ? b1 : Bitboard(0);
         Bitboard pawnPromotions = (pos.promotion_pawn_types(Us) & Pt) ? (b & (Type == EVASIONS ? target : ~pos.pieces(Us)) & promotion_zone) : Bitboard(0);
@@ -336,7 +344,7 @@ namespace {
         {
             b1 &= pos.check_squares(Pt);
             if (b2)
-                b2 &= pos.check_squares(pos.promoted_piece_type(Pt));
+                b2 &= pos.check_squares(promPt);
             if (b3)
                 b3 &= pos.check_squares(type_of(pos.unpromoted_piece_on(from)));
         }
@@ -366,6 +374,39 @@ namespace {
         if (Type == CAPTURES || Type == EVASIONS || Type == NON_EVASIONS)
             while (epSquares)
                 moveList = make_move_and_gating<EN_PASSANT>(pos, moveList, Us, from, pop_lsb(epSquares));
+
+        uint64_t lionMask = pos.lion_move_mask(Us, Pt) & LionValidPathMask[from];
+        if (lionMask && Type != QUIET_CHECKS)
+        {
+            Bitboard board = pos.board_bb();
+            uint32_t localFriendly = uint32_t(pext(pos.pieces(Us) - from, LionLocalMask[from]));
+            while (lionMask)
+            {
+                int path = pop_lsb64(lionMask);
+                if (localFriendly & LionPathLocalMask[from][path])
+                    continue;
+
+                Square via = LionVia[from][path];
+                Square to = LionTo[from][path];
+                if (!(board & via) || !(board & to))
+                    continue;
+
+                Bitboard pathSquares = square_bb(via) | to;
+                PieceSet prohibited = pos.prohibited_capture_types(Us, Pt);
+                if (   prohibited
+                    && (  (!pos.empty(via) && color_of(pos.piece_on(via)) == ~Us && (prohibited & type_of(pos.piece_on(via))))
+                       || (to != from && !pos.empty(to) && color_of(pos.piece_on(to)) == ~Us && (prohibited & type_of(pos.piece_on(to))))))
+                    continue;
+
+                bool isCapture = bool(pathSquares & pos.pieces(~Us));
+                bool include = Type == NON_EVASIONS
+                            || (Type == CAPTURES && isCapture)
+                            || (Type == QUIETS && !isCapture)
+                            || (Type == EVASIONS && ((target & to) || (pathSquares & pos.checkers())));
+                if (include)
+                    *moveList++ = make_lion(from, path, to);
+            }
+        }
     }
 
     return moveList;
@@ -455,7 +496,7 @@ namespace {
     // King moves
     if (pos.count<KING>(Us) && (!Checks || pos.blockers_for_king(~Us) & ksq))
     {
-        Bitboard b = (  (pos.attacks_from(Us, KING, ksq) & pos.pieces())
+        Bitboard b = (  ((pos.attacks_from(Us, KING, ksq) & ~pos.prohibited_capture_targets(Us, KING)) & pos.pieces())
                       | (pos.moves_from(Us, KING, ksq) & ~pos.pieces())) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
         while (b)
             moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, ksq, pop_lsb(b));
