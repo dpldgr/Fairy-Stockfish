@@ -1841,6 +1841,64 @@ namespace {
 
 } // namespace
 
+namespace {
+
+constexpr Direction LionDirectionsForVariant[8] = {
+  NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST
+};
+
+constexpr int abs_int(int x) { return x < 0 ? -x : x; }
+
+constexpr int square_distance_by_coords(int f1, int r1, int f2, int r2) {
+  return std::max(abs_int(f1 - f2), abs_int(r1 - r2));
+}
+
+uint64_t flip_lion_path_mask(uint64_t mask) {
+  uint64_t flipped = 0;
+  for (int path = 0; path < 64; ++path)
+      if (mask & (1ULL << path))
+      {
+          int first = path / 8;
+          int second = path % 8;
+          flipped |= 1ULL << ((((first + 4) & 7) * 8) + ((second + 4) & 7));
+      }
+  return flipped;
+}
+
+bool variant_lion_path_is_ok(Square from, int path, File maxFile, Rank maxRank) {
+  int fromFile = file_of(from);
+  int fromRank = rank_of(from);
+
+  if (fromFile > maxFile || fromRank > maxRank)
+      return false;
+
+  int first = path / 8;
+  int second = path % 8;
+  int via = int(from) + int(LionDirectionsForVariant[first]);
+  if (!is_ok(Square(via)))
+      return false;
+
+  int viaFile = via % FILE_NB;
+  int viaRank = via / FILE_NB;
+  if (   viaFile > maxFile
+      || viaRank > maxRank
+      || square_distance_by_coords(fromFile, fromRank, viaFile, viaRank) != 1)
+      return false;
+
+  int to = via + int(LionDirectionsForVariant[second]);
+  if (!is_ok(Square(to)))
+      return false;
+
+  int toFile = to % FILE_NB;
+  int toRank = to / FILE_NB;
+  return    toFile <= maxFile
+         && toRank <= maxRank
+         && square_distance_by_coords(viaFile, viaRank, toFile, toRank) == 1
+         && square_distance_by_coords(fromFile, fromRank, toFile, toRank) <= 2;
+}
+
+} // namespace
+
 
 /// VariantMap::init() is called at startup to initialize all predefined variants
 
@@ -1984,6 +2042,26 @@ Variant* Variant::conclude() {
     if (!doubleStepRegion[WHITE] && !doubleStepRegion[BLACK])
         doubleStep = false;
 
+    for (Color c : { WHITE, BLACK })
+        for (PieceType pt = NO_PIECE_TYPE; pt < PIECE_TYPE_NB; ++pt)
+            for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+                lionEffectivePathMask[c][pt][from] = 0;
+
+    for (PieceType pt = NO_PIECE_TYPE; pt < PIECE_TYPE_NB; ++pt)
+    {
+        uint64_t lionMaskByColor[COLOR_NB] = {
+          lionMoveMask[pt],
+          flip_lion_path_mask(lionMoveMask[pt])
+        };
+
+        for (Color c : { WHITE, BLACK })
+            for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+                for (int path = 0; path < 64; ++path)
+                    if (   (lionMaskByColor[c] & (1ULL << path))
+                        && variant_lion_path_is_ok(from, path, maxFile, maxRank))
+                        lionEffectivePathMask[c][pt][from] |= 1ULL << path;
+    }
+
     // Determine optimizations
     bool restrictedMobility = false;
     for (PieceSet ps = pieceTypes; !restrictedMobility && ps;)
@@ -2055,7 +2133,7 @@ Variant* Variant::conclude() {
     // therefore skip proper initialization in case of invalid board size.
     int nnueKingSquare = 0;
     if (nnueKing && nnueSquares <= SQUARE_NB)
-        for (Square s = SQ_A1; s < nnueSquares; ++s)
+        for (Square s = SQ_MIN; s < nnueSquares; ++s)
         {
             Square bitboardSquare = Square(s + s / (maxFile + 1) * (FILE_MAX - maxFile));
             if (   !mobilityRegion[WHITE][nnueKing] || !mobilityRegion[BLACK][nnueKing]

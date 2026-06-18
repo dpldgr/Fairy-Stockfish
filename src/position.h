@@ -70,6 +70,10 @@ struct StateInfo {
   Bitboard   checkSquares[PIECE_TYPE_NB];
   Piece      capturedPiece;
   Square     captureSquare; // when != to_sq, e.g., en passant
+  Piece      lionCapturedPiece;
+  Square     lionCaptureSquare;
+  Piece      lionUnpromotedCapturedPiece;
+  bool       lionCapturedPromoted;
   Piece      promotionPawn;
   Bitboard   nonSlidingRiders;
   Bitboard   flippedPieces;
@@ -128,6 +132,8 @@ public:
   PieceSet piece_types() const;
   const std::string& piece_to_char() const;
   const std::string& piece_to_char_synonyms() const;
+  const std::string& piece_symbol(Piece pc) const;
+  const std::string& piece_symbol_synonym(Piece pc) const;
   Bitboard promotion_zone(Color c) const;
   Square promotion_square(Color c, Square s) const;
   PieceType main_promotion_pawn_type(Color c) const;
@@ -142,6 +148,8 @@ public:
   bool blast_on_capture() const;
   PieceSet blast_immune_types() const;
   PieceSet mutually_immune_types() const;
+  PieceSet prohibited_capture_types(Color c, PieceType pt) const;
+  Bitboard prohibited_capture_targets(Color c, PieceType pt) const;
   EndgameEval endgame_eval() const;
   Bitboard double_step_region(Color c) const;
   Bitboard triple_step_region(Color c) const;
@@ -284,8 +292,11 @@ public:
   bool pseudo_legal(const Move m) const;
   bool virtual_drop(Move m) const;
   bool capture(Move m) const;
+  bool prohibited_capture(Move m) const;
   bool capture_or_promotion(Move m) const;
   Square capture_square(Square to) const;
+  uint64_t lion_move_mask(Color c, PieceType pt, Square from) const;
+  bool has_lion_move(Color c, PieceType pt) const;
   bool gives_check(Move m) const;
   Piece moved_piece(Move m) const;
   Piece captured_piece() const;
@@ -447,6 +458,16 @@ inline const std::string& Position::piece_to_char_synonyms() const {
   return var->pieceToCharSynonyms;
 }
 
+inline const std::string& Position::piece_symbol(Piece pc) const {
+  assert(var != nullptr);
+  return var->pieceToSymbol[pc];
+}
+
+inline const std::string& Position::piece_symbol_synonym(Piece pc) const {
+  assert(var != nullptr);
+  return var->pieceToSymbolSynonyms[pc];
+}
+
 inline Bitboard Position::promotion_zone(Color c) const {
   assert(var != nullptr);
   return var->promotionRegion[c];
@@ -516,6 +537,18 @@ inline PieceSet Position::blast_immune_types() const {
 inline PieceSet Position::mutually_immune_types() const {
   assert(var != nullptr);
   return var->mutuallyImmuneTypes;
+}
+
+inline PieceSet Position::prohibited_capture_types(Color c, PieceType pt) const {
+  assert(var != nullptr);
+  return var->prohibitedCaptures[c][pt];
+}
+
+inline Bitboard Position::prohibited_capture_targets(Color c, PieceType pt) const {
+  Bitboard targets = 0;
+  for (PieceSet ps = prohibited_capture_types(c, pt); ps;)
+      targets |= pieces(~c, pop_lsb(ps));
+  return targets;
 }
 
 inline EndgameEval Position::endgame_eval() const {
@@ -1436,13 +1469,43 @@ inline bool Position::is_chess960() const {
 
 inline bool Position::capture_or_promotion(Move m) const {
   assert(is_ok(m));
-  return type_of(m) == PROMOTION || type_of(m) == EN_PASSANT || (type_of(m) != CASTLING && !empty(to_sq(m)));
+  return type_of(m) == PROMOTION || type_of(m) == EN_PASSANT || (type_of(m) == LION && capture(m)) || (type_of(m) != CASTLING && !empty(to_sq(m)));
 }
 
 inline bool Position::capture(Move m) const {
   assert(is_ok(m));
+  if (type_of(m) == LION)
+  {
+      Square via = LionVia[from_sq(m)][lion_path_index(m)];
+      return (!empty(via) && color_of(piece_on(via)) != sideToMove)
+          || (!empty(to_sq(m)) && to_sq(m) != from_sq(m));
+  }
   // Castling is encoded as "king captures rook"
   return (!empty(to_sq(m)) && type_of(m) != CASTLING && from_sq(m) != to_sq(m)) || type_of(m) == EN_PASSANT;
+}
+
+inline bool Position::prohibited_capture(Move m) const {
+  assert(is_ok(m));
+  if (!capture(m))
+      return false;
+
+  Color us = sideToMove;
+  PieceSet prohibited = prohibited_capture_types(us, type_of(moved_piece(m)));
+  if (!prohibited)
+      return false;
+
+  auto prohibited_piece_on = [&](Square s) {
+      return !empty(s) && color_of(piece_on(s)) == ~us && (prohibited & type_of(piece_on(s)));
+  };
+
+  if (type_of(m) == LION)
+  {
+      Square via = LionVia[from_sq(m)][lion_path_index(m)];
+      return prohibited_piece_on(via) || (to_sq(m) != from_sq(m) && prohibited_piece_on(to_sq(m)));
+  }
+
+  Square capsq = type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m);
+  return prohibited_piece_on(capsq);
 }
 
 inline Square Position::capture_square(Square to) const {
@@ -1460,6 +1523,17 @@ inline Square Position::capture_square(Square to) const {
       Bitboard epCandidates = pieces(~sideToMove) & forward_file_bb(~sideToMove, to);
       return sideToMove == WHITE ? msb(epCandidates) : lsb(epCandidates);
   }
+}
+
+inline uint64_t Position::lion_move_mask(Color c, PieceType pt, Square from) const {
+  assert(var != nullptr);
+  return var->lionEffectivePathMask[c][pt][from];
+}
+
+inline bool Position::has_lion_move(Color c, PieceType pt) const {
+  assert(var != nullptr);
+  (void)c;
+  return var->lionMoveMask[pt] != 0;
 }
 
 inline bool Position::virtual_drop(Move m) const {
@@ -1491,7 +1565,7 @@ inline const std::string Position::piece_to_partner() const {
   Piece piece = st->capturedpromoted ?
       (st->unpromotedCapturedPiece ? st->unpromotedCapturedPiece : make_piece(color, main_promotion_pawn_type(color))) :
       st->capturedPiece;
-  return std::string(1, piece_to_char()[piece]);
+  return piece_symbol(piece);
 }
 
 inline Thread* Position::this_thread() const {

@@ -496,9 +496,9 @@ string UCI::dropped_piece(const Position& pos, Move m) {
   assert(type_of(m) == DROP);
   if (dropped_piece_type(m) == pos.promoted_piece_type(in_hand_piece_type(m)))
       // Dropping as promoted piece
-      return std::string{'+', pos.piece_to_char()[in_hand_piece_type(m)]};
+      return "+" + pos.piece_symbol(make_piece(BLACK, in_hand_piece_type(m)));
   else
-      return std::string{pos.piece_to_char()[dropped_piece_type(m)]};
+      return pos.piece_symbol(make_piece(BLACK, dropped_piece_type(m)));
 }
 
 
@@ -531,22 +531,23 @@ string UCI::move(const Position& pos, Move m) {
           to = to_sq(m);
   }
 
-  string move = (type_of(m) == DROP ? UCI::dropped_piece(pos, m) + (CurrentProtocol == USI ? '*' : '@')
-                                    : UCI::square(pos, from)) + UCI::square(pos, to);
+  string move = type_of(m) == DROP ? UCI::dropped_piece(pos, m) + (CurrentProtocol == USI ? '*' : '@') + UCI::square(pos, to)
+              : type_of(m) == LION ? UCI::square(pos, from) + UCI::square(pos, LionVia[from][lion_path_index(m)]) + UCI::square(pos, to)
+                                   : UCI::square(pos, from) + UCI::square(pos, to);
 
   // Wall square
   if (pos.walling() && CurrentProtocol == XBOARD)
       move += "," + UCI::square(pos, to) + UCI::square(pos, gating_square(m));
 
   if (type_of(m) == PROMOTION)
-      move += pos.piece_to_char()[make_piece(BLACK, promotion_type(m))];
+      move += pos.piece_symbol(make_piece(BLACK, promotion_type(m)));
   else if (type_of(m) == PIECE_PROMOTION)
       move += '+';
   else if (type_of(m) == PIECE_DEMOTION)
       move += '-';
   else if (is_gating(m))
   {
-      move += pos.piece_to_char()[make_piece(BLACK, gating_type(m))];
+      move += pos.piece_symbol(make_piece(BLACK, gating_type(m)));
       if (gating_square(m) != from)
           move += UCI::square(pos, gating_square(m));
   }
