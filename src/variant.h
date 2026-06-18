@@ -72,6 +72,7 @@ struct Variant {
   PieceSet mutuallyImmuneTypes = NO_PIECE_SET;
   PieceSet petrifyOnCaptureTypes = NO_PIECE_SET;
   bool petrifyBlastPieces = false;
+  PieceSet prohibitedCaptures[COLOR_NB][PIECE_TYPE_NB] = {};
   uint64_t lionMoveMask[PIECE_TYPE_NB] = {};
   bool doubleStep = true;
   Bitboard doubleStepRegion[COLOR_NB] = {Rank2BB, Rank7BB};

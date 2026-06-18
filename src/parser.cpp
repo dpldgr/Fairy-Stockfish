@@ -246,6 +246,20 @@ namespace {
         return true;
     }
 
+    bool parse_piece_symbol_list(const Variant* v, const std::string& value, PieceSet& pieces) {
+        pieces = NO_PIECE_SET;
+        std::stringstream ss(value);
+        std::string symbol;
+        while (std::getline(ss, symbol, ','))
+        {
+            PieceType pt = piece_type_by_symbol(v, symbol);
+            if (pt == NO_PIECE_TYPE)
+                return false;
+            pieces |= pt;
+        }
+        return !value.empty();
+    }
+
     PieceType next_free_custom_piece(const Variant* v, const Config& config, PieceType preferred = NO_PIECE_TYPE) {
         if (is_custom(preferred) && !(v->pieceTypes & preferred))
             return preferred;
@@ -566,6 +580,30 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
                 std::cerr << "lionMovePieces - Invalid piece/mask: " << token << std::endl;
         }
     }
+    auto parse_prohibited_captures = [&](const std::string& key, Color c) {
+        const auto& it = config.find(key);
+        if (it == config.end())
+            return;
+
+        std::string token;
+        std::stringstream ss(it->second);
+        while (ss >> token)
+        {
+            std::string attackerSymbol, victimSymbols;
+            PieceType attacker = NO_PIECE_TYPE;
+            PieceSet victims = NO_PIECE_SET;
+            if (   split_piece_definition(token, attackerSymbol, victimSymbols)
+                && (attacker = piece_type_by_symbol(v, attackerSymbol)) != NO_PIECE_TYPE
+                && parse_piece_symbol_list(v, victimSymbols, victims))
+                v->prohibitedCaptures[c][attacker] |= victims;
+            else if (DoCheck)
+                std::cerr << key << " - Invalid prohibited capture value: " << token << std::endl;
+        }
+    };
+    parse_prohibited_captures("prohibitedCaptures", WHITE);
+    parse_prohibited_captures("prohibitedCaptures", BLACK);
+    parse_prohibited_captures("prohibitedCapturesWhite", WHITE);
+    parse_prohibited_captures("prohibitedCapturesBlack", BLACK);
     parse_attribute("blastOnCapture", v->blastOnCapture);
     parse_attribute("blastImmuneTypes", v->blastImmuneTypes, v->pieceToChar);
     parse_attribute("mutuallyImmuneTypes", v->mutuallyImmuneTypes, v->pieceToChar);

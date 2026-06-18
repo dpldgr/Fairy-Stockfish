@@ -148,6 +148,8 @@ public:
   bool blast_on_capture() const;
   PieceSet blast_immune_types() const;
   PieceSet mutually_immune_types() const;
+  PieceSet prohibited_capture_types(Color c, PieceType pt) const;
+  Bitboard prohibited_capture_targets(Color c, PieceType pt) const;
   EndgameEval endgame_eval() const;
   Bitboard double_step_region(Color c) const;
   Bitboard triple_step_region(Color c) const;
@@ -290,10 +292,11 @@ public:
   bool pseudo_legal(const Move m) const;
   bool virtual_drop(Move m) const;
   bool capture(Move m) const;
+  bool prohibited_capture(Move m) const;
   bool capture_or_promotion(Move m) const;
   Square capture_square(Square to) const;
-  uint64_t lion_move_mask(PieceType pt) const;
-  bool has_lion_move(PieceType pt) const;
+  uint64_t lion_move_mask(Color c, PieceType pt) const;
+  bool has_lion_move(Color c, PieceType pt) const;
   bool gives_check(Move m) const;
   Piece moved_piece(Move m) const;
   Piece captured_piece() const;
@@ -534,6 +537,18 @@ inline PieceSet Position::blast_immune_types() const {
 inline PieceSet Position::mutually_immune_types() const {
   assert(var != nullptr);
   return var->mutuallyImmuneTypes;
+}
+
+inline PieceSet Position::prohibited_capture_types(Color c, PieceType pt) const {
+  assert(var != nullptr);
+  return var->prohibitedCaptures[c][pt];
+}
+
+inline Bitboard Position::prohibited_capture_targets(Color c, PieceType pt) const {
+  Bitboard targets = 0;
+  for (PieceSet ps = prohibited_capture_types(c, pt); ps;)
+      targets |= pieces(~c, pop_lsb(ps));
+  return targets;
 }
 
 inline EndgameEval Position::endgame_eval() const {
@@ -1469,6 +1484,30 @@ inline bool Position::capture(Move m) const {
   return (!empty(to_sq(m)) && type_of(m) != CASTLING && from_sq(m) != to_sq(m)) || type_of(m) == EN_PASSANT;
 }
 
+inline bool Position::prohibited_capture(Move m) const {
+  assert(is_ok(m));
+  if (!capture(m))
+      return false;
+
+  Color us = sideToMove;
+  PieceSet prohibited = prohibited_capture_types(us, type_of(moved_piece(m)));
+  if (!prohibited)
+      return false;
+
+  auto prohibited_piece_on = [&](Square s) {
+      return !empty(s) && color_of(piece_on(s)) == ~us && (prohibited & type_of(piece_on(s)));
+  };
+
+  if (type_of(m) == LION)
+  {
+      Square via = LionVia[from_sq(m)][lion_path_index(m)];
+      return prohibited_piece_on(via) || (to_sq(m) != from_sq(m) && prohibited_piece_on(to_sq(m)));
+  }
+
+  Square capsq = type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m);
+  return prohibited_piece_on(capsq);
+}
+
 inline Square Position::capture_square(Square to) const {
   assert(is_ok(to));
   // The capture square of en passant is either the marked ep piece or the closest piece behind the target square
@@ -1486,13 +1525,25 @@ inline Square Position::capture_square(Square to) const {
   }
 }
 
-inline uint64_t Position::lion_move_mask(PieceType pt) const {
+inline uint64_t Position::lion_move_mask(Color c, PieceType pt) const {
   assert(var != nullptr);
-  return var->lionMoveMask[pt];
+  uint64_t mask = var->lionMoveMask[pt];
+  if (c == WHITE)
+      return mask;
+
+  uint64_t flipped = 0;
+  for (int path = 0; path < 64; ++path)
+      if (mask & (1ULL << path))
+      {
+          int first = path / 8;
+          int second = path % 8;
+          flipped |= 1ULL << ((((first + 4) & 7) * 8) + ((second + 4) & 7));
+      }
+  return flipped;
 }
 
-inline bool Position::has_lion_move(PieceType pt) const {
-  return lion_move_mask(pt) != 0;
+inline bool Position::has_lion_move(Color c, PieceType pt) const {
+  return lion_move_mask(c, pt) != 0;
 }
 
 inline bool Position::virtual_drop(Move m) const {
