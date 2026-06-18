@@ -1141,7 +1141,7 @@ bool Position::legal(Move m) const {
   assert(color_of(moved_piece(m)) == us);
   assert(!count<KING>(us) || piece_on(square<KING>(us)) == make_piece(us, KING));
   assert(board_bb() & to);
-  if (type_of(m) == LION && !(board_bb() & LionVia[from][lion_path_index(m)]))
+  if (type_of(m) == LION && !(lion_move_mask(us, type_of(moved_piece(m)), from) & (1ULL << lion_path_index(m))))
       return false;
 
   // Illegal checks

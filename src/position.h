@@ -295,7 +295,7 @@ public:
   bool prohibited_capture(Move m) const;
   bool capture_or_promotion(Move m) const;
   Square capture_square(Square to) const;
-  uint64_t lion_move_mask(Color c, PieceType pt) const;
+  uint64_t lion_move_mask(Color c, PieceType pt, Square from) const;
   bool has_lion_move(Color c, PieceType pt) const;
   bool gives_check(Move m) const;
   Piece moved_piece(Move m) const;
@@ -1525,25 +1525,15 @@ inline Square Position::capture_square(Square to) const {
   }
 }
 
-inline uint64_t Position::lion_move_mask(Color c, PieceType pt) const {
+inline uint64_t Position::lion_move_mask(Color c, PieceType pt, Square from) const {
   assert(var != nullptr);
-  uint64_t mask = var->lionMoveMask[pt];
-  if (c == WHITE)
-      return mask;
-
-  uint64_t flipped = 0;
-  for (int path = 0; path < 64; ++path)
-      if (mask & (1ULL << path))
-      {
-          int first = path / 8;
-          int second = path % 8;
-          flipped |= 1ULL << ((((first + 4) & 7) * 8) + ((second + 4) & 7));
-      }
-  return flipped;
+  return var->lionEffectivePathMask[c][pt][from];
 }
 
 inline bool Position::has_lion_move(Color c, PieceType pt) const {
-  return lion_move_mask(c, pt) != 0;
+  assert(var != nullptr);
+  (void)c;
+  return var->lionMoveMask[pt] != 0;
 }
 
 inline bool Position::virtual_drop(Move m) const {
