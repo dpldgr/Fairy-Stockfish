@@ -120,6 +120,17 @@ std::ostream& print_board(std::ostream& os, const Position& pos) {
               width = std::max(width, pos.piece_symbol(pos.piece_on(s)).size() + (((pos.captures_to_hand() && !pos.drop_loop()) || pos.two_boards()) && pos.is_promoted(s)));
       }
 
+  size_t width = 3;
+  for (Rank r = pos.max_rank(); r >= RANK_1; --r)
+      for (File f = FILE_A; f <= pos.max_file(); ++f)
+      {
+          Square s = make_square(f, r);
+          if (pos.unpromoted_piece_on(s))
+              width = std::max(width, pos.piece_symbol(pos.unpromoted_piece_on(s)).size() + 1);
+          else if (pos.piece_on(s))
+              width = std::max(width, pos.piece_symbol(pos.piece_on(s)).size() + (((pos.captures_to_hand() && !pos.drop_loop()) || pos.two_boards()) && pos.is_promoted(s)));
+      }
+
   os << "\n ";
   for (File f = FILE_A; f <= pos.max_file(); ++f)
       os << "+" << std::string(width+1, '-');
