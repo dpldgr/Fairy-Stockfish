@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cassert>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -76,6 +77,85 @@ namespace {
         states->emplace_back();
         pos.do_move(m, states->back());
     }
+  }
+
+  string json_piece_code(Piece pc) {
+    std::ostringstream ss;
+    int code = pc == NO_PIECE ? 0 : (int(type_of(pc)) | (color_of(pc) == BLACK ? 0x80 : 0));
+    ss << std::uppercase << std::hex << std::setfill('0') << std::setw(2)
+       << code;
+    return ss.str();
+  }
+
+  Piece last_move_piece(const Position& pos, Move m) {
+    if (m == MOVE_NONE || m == MOVE_NULL)
+        return NO_PIECE;
+
+    Color us = ~pos.side_to_move();
+    if (type_of(m) == DROP)
+        return make_piece(us, dropped_piece_type(m));
+    if (type_of(m) == CASTLING)
+        return make_piece(us, pos.castling_king_piece(us));
+
+    Square to = to_sq(m);
+    if (!pos.empty(to) && color_of(pos.piece_on(to)) == us)
+        return pos.piece_on(to);
+
+    Square from = from_sq(m);
+    if (type_of(m) == LION && !pos.empty(from) && color_of(pos.piece_on(from)) == us)
+        return pos.piece_on(from);
+
+    return NO_PIECE;
+  }
+
+  string position_json(const Position& pos) {
+    string board, stm, castling, ep, nmove, fullmove;
+    std::istringstream fen(pos.fen());
+    fen >> board >> stm >> castling >> ep >> nmove >> fullmove;
+
+    std::ostringstream ss;
+    ss << "{\"pp\":[";
+    bool first = true;
+    for (Rank r = pos.max_rank(); r >= RANK_1; --r)
+        for (File f = FILE_A; f <= pos.max_file(); ++f)
+        {
+            if (!first)
+                ss << ",";
+            first = false;
+            ss << "\"" << json_piece_code(pos.piece_on(make_square(f, r))) << "\"";
+        }
+
+    Move lastMove = pos.state()->move;
+    ss << "],\"stm\":\"" << (pos.side_to_move() == WHITE ? "w" : "b")
+       << "\",\"c\":\"" << castling
+       << "\",\"ep\":\"" << ep
+       << "\",\"nmove\":\"" << nmove
+       << "\",\"ply\":\"" << pos.game_ply()
+       << "\",\"lm\":\"";
+    if (lastMove != MOVE_NONE)
+        ss << json_piece_code(last_move_piece(pos, lastMove)) << UCI::move(pos, lastMove);
+    ss << "\"}";
+    return ss.str();
+  }
+
+  void print_position_debug(Position& pos, istringstream& is) {
+    string subcommand;
+    if (!(is >> subcommand))
+        sync_cout << pos << sync_endl;
+    else if (subcommand == "board")
+    {
+        std::ostringstream ss;
+        print_board(ss, pos);
+        sync_cout << ss.str() << sync_endl;
+    }
+    else if (subcommand == "fen")
+        sync_cout << pos.fen() << sync_endl;
+    else if (subcommand == "sfen")
+        sync_cout << pos.fen(true) << sync_endl;
+    else if (subcommand == "json")
+        sync_cout << position_json(pos) << sync_endl;
+    else
+        sync_cout << pos << sync_endl;
   }
 
   // trace_eval() prints the evaluation for the current position, consistent with the UCI
@@ -387,7 +467,7 @@ void UCI::loop(int argc, char* argv[]) {
       // Do not use these commands during a search!
       else if (token == "flip")     pos.flip();
       else if (token == "bench")    bench(pos, is, states);
-      else if (token == "d")        sync_cout << pos << sync_endl;
+      else if (token == "d")        print_position_debug(pos, is);
       else if (token == "eval")     trace_eval(pos);
       else if (token == "compiler") sync_cout << compiler_info() << sync_endl;
       else if (token == "export_net")
@@ -496,9 +576,9 @@ string UCI::dropped_piece(const Position& pos, Move m) {
   assert(type_of(m) == DROP);
   if (dropped_piece_type(m) == pos.promoted_piece_type(in_hand_piece_type(m)))
       // Dropping as promoted piece
-      return std::string{'+', pos.piece_to_char()[in_hand_piece_type(m)]};
+      return "+" + pos.piece_symbol(make_piece(BLACK, in_hand_piece_type(m)));
   else
-      return std::string{pos.piece_to_char()[dropped_piece_type(m)]};
+      return pos.piece_symbol(make_piece(BLACK, dropped_piece_type(m)));
 }
 
 
@@ -531,22 +611,23 @@ string UCI::move(const Position& pos, Move m) {
           to = to_sq(m);
   }
 
-  string move = (type_of(m) == DROP ? UCI::dropped_piece(pos, m) + (CurrentProtocol == USI ? '*' : '@')
-                                    : UCI::square(pos, from)) + UCI::square(pos, to);
+  string move = type_of(m) == DROP ? UCI::dropped_piece(pos, m) + (CurrentProtocol == USI ? '*' : '@') + UCI::square(pos, to)
+              : type_of(m) == LION ? UCI::square(pos, from) + UCI::square(pos, LionVia[from][lion_path_index(m)]) + UCI::square(pos, to)
+                                   : UCI::square(pos, from) + UCI::square(pos, to);
 
   // Wall square
   if (pos.walling() && CurrentProtocol == XBOARD)
       move += "," + UCI::square(pos, to) + UCI::square(pos, gating_square(m));
 
   if (type_of(m) == PROMOTION)
-      move += pos.piece_to_char()[make_piece(BLACK, promotion_type(m))];
+      move += pos.piece_symbol(make_piece(BLACK, promotion_type(m)));
   else if (type_of(m) == PIECE_PROMOTION)
       move += '+';
   else if (type_of(m) == PIECE_DEMOTION)
       move += '-';
   else if (is_gating(m))
   {
-      move += pos.piece_to_char()[make_piece(BLACK, gating_type(m))];
+      move += pos.piece_symbol(make_piece(BLACK, gating_type(m)));
       if (gating_square(m) != from)
           move += UCI::square(pos, gating_square(m));
   }
