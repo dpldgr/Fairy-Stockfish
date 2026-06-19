@@ -105,9 +105,20 @@ namespace {
 }
 
 
-/// operator<<(Position) returns an ASCII representation of the position
+/// print_board() returns an ASCII representation of the board only
 
-std::ostream& operator<<(std::ostream& os, const Position& pos) {
+std::ostream& print_board(std::ostream& os, const Position& pos) {
+
+  size_t width = 3;
+  for (Rank r = pos.max_rank(); r >= RANK_1; --r)
+      for (File f = FILE_A; f <= pos.max_file(); ++f)
+      {
+          Square s = make_square(f, r);
+          if (pos.unpromoted_piece_on(s))
+              width = std::max(width, pos.piece_symbol(pos.unpromoted_piece_on(s)).size() + 1);
+          else if (pos.piece_on(s))
+              width = std::max(width, pos.piece_symbol(pos.piece_on(s)).size() + (((pos.captures_to_hand() && !pos.drop_loop()) || pos.two_boards()) && pos.is_promoted(s)));
+      }
 
   size_t width = 3;
   for (Rank r = pos.max_rank(); r >= RANK_1; --r)
@@ -122,7 +133,7 @@ std::ostream& operator<<(std::ostream& os, const Position& pos) {
 
   os << "\n ";
   for (File f = FILE_A; f <= pos.max_file(); ++f)
-      os << "+" << std::string(width, '-');
+      os << "+" << std::string(width+1, '-');
   os << "+\n";
 
   for (Rank r = pos.max_rank(); r >= RANK_1; --r)
@@ -164,13 +175,24 @@ std::ostream& operator<<(std::ostream& os, const Position& pos) {
       }
       os << "\n ";
       for (File f = FILE_A; f <= pos.max_file(); ++f)
-          os << "+" << std::string(width, '-');
+          os << "+" << std::string(width+1, '-');
       os << "+\n";
   }
 
   for (File f = FILE_A; f <= pos.max_file(); ++f)
-      os << std::string(width, ' ') << char('a' + f);
+      os << std::string(width+1, ' ') << char('a' + f);
   os << "\n";
+
+  return os;
+}
+
+
+/// operator<<(Position) returns an ASCII representation of the position
+
+std::ostream& operator<<(std::ostream& os, const Position& pos) {
+
+  print_board(os, pos);
+
   os << "\nFen: " << pos.fen() << "\nSfen: " << pos.fen(true) << "\nKey: " << std::hex << std::uppercase
      << std::setfill('0') << std::setw(16) << pos.key()
      << std::setfill(' ') << std::dec << "\nCheckers: ";

@@ -401,6 +401,7 @@ private:
   Bitboard find_drop_region(Direction dir, Square s, Bitboard occupied) const;
 };
 
+extern std::ostream& print_board(std::ostream& os, const Position& pos);
 extern std::ostream& operator<<(std::ostream& os, const Position& pos);
 
 inline const Variant* Position::variant() const {
