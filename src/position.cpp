@@ -65,6 +65,13 @@ namespace {
       return false;
   }
 
+  bool uses_multi_character_piece_symbols(const Variant* v) {
+      for (const std::string& symbol : v->pieceToSymbol)
+          if (symbol.size() > 1)
+              return true;
+      return false;
+  }
+
   size_t read_piece_symbol(std::istream& is, unsigned char first, const Variant* v) {
       std::string symbol(1, char(first));
       std::string consumed;
@@ -108,17 +115,6 @@ namespace {
 /// print_board() returns an ASCII representation of the board only
 
 std::ostream& print_board(std::ostream& os, const Position& pos) {
-
-  size_t width = 3;
-  for (Rank r = pos.max_rank(); r >= RANK_1; --r)
-      for (File f = FILE_A; f <= pos.max_file(); ++f)
-      {
-          Square s = make_square(f, r);
-          if (pos.unpromoted_piece_on(s))
-              width = std::max(width, pos.piece_symbol(pos.unpromoted_piece_on(s)).size() + 1);
-          else if (pos.piece_on(s))
-              width = std::max(width, pos.piece_symbol(pos.piece_on(s)).size() + (((pos.captures_to_hand() && !pos.drop_loop()) || pos.two_boards()) && pos.is_promoted(s)));
-      }
 
   size_t width = 3;
   for (Rank r = pos.max_rank(); r >= RANK_1; --r)
@@ -397,6 +393,9 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
 #endif
           sq += (token - '0') * EAST; // Advance the given number of files
       }
+
+      else if (token == ',')
+          continue;
 
       else if (token == '/')
       {
@@ -804,18 +803,29 @@ string Position::fen(bool sfen, bool showPromoted, int countStarted, std::string
   int emptyCnt;
   std::ostringstream ss;
 
+  const bool commaSeparated = uses_multi_character_piece_symbols(var);
+
   for (Rank r = max_rank(); r >= RANK_1; --r)
   {
+      bool tokenWritten = false;
       for (File f = FILE_A; f <= max_file(); ++f)
       {
           for (emptyCnt = 0; f <= max_file() && !(pieces() & make_square(f, r)) && !(fogArea & make_square(f, r)); ++f)
               ++emptyCnt;
 
           if (emptyCnt)
+          {
+              if (commaSeparated && tokenWritten)
+                  ss << ',';
               ss << emptyCnt;
+              tokenWritten = true;
+          }
 
           if (f <= max_file())
           {
+              if (commaSeparated && tokenWritten)
+                  ss << ',';
+
               if (empty(make_square(f, r)) || fogArea & make_square(f, r))
                   // Wall square
                   ss << "*";
@@ -830,6 +840,7 @@ string Position::fen(bool sfen, bool showPromoted, int countStarted, std::string
                   if (((captures_to_hand() && !drop_loop()) || two_boards() ||  showPromoted) && is_promoted(make_square(f, r)))
                       ss << "~";
               }
+              tokenWritten = true;
           }
       }
 

@@ -645,6 +645,8 @@ inline Validation fill_char_board(CharBoard& board, const std::string& fenBoard,
             if (isdigit(prevChar))
                 fileIdx += 9 * (prevChar - '0');
         }
+        else if (c == ',')
+            continue;
         else if (c == '/')
         {
             ++rankIdx;
@@ -986,7 +988,7 @@ inline Validation check_digit_field(const std::string& field) {
 }
 
 inline std::string get_valid_special_chars(const Variant* v) {
-    std::string validSpecialCharactersFirstField = "/*";
+    std::string validSpecialCharactersFirstField = "/*,";
     // Whether or not '-', '+', '~', '[', ']' are valid depends on the variant being played.
     if (v->shogiStylePromotions)
         validSpecialCharactersFirstField += '+';
