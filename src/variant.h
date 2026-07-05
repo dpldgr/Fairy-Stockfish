@@ -44,6 +44,12 @@ struct HookMoveSpec {
   int captureLimit = 1;
 };
 
+struct DoubleMoveSpec {
+  PieceType firstType = NO_PIECE_TYPE;
+  PieceType secondType = NO_PIECE_TYPE;
+  int captureLimit = 1;
+};
+
 struct Variant {
   std::string variantTemplate = "fairy";
   std::string pieceToCharTable = "-";
@@ -83,6 +89,7 @@ struct Variant {
   uint64_t lionMoveMask[PIECE_TYPE_NB] = {};
   uint64_t lionEffectivePathMask[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB] = {};
   std::vector<HookMoveSpec> hookMoveSpecs[PIECE_TYPE_NB] = {};
+  std::vector<DoubleMoveSpec> doubleMoveSpecs[PIECE_TYPE_NB] = {};
   bool doubleStep = true;
   Bitboard doubleStepRegion[COLOR_NB] = {Rank2BB, Rank7BB};
   Bitboard tripleStepRegion[COLOR_NB] = {};

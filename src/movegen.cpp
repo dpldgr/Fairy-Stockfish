@@ -42,6 +42,65 @@ namespace {
   }
 
   template<Color Us, GenType Type>
+  ExtMove* generate_double_moves(const Position& pos, ExtMove* moveList, Square from, PieceType pt, Bitboard target) {
+    if (Type == QUIET_CHECKS || !pos.has_double_move(pt))
+        return moveList;
+
+    PieceSet prohibited = pos.prohibited_capture_types(Us, pt);
+    Bitboard occupied = pos.pieces();
+    Bitboard enemies = pos.pieces(~Us);
+    Bitboard friends = pos.pieces(Us) ^ from;
+
+    for (const DoubleMoveSpec& spec : pos.double_move_specs(pt))
+    {
+        Bitboard firstTargets = (  (moves_bb(Us, spec.firstType, from, occupied) & ~occupied)
+                                 | (attacks_bb(Us, spec.firstType, from, occupied) & enemies))
+                              & pos.board_bb(Us, spec.firstType);
+        while (firstTargets)
+        {
+            Square intermediate = pop_lsb(firstTargets);
+            bool firstCapture = bool(enemies & intermediate);
+            if (   firstCapture
+                && prohibited
+                && (prohibited & type_of(pos.piece_on(intermediate))))
+                continue;
+
+            Bitboard occupiedAfterFirst = occupied ^ from;
+            if (firstCapture)
+                occupiedAfterFirst ^= intermediate;
+
+            Bitboard secondTargets = (  (moves_bb(Us, spec.secondType, intermediate, occupiedAfterFirst) & ~occupiedAfterFirst)
+                                      | (attacks_bb(Us, spec.secondType, intermediate, occupiedAfterFirst) & enemies))
+                                   & pos.board_bb(Us, spec.secondType)
+                                   & ~friends
+                                   & ~square_bb(from);
+            while (secondTargets)
+            {
+                Square to = pop_lsb(secondTargets);
+                bool secondCapture = bool(enemies & to);
+                if (   secondCapture
+                    && prohibited
+                    && (prohibited & type_of(pos.piece_on(to))))
+                    continue;
+                if (firstCapture && secondCapture && spec.captureLimit < 2)
+                    continue;
+
+                bool isCapture = firstCapture || secondCapture;
+                Bitboard pathSquares = square_bb(intermediate) | to;
+                bool include = Type == NON_EVASIONS
+                            || (Type == CAPTURES && isCapture)
+                            || (Type == QUIETS && !isCapture)
+                            || (Type == EVASIONS && ((target & to) || (pathSquares & pos.checkers())));
+                if (include)
+                    *moveList++ = make_double_move(from, intermediate, to);
+            }
+        }
+    }
+
+    return moveList;
+  }
+
+  template<Color Us, GenType Type>
   ExtMove* generate_hook_moves(const Position& pos, ExtMove* moveList, Square from, PieceType pt, Bitboard target) {
     if (Type == QUIET_CHECKS || !pos.has_hook_move(pt))
         return moveList;
@@ -462,6 +521,7 @@ namespace {
             while (epSquares)
                 moveList = make_move_and_gating<EN_PASSANT>(pos, moveList, Us, from, pop_lsb(epSquares));
 
+        moveList = generate_double_moves<Us, Type>(pos, moveList, from, Pt, target);
         moveList = generate_hook_moves<Us, Type>(pos, moveList, from, Pt, target);
 
         uint64_t lionMask = pos.lion_move_mask(Us, Pt, from);

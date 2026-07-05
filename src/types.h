@@ -381,6 +381,7 @@ enum MoveType : int {
   SPECIAL            = 7 << (2 * SQUARE_BITS),
   LION               = 8 << (2 * SQUARE_BITS),
   HOOK               = 9 << (2 * SQUARE_BITS),
+  DOUBLE_MOVE        = 10 << (2 * SQUARE_BITS),
 };
 
 constexpr int MOVE_TYPE_BITS = 4;
@@ -910,6 +911,10 @@ inline Square hook_sq(Move m) {
   return Square((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & SQUARE_BIT_MASK);
 }
 
+inline Square double_move_sq(Move m) {
+  return Square((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & SQUARE_BIT_MASK);
+}
+
 inline bool is_gating(Move m) {
   return gating_type(m) && (type_of(m) == NORMAL || type_of(m) == CASTLING);
 }
@@ -946,6 +951,10 @@ constexpr Move make_lion(Square from, int path, Square to) {
 
 constexpr Move make_hook(Square from, Square hook, Square to) {
   return Move((hook << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + HOOK + (from << SQUARE_BITS) + to);
+}
+
+constexpr Move make_double_move(Square from, Square intermediate, Square to) {
+  return Move((intermediate << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + DOUBLE_MOVE + (from << SQUARE_BITS) + to);
 }
 
 constexpr PieceType dropped_piece_type(Move m) {

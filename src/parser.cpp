@@ -348,6 +348,32 @@ namespace {
         return spec.directionPairMask != 0;
     }
 
+    bool parse_double_move_spec(const Variant* v, const std::string& value, DoubleMoveSpec& spec) {
+        std::string body = value;
+        spec = DoubleMoveSpec();
+
+        size_t modeSep = body.rfind(':');
+        if (modeSep != std::string::npos)
+        {
+            std::string mode = body.substr(modeSep + 1);
+            if (mode == "1")
+                spec.captureLimit = 1;
+            else if (mode == "2")
+                spec.captureLimit = 2;
+            else
+                return false;
+            body = body.substr(0, modeSep);
+        }
+
+        size_t sep = body.find('-');
+        if (sep == std::string::npos || sep == 0 || sep + 1 >= body.size())
+            return false;
+
+        spec.firstType = piece_type_by_symbol(v, body.substr(0, sep));
+        spec.secondType = piece_type_by_symbol(v, body.substr(sep + 1));
+        return spec.firstType != NO_PIECE_TYPE && spec.secondType != NO_PIECE_TYPE;
+    }
+
     bool parse_piece_symbol_list(const Variant* v, const std::string& value, PieceSet& pieces) {
         pieces = NO_PIECE_SET;
         std::stringstream ss(value);
@@ -664,6 +690,24 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("mandatoryPawnPromotion", v->mandatoryPawnPromotion);
     parse_attribute("mandatoryPiecePromotion", v->mandatoryPiecePromotion);
     parse_attribute("pieceDemotion", v->pieceDemotion);
+    const auto& it_double_pieces = config.find("doubleMovePieces");
+    if (it_double_pieces != config.end())
+    {
+        std::string token;
+        std::stringstream ss(it_double_pieces->second);
+        while (ss >> token)
+        {
+            std::string symbol, specString;
+            DoubleMoveSpec spec;
+            PieceType pt = NO_PIECE_TYPE;
+            if (   split_piece_definition(token, symbol, specString)
+                && (pt = piece_type_by_symbol(v, symbol)) != NO_PIECE_TYPE
+                && parse_double_move_spec(v, specString, spec))
+                v->doubleMoveSpecs[pt].push_back(spec);
+            else if (DoCheck)
+                std::cerr << "doubleMovePieces - Invalid piece/spec: " << token << std::endl;
+        }
+    }
     const auto& it_hook_pieces = config.find("hookMovePieces");
     if (it_hook_pieces != config.end())
     {
