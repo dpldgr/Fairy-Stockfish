@@ -102,7 +102,7 @@ namespace {
         return pos.piece_on(to);
 
     Square from = from_sq(m);
-    if (type_of(m) == LION && !pos.empty(from) && color_of(pos.piece_on(from)) == us)
+    if ((type_of(m) == LION || type_of(m) == HOOK) && !pos.empty(from) && color_of(pos.piece_on(from)) == us)
         return pos.piece_on(from);
 
     return NO_PIECE;
@@ -613,6 +613,7 @@ string UCI::move(const Position& pos, Move m) {
 
   string move = type_of(m) == DROP ? UCI::dropped_piece(pos, m) + (CurrentProtocol == USI ? '*' : '@') + UCI::square(pos, to)
               : type_of(m) == LION ? UCI::square(pos, from) + UCI::square(pos, LionVia[from][lion_path_index(m)]) + UCI::square(pos, to)
+              : type_of(m) == HOOK ? UCI::square(pos, from) + UCI::square(pos, hook_sq(m)) + UCI::square(pos, to)
                                    : UCI::square(pos, from) + UCI::square(pos, to);
 
   // Wall square
