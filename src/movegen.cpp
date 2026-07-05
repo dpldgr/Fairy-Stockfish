@@ -41,6 +41,14 @@ namespace {
     return f >= FILE_A && f <= FILE_MAX && r >= RANK_1 && r <= RANK_MAX ? make_square(File(f), Rank(r)) : SQ_NONE;
   }
 
+  inline bool is_outward_double_move(Square from, Square intermediate, Square to) {
+    int firstDf = file_of(intermediate) - file_of(from);
+    int firstDr = rank_of(intermediate) - rank_of(from);
+    int secondDf = file_of(to) - file_of(intermediate);
+    int secondDr = rank_of(to) - rank_of(intermediate);
+    return firstDf * secondDf + firstDr * secondDr > 0;
+  }
+
   template<Color Us, GenType Type>
   ExtMove* generate_double_moves(const Position& pos, ExtMove* moveList, Square from, PieceType pt, Bitboard target) {
     if (Type == QUIET_CHECKS || !pos.has_double_move(pt))
@@ -77,6 +85,9 @@ namespace {
             while (secondTargets)
             {
                 Square to = pop_lsb(secondTargets);
+                if (spec.outwardOnly && !is_outward_double_move(from, intermediate, to))
+                    continue;
+
                 bool secondCapture = bool(enemies & to);
                 if (   secondCapture
                     && prohibited

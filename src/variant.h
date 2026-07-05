@@ -48,6 +48,7 @@ struct DoubleMoveSpec {
   PieceType firstType = NO_PIECE_TYPE;
   PieceType secondType = NO_PIECE_TYPE;
   int captureLimit = 1;
+  bool outwardOnly = false;
 };
 
 struct Variant {

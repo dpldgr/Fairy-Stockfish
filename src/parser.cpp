@@ -365,7 +365,10 @@ namespace {
             body = body.substr(0, modeSep);
         }
 
-        size_t sep = body.find('-');
+        size_t sep = body.find('>');
+        spec.outwardOnly = sep != std::string::npos;
+        if (!spec.outwardOnly)
+            sep = body.find('-');
         if (sep == std::string::npos || sep == 0 || sep + 1 >= body.size())
             return false;
 
