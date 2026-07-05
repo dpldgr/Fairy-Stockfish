@@ -246,6 +246,134 @@ namespace {
         return true;
     }
 
+    bool parse_hook_leg(const std::string& value, uint8_t& dirs, int& range, bool& sideways) {
+        dirs = 0;
+        range = 0;
+        sideways = false;
+        if (value.empty())
+            return false;
+
+        size_t i = 0;
+        bool forward = false, backward = false, side = false;
+        while (i < value.size() && value[i] != 'R' && value[i] != 'B')
+        {
+            if (value[i] == 'f') forward = true;
+            else if (value[i] == 'b') backward = true;
+            else if (value[i] == 's') { side = true; sideways = true; }
+            else return false;
+            ++i;
+        }
+        if (i >= value.size())
+            return false;
+
+        char atom = value[i++];
+        if (atom == 'R')
+        {
+            if (!forward && !backward && !side)
+                dirs = (1 << 0) | (1 << 2) | (1 << 4) | (1 << 6);
+            else
+            {
+                if (forward) dirs |= 1 << 0;
+                if (backward) dirs |= 1 << 4;
+                if (side) dirs |= (1 << 2) | (1 << 6);
+            }
+        }
+        else if (atom == 'B')
+        {
+            if (!forward && !backward && !side)
+                dirs = (1 << 1) | (1 << 3) | (1 << 5) | (1 << 7);
+            else
+            {
+                if (forward) dirs |= (1 << 1) | (1 << 7);
+                if (backward) dirs |= (1 << 3) | (1 << 5);
+                if (side) dirs |= (1 << 1) | (1 << 3) | (1 << 5) | (1 << 7);
+            }
+        }
+        else
+            return false;
+
+        while (i < value.size())
+        {
+            if (!std::isdigit(static_cast<unsigned char>(value[i])))
+                return false;
+            range = 10 * range + value[i++] - '0';
+        }
+
+        return dirs != 0;
+    }
+
+    bool parse_hook_move_spec(const std::string& value, HookMoveSpec& spec) {
+        std::string body = value;
+        spec = HookMoveSpec();
+
+        size_t modeSep = body.rfind(':');
+        if (modeSep != std::string::npos)
+        {
+            std::string mode = body.substr(modeSep + 1);
+            if (mode == "1")
+                spec.captureLimit = 1;
+            else if (mode == "2")
+                spec.captureLimit = 2;
+            else
+                return false;
+            body = body.substr(0, modeSep);
+        }
+
+        size_t sep = body.find('-');
+        if (sep == std::string::npos || sep == 0 || sep + 1 >= body.size())
+            return false;
+
+        uint8_t firstDirs = 0, secondDirs = 0;
+        bool firstSideways = false, secondSideways = false;
+        if (   !parse_hook_leg(body.substr(0, sep), firstDirs, spec.firstRange, firstSideways)
+            || !parse_hook_leg(body.substr(sep + 1), secondDirs, spec.secondRange, secondSideways))
+            return false;
+        (void)firstSideways;
+
+        for (int first = 0; first < 8; ++first)
+        {
+            if (!(firstDirs & (1 << first)))
+                continue;
+            if (secondSideways)
+            {
+                spec.directionPairMask |= 1ULL << (first * 8 + ((first + 2) & 7));
+                spec.directionPairMask |= 1ULL << (first * 8 + ((first + 6) & 7));
+            }
+            else
+                for (int second = 0; second < 8; ++second)
+                    if (secondDirs & (1 << second))
+                        spec.directionPairMask |= 1ULL << (first * 8 + second);
+        }
+
+        return spec.directionPairMask != 0;
+    }
+
+    bool parse_double_move_spec(const Variant* v, const std::string& value, DoubleMoveSpec& spec) {
+        std::string body = value;
+        spec = DoubleMoveSpec();
+
+        size_t modeSep = body.rfind(':');
+        if (modeSep != std::string::npos)
+        {
+            std::string mode = body.substr(modeSep + 1);
+            if (mode == "1")
+                spec.captureLimit = 1;
+            else if (mode == "2")
+                spec.captureLimit = 2;
+            else
+                return false;
+            body = body.substr(0, modeSep);
+        }
+
+        size_t sep = body.find('-');
+        if (sep == std::string::npos || sep == 0 || sep + 1 >= body.size())
+            return false;
+
+        spec.firstType = piece_type_by_symbol(v, body.substr(0, sep));
+        spec.secondType = piece_type_by_symbol(v, body.substr(sep + 1));
+        return spec.firstType != NO_PIECE_TYPE && spec.secondType != NO_PIECE_TYPE;
+    }
+
     bool parse_piece_symbol_list(const Variant* v, const std::string& value, PieceSet& pieces) {
         pieces = NO_PIECE_SET;
         std::stringstream ss(value);
@@ -562,6 +690,42 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("mandatoryPawnPromotion", v->mandatoryPawnPromotion);
     parse_attribute("mandatoryPiecePromotion", v->mandatoryPiecePromotion);
     parse_attribute("pieceDemotion", v->pieceDemotion);
+    const auto& it_double_pieces = config.find("doubleMovePieces");
+    if (it_double_pieces != config.end())
+    {
+        std::string token;
+        std::stringstream ss(it_double_pieces->second);
+        while (ss >> token)
+        {
+            std::string symbol, specString;
+            DoubleMoveSpec spec;
+            PieceType pt = NO_PIECE_TYPE;
+            if (   split_piece_definition(token, symbol, specString)
+                && (pt = piece_type_by_symbol(v, symbol)) != NO_PIECE_TYPE
+                && parse_double_move_spec(v, specString, spec))
+                v->doubleMoveSpecs[pt].push_back(spec);
+            else if (DoCheck)
+                std::cerr << "doubleMovePieces - Invalid piece/spec: " << token << std::endl;
+        }
+    }
+    const auto& it_hook_pieces = config.find("hookMovePieces");
+    if (it_hook_pieces != config.end())
+    {
+        std::string token;
+        std::stringstream ss(it_hook_pieces->second);
+        while (ss >> token)
+        {
+            std::string symbol, specString;
+            HookMoveSpec spec;
+            PieceType pt = NO_PIECE_TYPE;
+            if (   split_piece_definition(token, symbol, specString)
+                && (pt = piece_type_by_symbol(v, symbol)) != NO_PIECE_TYPE
+                && parse_hook_move_spec(specString, spec))
+                v->hookMoveSpecs[pt].push_back(spec);
+            else if (DoCheck)
+                std::cerr << "hookMovePieces - Invalid piece/spec: " << token << std::endl;
+        }
+    }
     const auto& it_lion_pieces = config.find("lionMovePieces");
     if (it_lion_pieces != config.end())
     {
