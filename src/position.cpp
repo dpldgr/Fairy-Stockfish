@@ -1380,11 +1380,11 @@ bool Position::legal(Move m) const {
       return !attackers_to(to, pieces() ^ to_sq(m), ~us);
   }
 
-  if (type_of(m) == LION && count<KING>(us))
+  if ((type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE) && count<KING>(us))
   {
       Square ksq = type_of(moved_piece(m)) == KING ? to : square<KING>(us);
       Bitboard occupied = (pieces() ^ from) | to;
-      Square via = LionVia[from][lion_path_index(m)];
+      Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
       if (!empty(via) && color_of(piece_on(via)) == ~us)
           occupied ^= via;
       return !(attackers_to(ksq, occupied, ~us) & occupied);
@@ -1710,12 +1710,12 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Square from = from_sq(m);
   Square to = to_sq(m);
   Piece pc = moved_piece(m);
-  Piece captured = type_of(m) == LION && to == from ? NO_PIECE : piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
-  Square lionCapsq = type_of(m) == LION ? LionVia[from][lion_path_index(m)] : SQ_NONE;
-  Piece lionCaptured = type_of(m) == LION && !empty(lionCapsq) && color_of(piece_on(lionCapsq)) == them ? piece_on(lionCapsq) : NO_PIECE;
+  Piece captured = (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE) && to == from ? NO_PIECE : piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
+  Square lionCapsq = type_of(m) == LION ? LionVia[from][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : type_of(m) == DOUBLE_MOVE ? double_move_sq(m) : SQ_NONE;
+  Piece lionCaptured = (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE) && !empty(lionCapsq) && color_of(piece_on(lionCapsq)) == them ? piece_on(lionCapsq) : NO_PIECE;
   if (to == from)
   {
-      assert(type_of(m) == LION || (type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && (pass(us) || var->wallOrMove )));
+      assert(type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE || (type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && (pass(us) || var->wallOrMove )));
       captured = NO_PIECE;
   }
   st->capturedpromoted = captured && is_promoted(to);
@@ -2338,7 +2338,7 @@ void Position::undo_move(Move m) {
   Square to = to_sq(m);
   Piece pc = piece_on(to);
 
-  assert(type_of(m) == DROP || empty(from) || type_of(m) == CASTLING || is_gating(m) || type_of(m) == LION
+  assert(type_of(m) == DROP || empty(from) || type_of(m) == CASTLING || is_gating(m) || type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE
          || (type_of(m) == PROMOTION && sittuyin_promotion())
          || (is_pass(m) && (pass(us) || var->wallOrMove)));
   assert(type_of(st->capturedPiece) != KING);

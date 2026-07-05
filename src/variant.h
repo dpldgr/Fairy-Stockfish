@@ -37,6 +37,20 @@ namespace Stockfish {
 
 /// Variant struct stores information needed to determine the rules of a variant.
 
+struct HookMoveSpec {
+  uint64_t directionPairMask = 0;
+  int firstRange = 0;
+  int secondRange = 0;
+  int captureLimit = 1;
+};
+
+struct DoubleMoveSpec {
+  PieceType firstType = NO_PIECE_TYPE;
+  PieceType secondType = NO_PIECE_TYPE;
+  int captureLimit = 1;
+  bool outwardOnly = false;
+};
+
 struct Variant {
   std::string variantTemplate = "fairy";
   std::string pieceToCharTable = "-";
@@ -75,6 +89,8 @@ struct Variant {
   PieceSet prohibitedCaptures[COLOR_NB][PIECE_TYPE_NB] = {};
   uint64_t lionMoveMask[PIECE_TYPE_NB] = {};
   uint64_t lionEffectivePathMask[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB] = {};
+  std::vector<HookMoveSpec> hookMoveSpecs[PIECE_TYPE_NB] = {};
+  std::vector<DoubleMoveSpec> doubleMoveSpecs[PIECE_TYPE_NB] = {};
   bool doubleStep = true;
   Bitboard doubleStepRegion[COLOR_NB] = {Rank2BB, Rank7BB};
   Bitboard tripleStepRegion[COLOR_NB] = {};

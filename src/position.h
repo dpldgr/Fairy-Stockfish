@@ -297,6 +297,10 @@ public:
   Square capture_square(Square to) const;
   uint64_t lion_move_mask(Color c, PieceType pt, Square from) const;
   bool has_lion_move(Color c, PieceType pt) const;
+  const std::vector<HookMoveSpec>& hook_move_specs(PieceType pt) const;
+  bool has_hook_move(PieceType pt) const;
+  const std::vector<DoubleMoveSpec>& double_move_specs(PieceType pt) const;
+  bool has_double_move(PieceType pt) const;
   bool gives_check(Move m) const;
   Piece moved_piece(Move m) const;
   Piece captured_piece() const;
@@ -1470,14 +1474,14 @@ inline bool Position::is_chess960() const {
 
 inline bool Position::capture_or_promotion(Move m) const {
   assert(is_ok(m));
-  return type_of(m) == PROMOTION || type_of(m) == EN_PASSANT || (type_of(m) == LION && capture(m)) || (type_of(m) != CASTLING && !empty(to_sq(m)));
+  return type_of(m) == PROMOTION || type_of(m) == EN_PASSANT || ((type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE) && capture(m)) || (type_of(m) != CASTLING && !empty(to_sq(m)));
 }
 
 inline bool Position::capture(Move m) const {
   assert(is_ok(m));
-  if (type_of(m) == LION)
+  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
   {
-      Square via = LionVia[from_sq(m)][lion_path_index(m)];
+      Square via = type_of(m) == LION ? LionVia[from_sq(m)][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
       return (!empty(via) && color_of(piece_on(via)) != sideToMove)
           || (!empty(to_sq(m)) && to_sq(m) != from_sq(m));
   }
@@ -1499,9 +1503,9 @@ inline bool Position::prohibited_capture(Move m) const {
       return !empty(s) && color_of(piece_on(s)) == ~us && (prohibited & type_of(piece_on(s)));
   };
 
-  if (type_of(m) == LION)
+  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
   {
-      Square via = LionVia[from_sq(m)][lion_path_index(m)];
+      Square via = type_of(m) == LION ? LionVia[from_sq(m)][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
       return prohibited_piece_on(via) || (to_sq(m) != from_sq(m) && prohibited_piece_on(to_sq(m)));
   }
 
@@ -1535,6 +1539,26 @@ inline bool Position::has_lion_move(Color c, PieceType pt) const {
   assert(var != nullptr);
   (void)c;
   return var->lionMoveMask[pt] != 0;
+}
+
+inline const std::vector<HookMoveSpec>& Position::hook_move_specs(PieceType pt) const {
+  assert(var != nullptr);
+  return var->hookMoveSpecs[pt];
+}
+
+inline bool Position::has_hook_move(PieceType pt) const {
+  assert(var != nullptr);
+  return !var->hookMoveSpecs[pt].empty();
+}
+
+inline const std::vector<DoubleMoveSpec>& Position::double_move_specs(PieceType pt) const {
+  assert(var != nullptr);
+  return var->doubleMoveSpecs[pt];
+}
+
+inline bool Position::has_double_move(PieceType pt) const {
+  assert(var != nullptr);
+  return !var->doubleMoveSpecs[pt].empty();
 }
 
 inline bool Position::virtual_drop(Move m) const {
