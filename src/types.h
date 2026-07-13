@@ -126,8 +126,6 @@
 #  else
 #    define pext(b, m) _pext_u64(b, m)
 #  endif
-#else
-#  define pext(b, m) 0
 #endif
 
 namespace Stockfish {
@@ -334,6 +332,60 @@ constexpr int SQUARE_BITS = 7;
 #else
 typedef uint64_t Bitboard;
 constexpr int SQUARE_BITS = 6;
+#endif
+
+#if !defined(USE_PEXT)
+inline uint64_t software_pext64(uint64_t b, uint64_t m) {
+
+    uint64_t result = 0;
+    unsigned bit = 0;
+
+    while (m)
+    {
+        const uint64_t lsb = m & -m;
+        if (b & lsb)
+            result |= uint64_t(1) << bit;
+        m ^= lsb;
+        ++bit;
+    }
+
+    return result;
+}
+
+inline unsigned software_popcount64(uint64_t b) {
+
+#if defined(__GNUC__)
+    return unsigned(__builtin_popcountll(b));
+#else
+    unsigned cnt = 0;
+    while (b)
+    {
+        b &= b - 1;
+        ++cnt;
+    }
+    return cnt;
+#endif
+}
+
+inline unsigned pext(Bitboard b, Bitboard m) {
+
+#ifdef BITBOARD_256
+    return unsigned(  software_pext64(b.b64[3], m.b64[3])
+                    ^ (software_pext64(b.b64[2], m.b64[2]) << software_popcount64(m.b64[3]))
+                    ^ (software_pext64(b.b64[1], m.b64[1]) << (software_popcount64(m.b64[2]) + software_popcount64(m.b64[3])))
+                    ^ (software_pext64(b.b64[0], m.b64[0]) << (software_popcount64(m.b64[1]) + software_popcount64(m.b64[2]) + software_popcount64(m.b64[3]))));
+#elif defined(LARGEBOARDS)
+#if defined(__GNUC__) && defined(IS_64BIT)
+    return unsigned(  software_pext64(uint64_t(b), uint64_t(m))
+                    ^ (software_pext64(uint64_t(b >> 64), uint64_t(m >> 64)) << software_popcount64(uint64_t(m))));
+#else
+    return unsigned(  software_pext64(b.b64[1], m.b64[1])
+                    ^ (software_pext64(b.b64[0], m.b64[0]) << software_popcount64(m.b64[1])));
+#endif
+#else
+    return unsigned(software_pext64(b, m));
+#endif
+}
 #endif
 
 //When defined, move list will be stored in heap. Delete this if you want to use stack to store move list. Using stack can cause overflow (Segmentation Fault) when the search is too deep.
