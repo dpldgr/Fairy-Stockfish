@@ -64,8 +64,8 @@
 #if BOARD_SQUARES > 128 && (BOARD_FILES != 16 || BOARD_RANKS != 16)
 #error "Only the 16x16 PEXT-only build supports more than 128 squares"
 #endif
-#if BOARD_SQUARES > 128 && !defined(USE_PEXT)
-#error "The 16x16 build requires USE_PEXT"
+#if BOARD_SQUARES > 128 && !defined(USE_PEXT) && !defined(USE_TILED_MAGICS)
+#error "The 16x16 build requires USE_PEXT or USE_TILED_MAGICS"
 #endif
 #if BOARD_SQUARES > 128
 #define BITBOARD_256
