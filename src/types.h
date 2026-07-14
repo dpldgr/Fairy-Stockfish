@@ -157,41 +157,51 @@ struct Bitboard {
     constexpr Bitboard(uint64_t i) : b64 {0, 0, 0, i} {}
     constexpr Bitboard(uint64_t a, uint64_t b, uint64_t c, uint64_t d) : b64 {a, b, c, d} {}
 
+    static constexpr int tile_index(int s) {
+        return ((s / BOARD_FILES) / 8) * 2 + ((s % BOARD_FILES) / 8);
+    }
+
+    static constexpr int tile_offset(int s) {
+        return ((s / BOARD_FILES) % 8) * 8 + ((s % BOARD_FILES) % 8);
+    }
+
+    static constexpr int word_index(int s) {
+        return 3 - tile_index(s);
+    }
+
+    static constexpr Bitboard from_square(int s) {
+        return s < 0 || s >= BOARD_SQUARES ? Bitboard(0)
+             : word_index(s) == 0     ? Bitboard(uint64_t(1) << tile_offset(s), 0, 0, 0)
+             : word_index(s) == 1     ? Bitboard(0, uint64_t(1) << tile_offset(s), 0, 0)
+             : word_index(s) == 2     ? Bitboard(0, 0, uint64_t(1) << tile_offset(s), 0)
+                                       : Bitboard(0, 0, 0, uint64_t(1) << tile_offset(s));
+    }
+
+    constexpr bool test_square(int s) const {
+        return s >= 0 && s < BOARD_SQUARES && (b64[word_index(s)] & (uint64_t(1) << tile_offset(s)));
+    }
+
     constexpr operator bool() const { return b64[0] || b64[1] || b64[2] || b64[3]; }
     constexpr operator long long unsigned () const { return b64[3]; }
     constexpr operator unsigned() const { return unsigned(b64[3]); }
 
     constexpr Bitboard operator << (const unsigned int bits) const {
         Bitboard out;
-        if (bits >= 256)
+        if (bits >= BOARD_SQUARES)
             return out;
-        const unsigned word = bits / 64;
-        const unsigned rem = bits % 64;
-        for (int i = 0; i < 4; ++i)
-        {
-            const int src = i + word;
-            if (src < 4)
-                out.b64[i] |= b64[src] << rem;
-            if (rem && src + 1 < 4)
-                out.b64[i] |= b64[src + 1] >> (64 - rem);
-        }
+        for (int s = 0; s + int(bits) < BOARD_SQUARES; ++s)
+            if (test_square(s))
+                out = out | from_square(s + bits);
         return out;
     }
 
     constexpr Bitboard operator >> (const unsigned int bits) const {
         Bitboard out;
-        if (bits >= 256)
+        if (bits >= BOARD_SQUARES)
             return out;
-        const unsigned word = bits / 64;
-        const unsigned rem = bits % 64;
-        for (int i = 3; i >= 0; --i)
-        {
-            const int src = i - word;
-            if (src >= 0)
-                out.b64[i] |= b64[src] >> rem;
-            if (rem && src - 1 >= 0)
-                out.b64[i] |= b64[src - 1] << (64 - rem);
-        }
+        for (int s = int(bits); s < BOARD_SQUARES; ++s)
+            if (test_square(s))
+                out = out | from_square(s - bits);
         return out;
     }
 

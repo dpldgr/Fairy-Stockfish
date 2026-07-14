@@ -41,7 +41,11 @@ std::string pretty(Bitboard b);
 } // namespace Stockfish::Bitboards
 
 constexpr Bitboard square_bit(int s) {
+#ifdef BITBOARD_256
+  return Bitboard::from_square(s);
+#else
   return s >= 0 && s < SQUARE_NB ? Bitboard(1) << s : Bitboard(0);
+#endif
 }
 
 constexpr Bitboard make_board_mask(int files, int ranks) {
@@ -591,13 +595,10 @@ inline int popcount(Bitboard b) {
 inline Square lsb(Bitboard b) {
   assert(b);
 #ifdef BITBOARD_256
-  if (b.b64[3])
-      return Square(__builtin_ctzll(b.b64[3]));
-  if (b.b64[2])
-      return Square(__builtin_ctzll(b.b64[2]) + 64);
-  if (b.b64[1])
-      return Square(__builtin_ctzll(b.b64[1]) + 128);
-  return Square(__builtin_ctzll(b.b64[0]) + 192);
+  for (int s = SQ_MIN; s <= SQ_MAX; ++s)
+      if (b.test_square(s))
+          return Square(s);
+  return SQ_NONE;
 #elif defined(LARGEBOARDS)
   if (!(b << 64))
       return Square(__builtin_ctzll(b >> 64) + 64);
@@ -608,13 +609,10 @@ inline Square lsb(Bitboard b) {
 inline Square msb(Bitboard b) {
   assert(b);
 #ifdef BITBOARD_256
-  if (b.b64[0])
-      return Square(255 ^ __builtin_clzll(b.b64[0]));
-  if (b.b64[1])
-      return Square(191 ^ __builtin_clzll(b.b64[1]));
-  if (b.b64[2])
-      return Square(127 ^ __builtin_clzll(b.b64[2]));
-  return Square(63 ^ __builtin_clzll(b.b64[3]));
+  for (int s = SQ_MAX; s >= SQ_MIN; --s)
+      if (b.test_square(s))
+          return Square(s);
+  return SQ_NONE;
 #elif defined(LARGEBOARDS)
   if (b >> 64)
       return Square(int(SQUARE_BIT_MASK) ^ __builtin_clzll(b >> 64));
@@ -734,7 +732,11 @@ inline Square msb(Bitboard b) {
 
 inline Bitboard least_significant_square_bb(Bitboard b) {
   assert(b);
+#ifdef BITBOARD_256
+  return square_bb(lsb(b));
+#else
   return b & -b;
+#endif
 }
 
 /// pop_lsb() finds and clears the least significant bit in a non-zero bitboard
@@ -742,7 +744,11 @@ inline Bitboard least_significant_square_bb(Bitboard b) {
 inline Square pop_lsb(Bitboard& b) {
   assert(b);
   const Square s = lsb(b);
+#ifdef BITBOARD_256
+  b -= s;
+#else
   b &= b - 1;
+#endif
   return s;
 }
 
