@@ -380,11 +380,7 @@ else ifneq ($(filter 16x8,$(requested_board_size)),)
 else ifneq ($(filter 16x16,$(requested_board_size)),)
 	override board_files = 16
 	override board_ranks = 16
-	ifeq ($(pext),yes)
-		override precomputedmagics = no
-	else
-		override tiledmagics = yes
-	endif
+	override precomputedmagics = no
 endif
 
 CXXFLAGS += -DBOARD_FILES=$(board_files) -DBOARD_RANKS=$(board_ranks)
@@ -698,11 +694,6 @@ ifeq ($(pext),yes)
 	ifeq ($(comp),$(filter $(comp),gcc clang mingw))
 		CXXFLAGS += -mbmi2
 	endif
-endif
-
-### 3.8 tiled magics
-ifeq ($(tiledmagics),yes)
-	CXXFLAGS += -DUSE_TILED_MAGICS
 endif
 
 ### 3.9 Link Time Optimization
