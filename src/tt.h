@@ -88,12 +88,6 @@ class TranspositionTable {
   struct Cluster : TTClusterPadding<64 - ClusterEntryBytes> {
     TTEntry entry[ClusterSize];
   };
-#else
-  static constexpr int ClusterSize = 4;
-
-  struct Cluster {
-    TTEntry entry[ClusterSize];
-  };
 #endif
 
   static_assert(sizeof(Cluster) == 64, "Unexpected Cluster size");

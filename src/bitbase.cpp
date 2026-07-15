@@ -37,8 +37,8 @@ namespace {
   //
   // Information is mapped in a way that minimizes the number of iterations:
   //
-  // bit  0- 5: white king square (from SQ<FILE_A, RANK_1> to SQ<FILE_H, RANK_8>)
-  // bit  6-11: black king square (from SQ<FILE_A, RANK_1> to SQ<FILE_H, RANK_8>)
+  // bit  0- 5: white king square (from SQ(FILE_A, RANK_1) to SQ(FILE_H, RANK_8))
+  // bit  6-11: black king square (from SQ(FILE_A, RANK_1) to SQ(FILE_H, RANK_8))
   // bit    12: side to move (WHITE or BLACK)
   // bit 13-14: white pawn file (from FILE_A to FILE_D)
   // bit 15-17: white pawn RANK_7 - rank (from RANK_7 - RANK_7 to RANK_7 - RANK_2)

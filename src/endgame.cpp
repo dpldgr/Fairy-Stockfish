@@ -186,7 +186,7 @@ Value Endgame<KBNK>::operator()(const Position& pos) const {
 
   Value result =  (VALUE_KNOWN_WIN + 3520)
                 + push_close(strongKing, weakKing)
-                + 420 * push_to_corner(opposite_colors(strongBishop, SQ<FILE_A, RANK_1>) ? flip_file(weakKing, pos.max_file()) : weakKing, pos);
+                + 420 * push_to_corner(opposite_colors(strongBishop, SQ(FILE_A, RANK_1)) ? flip_file(weakKing, pos.max_file()) : weakKing, pos);
 
   assert(abs(result) < VALUE_TB_WIN_IN_MAX_PLY);
   return strongSide == pos.side_to_move() ? result : -result;
@@ -482,7 +482,7 @@ Value Endgame<KNFK>::operator()(const Position& pos) const {
   // tries to drive toward corners A1 or H8. If we have a
   // fers that cannot reach the above squares, we flip the kings in order
   // to drive the enemy toward corners A8 or H1.
-  if (opposite_colors(fersSq, SQ<FILE_A, RANK_1>))
+  if (opposite_colors(fersSq, SQ(FILE_A, RANK_1)))
   {
       winnerKSq = relative_square(BLACK, winnerKSq, pos.max_rank());
       loserKSq  = relative_square(BLACK, loserKSq, pos.max_rank());
@@ -687,7 +687,7 @@ ScaleFactor Endgame<KRPKR>::operator()(const Position& pos) const {
   // queening square, use the third-rank defence.
   if (   pawnRank <= RANK_5
       && distance(weakKing, queeningSquare) <= 1
-      && strongKing <= SQ<FILE_H, RANK_5>
+      && strongKing <= SQ(FILE_H, RANK_5)
       && (rank_of(weakRook) == RANK_6 || (pawnRank <= RANK_3 && rank_of(strongRook) != RANK_6)))
       return SCALE_FACTOR_DRAW;
 
@@ -707,9 +707,9 @@ ScaleFactor Endgame<KRPKR>::operator()(const Position& pos) const {
 
   // White pawn on a7 and rook on a8 is a draw if black's king is on g7 or h7
   // and the black rook is behind the pawn.
-  if (   strongPawn == SQ<FILE_A, RANK_7>
-      && strongRook == SQ<FILE_A, RANK_8>
-      && (weakKing == SQ<FILE_H, RANK_7> || weakKing == SQ<FILE_G, RANK_7>)
+  if (   strongPawn == SQ(FILE_A, RANK_7)
+      && strongRook == SQ(FILE_A, RANK_8)
+      && (weakKing == SQ(FILE_H, RANK_7) || weakKing == SQ(FILE_G, RANK_7))
       && file_of(weakRook) == FILE_A
       && (rank_of(weakRook) <= RANK_3 || file_of(strongKing) >= FILE_D || rank_of(strongKing) <= RANK_5))
       return SCALE_FACTOR_DRAW;

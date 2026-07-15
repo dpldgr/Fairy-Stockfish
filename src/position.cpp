@@ -377,7 +377,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   ss >> std::noskipws;
 
   Rank r = max_rank();
-  Square sq = SQ<FILE_A, RANK_1> + r * NORTH;
+  Square sq = SQ(FILE_A, RANK_1) + r * NORTH;
 
   // 1. Piece placement
   while ((ss >> token) && !isspace(token))
@@ -399,7 +399,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
 
       else if (token == '/')
       {
-          sq = SQ<FILE_A, RANK_1> + --r * NORTH;
+          sq = SQ(FILE_A, RANK_1) + --r * NORTH;
           if (!is_ok(sq))
               break;
       }
@@ -1376,7 +1376,7 @@ bool Position::legal(Move m) const {
               return false;
 
       // In case of Chess960, verify if the Rook blocks some checks
-      // For instance an enemy queen in SQ<FILE_A, RANK_1> when castling rook is in SQ<FILE_B, RANK_1>.
+      // For instance an enemy queen in SQ(FILE_A, RANK_1) when castling rook is in SQ(FILE_B, RANK_1).
       return !attackers_to(to, pieces() ^ to_sq(m), ~us);
   }
 

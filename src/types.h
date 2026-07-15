@@ -40,6 +40,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <string_view>
 #include <type_traits>
 #include <algorithm>
 
@@ -929,8 +930,84 @@ constexpr Square make_square(File f, Rank r) {
   return Square(r * FILE_NB + f);
 }
 
-template<File F, Rank R>
-inline constexpr Square SQ = make_square(F, R);
+constexpr bool is_supported_file(File f) {
+  return f >= FILE_A && f <= FILE_AF;
+}
+
+constexpr bool is_supported_rank(Rank r) {
+  return r >= RANK_1 && r <= RANK_48;
+}
+
+constexpr bool is_square_literal_file_char(char c) {
+  return c >= 'a' && c <= 'z';
+}
+
+constexpr bool is_square_literal_rank_char(char c) {
+  return c >= '0' && c <= '9';
+}
+
+constexpr int file_index_from_string(std::string_view s) {
+  int file = -1;
+
+  for (char c : s)
+  {
+      if (!is_square_literal_file_char(c))
+          return -1;
+
+      file = (file + 1) * 26 + (c - 'a');
+  }
+
+  return file;
+}
+
+constexpr int rank_index_from_string(std::string_view s) {
+  if (s.empty())
+      return -1;
+
+  int rank = 0;
+
+  for (char c : s)
+  {
+      if (!is_square_literal_rank_char(c))
+          return -1;
+
+      rank = rank * 10 + (c - '0');
+  }
+
+  return rank > 0 ? rank - 1 : -1;
+}
+
+constexpr Square SQ(File f, Rank r) {
+  return is_supported_file(f) && is_supported_rank(r) ? make_square(f, r) : *static_cast<volatile Square*>(nullptr);
+}
+
+constexpr Square SQ(std::string_view s) {
+  size_t split = 0;
+
+  while (split < s.size() && is_square_literal_file_char(s[split]))
+      ++split;
+
+  int f = file_index_from_string(s.substr(0, split));
+  int r = rank_index_from_string(s.substr(split));
+
+  return is_supported_file(File(f)) && is_supported_rank(Rank(r)) ? SQ(File(f), Rank(r)) : *static_cast<volatile Square*>(nullptr);
+}
+
+constexpr bool square_file_rank_range_test() {
+  for (int f = FILE_A; f <= FILE_AF; ++f)
+      for (int r = RANK_1; r <= RANK_48; ++r)
+          if (SQ(File(f), Rank(r)) != make_square(File(f), Rank(r)))
+              return false;
+
+  return true;
+}
+
+static_assert(square_file_rank_range_test(), "SQ(File, Rank) must cover every supported file/rank pair");
+static_assert(SQ("a1") == SQ(FILE_A, RANK_1), "SQ string parser failed for a1");
+static_assert(SQ("h8") == SQ(FILE_H, RANK_8), "SQ string parser failed for h8");
+static_assert(SQ("j10") == SQ(FILE_J, RANK_10), "SQ string parser failed for j10");
+static_assert(SQ("ad12") == SQ(FILE_AD, RANK_12), "SQ string parser failed for ad12");
+static_assert(SQ("af48") == SQ(FILE_AF, RANK_48), "SQ string parser failed for af48");
 
 constexpr Piece make_piece(Color c, PieceType pt) {
   return Piece((c << PIECE_TYPE_BITS) + pt);
