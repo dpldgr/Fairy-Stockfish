@@ -79,7 +79,6 @@ class TranspositionTable {
 
   struct Cluster {
     TTEntry entry[ClusterSize];
-    char padding[4]; // Pad to 64 bytes
   };
 #else
   static constexpr int ClusterSize = 4;
