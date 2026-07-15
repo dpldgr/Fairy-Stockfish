@@ -124,8 +124,8 @@ namespace {
         Variant* v =  chess_variant_base()->init();
         v->remove_piece(PAWN);
         v->add_piece(CUSTOM_PIECE_1, 'p', "mflFcflW");
-        v->promotionRegion[WHITE] = make_bitboard(SQ_A8, SQ_B8, SQ_C8, SQ_D8, SQ_A7, SQ_A6, SQ_A5);
-        v->promotionRegion[BLACK] = make_bitboard(SQ_E1, SQ_F1, SQ_G1, SQ_H1, SQ_H2, SQ_H3, SQ_H4);
+        v->promotionRegion[WHITE] = make_bitboard(SQ<FILE_A, RANK_8>, SQ<FILE_B, RANK_8>, SQ<FILE_C, RANK_8>, SQ<FILE_D, RANK_8>, SQ<FILE_A, RANK_7>, SQ<FILE_A, RANK_6>, SQ<FILE_A, RANK_5>);
+        v->promotionRegion[BLACK] = make_bitboard(SQ<FILE_E, RANK_1>, SQ<FILE_F, RANK_1>, SQ<FILE_G, RANK_1>, SQ<FILE_H, RANK_1>, SQ<FILE_H, RANK_2>, SQ<FILE_H, RANK_3>, SQ<FILE_H, RANK_4>);
         v->mainPromotionPawnType[WHITE] = v->mainPromotionPawnType[BLACK] = CUSTOM_PIECE_1;
         v->promotionPawnTypes[WHITE] = v->promotionPawnTypes[BLACK] = piece_set(CUSTOM_PIECE_1);
         v->nMoveRuleTypes[WHITE] = v->nMoveRuleTypes[BLACK] = piece_set(CUSTOM_PIECE_1);
@@ -563,7 +563,7 @@ namespace {
         v->startFen = "3p2/6/6/6/6/6/6/2P3 w - - 0 1";
         v->stalemateValue = -VALUE_MATE;
         v->wallingRule = STATIC;
-        v->wallingRegion[WHITE] = v->wallingRegion[BLACK] = AllSquares ^ make_bitboard(SQ_C1, SQ_D8);
+        v->wallingRegion[WHITE] = v->wallingRegion[BLACK] = AllSquares ^ make_bitboard(SQ<FILE_C, RANK_1>, SQ<FILE_D, RANK_8>);
         return v;
     }
 
@@ -572,7 +572,7 @@ namespace {
         v->maxRank = RANK_7;
         v->maxFile = FILE_G;
         v->startFen = "3p3/7/7/7/7/7/3P3 w - - 0 1";
-        v->wallingRegion[WHITE] = v->wallingRegion[BLACK] = AllSquares ^ make_bitboard(SQ_D1, SQ_D7);
+        v->wallingRegion[WHITE] = v->wallingRegion[BLACK] = AllSquares ^ make_bitboard(SQ<FILE_D, RANK_1>, SQ<FILE_D, RANK_7>);
         return v;
     }
 
@@ -727,8 +727,8 @@ namespace {
         v->dropRegion[BLACK] = Rank8BB | Rank7BB | Rank6BB;
         v->sittuyinRookDrop = true;
         v->sittuyinPromotion = true;
-        v->promotionRegion[WHITE] = make_bitboard(SQ_A8, SQ_B7, SQ_C6, SQ_D5, SQ_E5, SQ_F6, SQ_G7, SQ_H8);
-        v->promotionRegion[BLACK] = make_bitboard(SQ_A1, SQ_B2, SQ_C3, SQ_D4, SQ_E4, SQ_F3, SQ_G2, SQ_H1);
+        v->promotionRegion[WHITE] = make_bitboard(SQ<FILE_A, RANK_8>, SQ<FILE_B, RANK_7>, SQ<FILE_C, RANK_6>, SQ<FILE_D, RANK_5>, SQ<FILE_E, RANK_5>, SQ<FILE_F, RANK_6>, SQ<FILE_G, RANK_7>, SQ<FILE_H, RANK_8>);
+        v->promotionRegion[BLACK] = make_bitboard(SQ<FILE_A, RANK_1>, SQ<FILE_B, RANK_2>, SQ<FILE_C, RANK_3>, SQ<FILE_D, RANK_4>, SQ<FILE_E, RANK_4>, SQ<FILE_F, RANK_3>, SQ<FILE_G, RANK_2>, SQ<FILE_H, RANK_1>);
         v->promotionLimit[FERS] = 1;
         v->immobilityIllegal = false;
         v->countingRule = ASEAN_COUNTING;
@@ -1204,7 +1204,7 @@ namespace {
         v->passOnStalemate[WHITE] = false;
         v->passOnStalemate[BLACK] = false;
         v->enclosingDrop = REVERSI;
-        v->enclosingDropStart = make_bitboard(SQ_D4, SQ_E4, SQ_D5, SQ_E5);
+        v->enclosingDropStart = make_bitboard(SQ<FILE_D, RANK_4>, SQ<FILE_E, RANK_4>, SQ<FILE_D, RANK_5>, SQ<FILE_E, RANK_5>);
         v->flipEnclosedPieces = REVERSI;
         v->materialCounting = UNWEIGHTED_MATERIAL;
         v->adjudicateFullBoard = true;
@@ -1498,8 +1498,8 @@ namespace {
         v->castling = false;
         v->stalemateValue = -VALUE_MATE;
         v->flagPiece[WHITE] = v->flagPiece[BLACK] = KNIGHT;
-        v->flagRegion[WHITE] = make_bitboard(SQ_E5);
-        v->flagRegion[BLACK] = make_bitboard(SQ_E5);
+        v->flagRegion[WHITE] = make_bitboard(SQ<FILE_E, RANK_5>);
+        v->flagRegion[BLACK] = make_bitboard(SQ<FILE_E, RANK_5>);
         v->flagMove = true;
         // we could remove the useless extra move when the flag piece can not be captured
         // v->flagPieceSafe = true;
@@ -1630,8 +1630,8 @@ namespace {
         v->maxRank = RANK_10;
         v->maxFile = FILE_J;
         v->startFen = "****qk****/**rnbbnr**/*pppppppp*/*8*/10/10/*8*/*PPPPPPPP*/**RNBBNR**/****QK**** w - - 0 1";
-        v->promotionRegion[WHITE] = make_bitboard(SQ_A6, SQ_B8, SQ_C9, SQ_D9, SQ_E10, SQ_F10, SQ_G9, SQ_H9, SQ_I8, SQ_J6);
-        v->promotionRegion[BLACK] = make_bitboard(SQ_A5, SQ_B3, SQ_C2, SQ_D2, SQ_E1, SQ_F1, SQ_G2, SQ_H2, SQ_I3, SQ_J5);
+        v->promotionRegion[WHITE] = make_bitboard(SQ<FILE_A, RANK_6>, SQ<FILE_B, RANK_8>, SQ<FILE_C, RANK_9>, SQ<FILE_D, RANK_9>, SQ<FILE_E, RANK_10>, SQ<FILE_F, RANK_10>, SQ<FILE_G, RANK_9>, SQ<FILE_H, RANK_9>, SQ<FILE_I, RANK_8>, SQ<FILE_J, RANK_6>);
+        v->promotionRegion[BLACK] = make_bitboard(SQ<FILE_A, RANK_5>, SQ<FILE_B, RANK_3>, SQ<FILE_C, RANK_2>, SQ<FILE_D, RANK_2>, SQ<FILE_E, RANK_1>, SQ<FILE_F, RANK_1>, SQ<FILE_G, RANK_2>, SQ<FILE_H, RANK_2>, SQ<FILE_I, RANK_3>, SQ<FILE_J, RANK_5>);
         v->doubleStepRegion[WHITE] = Rank3BB;
         v->doubleStepRegion[BLACK] = Rank8BB;
         v->castling = false;
@@ -1656,8 +1656,8 @@ namespace {
         v->promotedPieceType[PAWN] = CUSTOM_PIECE_3;
         v->promotionRegion[WHITE] = Rank10BB;
         v->promotionRegion[BLACK] = Rank1BB;
-        v->doubleStepRegion[WHITE] = Rank2BB | make_bitboard(SQ_B3, SQ_C3, SQ_F3, SQ_G3);
-        v->doubleStepRegion[BLACK] = Rank9BB | make_bitboard(SQ_B8, SQ_C8, SQ_F8, SQ_G8);
+        v->doubleStepRegion[WHITE] = Rank2BB | make_bitboard(SQ<FILE_B, RANK_3>, SQ<FILE_C, RANK_3>, SQ<FILE_F, RANK_3>, SQ<FILE_G, RANK_3>);
+        v->doubleStepRegion[BLACK] = Rank9BB | make_bitboard(SQ<FILE_B, RANK_8>, SQ<FILE_C, RANK_8>, SQ<FILE_F, RANK_8>, SQ<FILE_G, RANK_8>);
         v->enPassantTypes[WHITE] = v->enPassantTypes[BLACK] = piece_set(PAWN);
         v->nMoveRuleTypes[WHITE] = v->nMoveRuleTypes[BLACK] = piece_set(PAWN) | piece_set(CUSTOM_PIECE_1);
         v->castling = false;
@@ -1706,7 +1706,7 @@ namespace {
         v->maxRank = RANK_10;
         v->maxFile = FILE_J;
         v->startFen = "10/10/10/10/4pP4/4Pp4/10/10/10/10[PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPpppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp] w - - 0 1";
-        v->enclosingDropStart = make_bitboard(SQ_E5, SQ_F5, SQ_E6, SQ_F6);
+        v->enclosingDropStart = make_bitboard(SQ<FILE_E, RANK_5>, SQ<FILE_F, RANK_5>, SQ<FILE_E, RANK_6>, SQ<FILE_F, RANK_6>);
         return v;
     }
 #ifdef ALLVARS
@@ -1771,14 +1771,14 @@ namespace {
         v->dropChecks = false;
         v->dropRegion[WHITE] = v->mobilityRegion[WHITE][ELEPHANT];
         v->dropRegion[BLACK] = v->mobilityRegion[BLACK][ELEPHANT];
-        v->mobilityRegion[WHITE][FERS] = make_bitboard(SQ_D1, SQ_F1, SQ_E2, SQ_D3, SQ_F3);
-        v->mobilityRegion[BLACK][FERS] = make_bitboard(SQ_D8, SQ_F8, SQ_E9, SQ_D10, SQ_F10);
-        v->mobilityRegion[WHITE][ELEPHANT] = make_bitboard(SQ_C1, SQ_G1, SQ_A3, SQ_E3, SQ_I3, SQ_C5, SQ_G5);
-        v->mobilityRegion[BLACK][ELEPHANT] = make_bitboard(SQ_C6, SQ_G6, SQ_A8, SQ_E8, SQ_I8, SQ_C10, SQ_G10);
+        v->mobilityRegion[WHITE][FERS] = make_bitboard(SQ<FILE_D, RANK_1>, SQ<FILE_F, RANK_1>, SQ<FILE_E, RANK_2>, SQ<FILE_D, RANK_3>, SQ<FILE_F, RANK_3>);
+        v->mobilityRegion[BLACK][FERS] = make_bitboard(SQ<FILE_D, RANK_8>, SQ<FILE_F, RANK_8>, SQ<FILE_E, RANK_9>, SQ<FILE_D, RANK_10>, SQ<FILE_F, RANK_10>);
+        v->mobilityRegion[WHITE][ELEPHANT] = make_bitboard(SQ<FILE_C, RANK_1>, SQ<FILE_G, RANK_1>, SQ<FILE_A, RANK_3>, SQ<FILE_E, RANK_3>, SQ<FILE_I, RANK_3>, SQ<FILE_C, RANK_5>, SQ<FILE_G, RANK_5>);
+        v->mobilityRegion[BLACK][ELEPHANT] = make_bitboard(SQ<FILE_C, RANK_6>, SQ<FILE_G, RANK_6>, SQ<FILE_A, RANK_8>, SQ<FILE_E, RANK_8>, SQ<FILE_I, RANK_8>, SQ<FILE_C, RANK_10>, SQ<FILE_G, RANK_10>);
         v->mobilityRegion[WHITE][SOLDIER] = Rank6BB | Rank7BB | Rank8BB | Rank9BB | Rank10BB |
-            make_bitboard(SQ_A4, SQ_A5, SQ_C4, SQ_C5, SQ_E4, SQ_E5, SQ_G4, SQ_G5, SQ_I4, SQ_I5);
+            make_bitboard(SQ<FILE_A, RANK_4>, SQ<FILE_A, RANK_5>, SQ<FILE_C, RANK_4>, SQ<FILE_C, RANK_5>, SQ<FILE_E, RANK_4>, SQ<FILE_E, RANK_5>, SQ<FILE_G, RANK_4>, SQ<FILE_G, RANK_5>, SQ<FILE_I, RANK_4>, SQ<FILE_I, RANK_5>);
         v->mobilityRegion[BLACK][SOLDIER] = Rank1BB | Rank2BB | Rank3BB | Rank4BB | Rank5BB |
-            make_bitboard(SQ_A6, SQ_A7, SQ_C6, SQ_C7, SQ_E6, SQ_E7, SQ_G6, SQ_G7, SQ_I6, SQ_I7);
+            make_bitboard(SQ<FILE_A, RANK_6>, SQ<FILE_A, RANK_7>, SQ<FILE_C, RANK_6>, SQ<FILE_C, RANK_7>, SQ<FILE_E, RANK_6>, SQ<FILE_E, RANK_7>, SQ<FILE_G, RANK_6>, SQ<FILE_G, RANK_7>, SQ<FILE_I, RANK_6>, SQ<FILE_I, RANK_7>);
         return v;
     }
     // Janggi (Korean chess)
@@ -1801,8 +1801,8 @@ namespace {
         v->flyingGeneral = false;
         v->bikjangRule = true;
         v->materialCounting = JANGGI_MATERIAL;
-        v->diagonalLines = make_bitboard(SQ_D1, SQ_F1, SQ_E2, SQ_D3, SQ_F3,
-                                         SQ_D8, SQ_F8, SQ_E9, SQ_D10, SQ_F10);
+        v->diagonalLines = make_bitboard(SQ<FILE_D, RANK_1>, SQ<FILE_F, RANK_1>, SQ<FILE_E, RANK_2>, SQ<FILE_D, RANK_3>, SQ<FILE_F, RANK_3>,
+                                         SQ<FILE_D, RANK_8>, SQ<FILE_F, RANK_8>, SQ<FILE_E, RANK_9>, SQ<FILE_D, RANK_10>, SQ<FILE_F, RANK_10>);
         v->pass[WHITE] = true;
         v->pass[BLACK] = true;
         v->nFoldValue = VALUE_DRAW;
@@ -2144,7 +2144,7 @@ Variant* Variant::conclude() {
             }
         }
     else
-        kingSquareIndex[SQ_A1] = nnueKingSquare++ * nnuePieceIndices;
+        kingSquareIndex[SQ<FILE_A, RANK_1>] = nnueKingSquare++ * nnuePieceIndices;
     nnueDimensions = nnueKingSquare * nnuePieceIndices;
 
     // Determine maximum piece count

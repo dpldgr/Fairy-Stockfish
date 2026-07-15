@@ -379,7 +379,6 @@ else ifneq ($(filter 16x8,$(requested_board_size)),)
 else ifneq ($(filter 16x16,$(requested_board_size)),)
 	override board_files = 16
 	override board_ranks = 16
-	override pext = yes
 	override precomputedmagics = no
 endif
 
@@ -696,7 +695,7 @@ ifeq ($(pext),yes)
 	endif
 endif
 
-### 3.8 Link Time Optimization
+### 3.9 Link Time Optimization
 ### This is a mix of compile and link time options because the lto link phase
 ### needs access to the optimization flags.
 ifeq ($(optimize),yes)
@@ -740,7 +739,7 @@ ifeq ($(debug), no)
 endif
 endif
 
-### 3.9 Android 5 can only run position independent executables. Note that this
+### 3.10 Android 5 can only run position independent executables. Note that this
 ### breaks Android 4.0 and earlier.
 ifeq ($(OS), Android)
 	CXXFLAGS += -fPIE
