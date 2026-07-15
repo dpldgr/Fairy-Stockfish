@@ -993,6 +993,30 @@ constexpr Square SQ(std::string_view s) {
   return is_supported_file(File(f)) && is_supported_rank(Rank(r)) ? SQ(File(f), Rank(r)) : *static_cast<volatile Square*>(nullptr);
 }
 
+constexpr File operator"" _file(const char* s, size_t n) {
+  int f = file_index_from_string(std::string_view(s, n));
+
+  return is_supported_file(File(f)) ? File(f) : *static_cast<volatile File*>(nullptr);
+}
+
+constexpr File operator"" _file(unsigned long long n) {
+  return n >= 1 && n <= unsigned(FILE_AF + 1) ? File(n - 1) : *static_cast<volatile File*>(nullptr);
+}
+
+constexpr Rank operator"" _rank(const char* s, size_t n) {
+  int r = rank_index_from_string(std::string_view(s, n));
+
+  return is_supported_rank(Rank(r)) ? Rank(r) : *static_cast<volatile Rank*>(nullptr);
+}
+
+constexpr Rank operator"" _rank(unsigned long long n) {
+  return n >= 1 && n <= unsigned(RANK_48 + 1) ? Rank(n - 1) : *static_cast<volatile Rank*>(nullptr);
+}
+
+constexpr Square operator"" _sq(const char* s, size_t n) {
+  return SQ(std::string_view(s, n));
+}
+
 constexpr bool square_file_rank_range_test() {
   for (int f = FILE_A; f <= FILE_AF; ++f)
       for (int r = RANK_1; r <= RANK_48; ++r)
@@ -1008,6 +1032,16 @@ static_assert(SQ("h8") == SQ(FILE_H, RANK_8), "SQ string parser failed for h8");
 static_assert(SQ("j10") == SQ(FILE_J, RANK_10), "SQ string parser failed for j10");
 static_assert(SQ("ad12") == SQ(FILE_AD, RANK_12), "SQ string parser failed for ad12");
 static_assert(SQ("af48") == SQ(FILE_AF, RANK_48), "SQ string parser failed for af48");
+static_assert("a"_file == FILE_A, "file literal failed for a");
+static_assert("ad"_file == FILE_AD, "file literal failed for ad");
+static_assert(1_file == FILE_A, "numeric file literal failed for 1_file");
+static_assert(30_file == FILE_AD, "numeric file literal failed for 30_file");
+static_assert("1"_rank == RANK_1, "rank literal failed for 1");
+static_assert("12"_rank == RANK_12, "rank literal failed for 12");
+static_assert(1_rank == RANK_1, "numeric rank literal failed for 1_rank");
+static_assert(12_rank == RANK_12, "numeric rank literal failed for 12_rank");
+static_assert("a1"_sq == SQ(FILE_A, RANK_1), "square literal failed for a1");
+static_assert("ad12"_sq == SQ(FILE_AD, RANK_12), "square literal failed for ad12");
 
 constexpr Piece make_piece(Color c, PieceType pt) {
   return Piece((c << PIECE_TYPE_BITS) + pt);
