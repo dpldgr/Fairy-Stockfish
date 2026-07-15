@@ -24,7 +24,7 @@
 
 namespace Stockfish {
 
-/// TTEntry struct is the 12 bytes transposition table entry, defined as below:
+/// TTEntry struct is the 12/16 bytes transposition table entry, defined as below:
 ///
 /// key        16 bit
 /// depth       8 bit
@@ -65,6 +65,12 @@ private:
 #endif
 };
 
+template<size_t Padding>
+struct TTClusterPadding { char padding[Padding]; };
+
+template<>
+struct TTClusterPadding<0> {};
+
 
 /// A TranspositionTable is an array of Cluster, of size clusterCount. Each
 /// cluster consists of ClusterSize number of TTEntry. Each non-empty TTEntry
@@ -74,10 +80,12 @@ private:
 
 class TranspositionTable {
 
-#if BOARD_SQUARES <= 256
-  static constexpr int ClusterSize = 5;
+  static constexpr int ClusterSize = BOARD_SQUARES <= 256 ? 5 : 4;
+  static constexpr size_t ClusterEntryBytes = sizeof(TTEntry) * ClusterSize;
 
-  struct Cluster {
+  static_assert(ClusterEntryBytes <= 64, "TT cluster entries exceed cache line size");
+
+  struct Cluster : TTClusterPadding<64 - ClusterEntryBytes> {
     TTEntry entry[ClusterSize];
   };
 #else
