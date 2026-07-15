@@ -99,6 +99,7 @@ board_files = 8
 board_ranks = 8
 all = no
 precomputedmagics = yes
+tiledmagics = no
 nnue = no
 load_net = $(if $(filter $(nnue),yes),net)
 
@@ -958,6 +959,7 @@ config-sanity: $(load_net)
 	@echo "board_ranks: '$(board_ranks)'"
 	@echo "all: '$(all)'"
 	@echo "precomputedmagics: '$(precomputedmagics)'"
+	@echo "tiledmagics: '$(tiledmagics)'"
 	@echo "nnue: '$(nnue)'"
 	@echo ""
 	@echo "Flags:"
@@ -977,6 +979,7 @@ config-sanity: $(load_net)
 	@test "$(prefetch)" = "yes" || test "$(prefetch)" = "no"
 	@test "$(popcnt)" = "yes" || test "$(popcnt)" = "no"
 	@test "$(pext)" = "yes" || test "$(pext)" = "no"
+	@test "$(tiledmagics)" = "yes" || test "$(tiledmagics)" = "no"
 	@test "$(sse)" = "yes" || test "$(sse)" = "no"
 	@test "$(mmx)" = "yes" || test "$(mmx)" = "no"
 	@test "$(sse2)" = "yes" || test "$(sse2)" = "no"
