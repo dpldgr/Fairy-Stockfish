@@ -152,7 +152,7 @@ extern Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 extern RiderType AttackRiderTypes[PIECE_TYPE_NB];
 extern RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
 
-#if defined(LARGEBOARDS) || defined(BITBOARD_256)
+#if defined(LARGEBOARDS) || defined(BITBOARD_MULTIWORD)
 int popcount(Bitboard b); // required for multiword pext
 #endif
 
@@ -169,7 +169,7 @@ struct Magic {
     if (HasPext)
         return unsigned(pext(occupied, mask));
 
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
     assert(false);
     return 0;
 #elif defined(LARGEBOARDS)
@@ -444,7 +444,7 @@ inline int edge_distance(Rank r, Rank maxRank = RANK_8) { return std::min(r, Ran
 template<RiderType R>
 inline Bitboard rider_attacks_bb(Square s, Bitboard occupied) {
 
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
   extern Bitboard rider_attacks_bb_256(RiderType r, Square s, Bitboard occupied);
   return rider_attacks_bb_256(R, s, occupied);
 #else
@@ -472,7 +472,7 @@ inline Square lsb(Bitboard b);
 inline Bitboard rider_attacks_bb(RiderType R, Square s, Bitboard occupied) {
 
   assert(R != NO_RIDER && !(R & (R - 1))); // exactly one bit
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
   extern Bitboard rider_attacks_bb_256(RiderType R, Square s, Bitboard occupied);
   return rider_attacks_bb_256(R, s, occupied);
 #else
@@ -544,14 +544,25 @@ inline Bitboard moves_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
 
 inline int popcount(Bitboard b) {
 
+#ifdef BITBOARD_MULTIWORD
+  int count = 0;
+  for (int i = 0; i < BITBOARD_WORDS; ++i)
+  {
+  #ifndef USE_POPCNT
+      count += PopCnt16[b.b64[i] >> 48] + PopCnt16[(b.b64[i] >> 32) & 0xffff]
+             + PopCnt16[(b.b64[i] >> 16) & 0xffff] + PopCnt16[b.b64[i] & 0xffff];
+  #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
+      count += (int)_mm_popcnt_u64(b.b64[i]);
+  #else
+      count += __builtin_popcountll(b.b64[i]);
+  #endif
+  }
+  return count;
+#else
+
 #ifndef USE_POPCNT
 
-#ifdef BITBOARD_256
-  return  PopCnt16[b.b64[0] >> 48] + PopCnt16[(b.b64[0] >> 32) & 0xffff] + PopCnt16[(b.b64[0] >> 16) & 0xffff] + PopCnt16[b.b64[0] & 0xffff]
-        + PopCnt16[b.b64[1] >> 48] + PopCnt16[(b.b64[1] >> 32) & 0xffff] + PopCnt16[(b.b64[1] >> 16) & 0xffff] + PopCnt16[b.b64[1] & 0xffff]
-        + PopCnt16[b.b64[2] >> 48] + PopCnt16[(b.b64[2] >> 32) & 0xffff] + PopCnt16[(b.b64[2] >> 16) & 0xffff] + PopCnt16[b.b64[2] & 0xffff]
-        + PopCnt16[b.b64[3] >> 48] + PopCnt16[(b.b64[3] >> 32) & 0xffff] + PopCnt16[(b.b64[3] >> 16) & 0xffff] + PopCnt16[b.b64[3] & 0xffff];
-#elif defined(LARGEBOARDS)
+#ifdef LARGEBOARDS
   union { Bitboard bb; uint16_t u[8]; } v = { b };
   return  PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]]
         + PopCnt16[v.u[4]] + PopCnt16[v.u[5]] + PopCnt16[v.u[6]] + PopCnt16[v.u[7]];
@@ -562,9 +573,7 @@ inline int popcount(Bitboard b) {
 
 #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
 
-#ifdef BITBOARD_256
-  return (int)_mm_popcnt_u64(b.b64[0]) + (int)_mm_popcnt_u64(b.b64[1]) + (int)_mm_popcnt_u64(b.b64[2]) + (int)_mm_popcnt_u64(b.b64[3]);
-#elif defined(LARGEBOARDS)
+#ifdef LARGEBOARDS
   return (int)_mm_popcnt_u64(uint64_t(b >> 64)) + (int)_mm_popcnt_u64(uint64_t(b));
 #else
   return (int)_mm_popcnt_u64(b);
@@ -572,14 +581,13 @@ inline int popcount(Bitboard b) {
 
 #else // Assumed gcc or compatible compiler
 
-#ifdef BITBOARD_256
-  return __builtin_popcountll(b.b64[0]) + __builtin_popcountll(b.b64[1]) + __builtin_popcountll(b.b64[2]) + __builtin_popcountll(b.b64[3]);
-#elif defined(LARGEBOARDS)
+#ifdef LARGEBOARDS
   return __builtin_popcountll(b >> 64) + __builtin_popcountll(b);
 #else
   return __builtin_popcountll(b);
 #endif
 
+#endif
 #endif
 }
 
@@ -590,14 +598,10 @@ inline int popcount(Bitboard b) {
 
 inline Square lsb(Bitboard b) {
   assert(b);
-#ifdef BITBOARD_256
-  if (b.b64[3])
-      return Square(__builtin_ctzll(b.b64[3]));
-  if (b.b64[2])
-      return Square(__builtin_ctzll(b.b64[2]) + 64);
-  if (b.b64[1])
-      return Square(__builtin_ctzll(b.b64[1]) + 128);
-  return Square(__builtin_ctzll(b.b64[0]) + 192);
+#ifdef BITBOARD_MULTIWORD
+  for (int i = BITBOARD_WORDS - 1; i >= 0; --i)
+      if (b.b64[i])
+          return Square(__builtin_ctzll(b.b64[i]) + 64 * (BITBOARD_WORDS - 1 - i));
 #elif defined(LARGEBOARDS)
   if (!(b << 64))
       return Square(__builtin_ctzll(b >> 64) + 64);
@@ -607,14 +611,12 @@ inline Square lsb(Bitboard b) {
 
 inline Square msb(Bitboard b) {
   assert(b);
-#ifdef BITBOARD_256
-  if (b.b64[0])
-      return Square(255 ^ __builtin_clzll(b.b64[0]));
-  if (b.b64[1])
-      return Square(191 ^ __builtin_clzll(b.b64[1]));
-  if (b.b64[2])
-      return Square(127 ^ __builtin_clzll(b.b64[2]));
-  return Square(63 ^ __builtin_clzll(b.b64[3]));
+#ifdef BITBOARD_MULTIWORD
+  for (int i = 0; i < BITBOARD_WORDS; ++i)
+      if (b.b64[i])
+          return Square(64 * (BITBOARD_WORDS - i) - 1 - __builtin_clzll(b.b64[i]));
+  assert(false);
+  return SQ_NONE;
 #elif defined(LARGEBOARDS)
   if (b >> 64)
       return Square(int(SQUARE_BIT_MASK) ^ __builtin_clzll(b >> 64));

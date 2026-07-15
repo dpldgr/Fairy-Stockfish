@@ -31,13 +31,13 @@ namespace Stockfish {
 /// generation  5 bit
 /// pv node     1 bit
 /// bound type  2 bit
-/// move       32 bit (official SF: 16 bit)
+/// move       32/64 bit (official SF: 16 bit)
 /// value      16 bit
 /// eval value 16 bit
 
 struct TTEntry {
 
-  Move  move()  const { return (Move )move32; }
+  Move  move()  const { return (Move )moveStorage; }
   Value value() const { return (Value)value16; }
   Value eval()  const { return (Value)eval16; }
   Depth depth() const { return (Depth)depth8 + DEPTH_OFFSET; }
@@ -48,12 +48,21 @@ struct TTEntry {
 private:
   friend class TranspositionTable;
 
+#if BOARD_SQUARES <= 256
   uint16_t key16;
   uint8_t  depth8;
   uint8_t  genBound8;
-  uint32_t move32;
+  MoveStorage moveStorage;
   int16_t  value16;
   int16_t  eval16;
+#else
+  MoveStorage moveStorage;
+  uint16_t key16;
+  int16_t  value16;
+  int16_t  eval16;
+  uint8_t  depth8;
+  uint8_t  genBound8;
+#endif
 };
 
 
@@ -65,12 +74,20 @@ private:
 
 class TranspositionTable {
 
+#if BOARD_SQUARES <= 256
   static constexpr int ClusterSize = 5;
 
   struct Cluster {
     TTEntry entry[ClusterSize];
     char padding[4]; // Pad to 64 bytes
   };
+#else
+  static constexpr int ClusterSize = 4;
+
+  struct Cluster {
+    TTEntry entry[ClusterSize];
+  };
+#endif
 
   static_assert(sizeof(Cluster) == 64, "Unexpected Cluster size");
 
