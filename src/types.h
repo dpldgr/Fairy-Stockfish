@@ -40,6 +40,8 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <string_view>
+#include <type_traits>
 #include <algorithm>
 
 #ifndef BOARD_FILES
@@ -52,23 +54,18 @@
 #define BOARD_SQUARES (BOARD_FILES * BOARD_RANKS)
 #endif
 
-#if BOARD_FILES < 8 || BOARD_FILES > 16
-#error "BOARD_FILES must be between 8 and 16"
+#if BOARD_FILES < 8 || BOARD_FILES > 32
+#error "BOARD_FILES must be between 8 and 32"
 #endif
-#if BOARD_RANKS < 8 || BOARD_RANKS > 16
-#error "BOARD_RANKS must be between 8 and 16"
+#if BOARD_RANKS < 8 || BOARD_RANKS > 48
+#error "BOARD_RANKS must be between 8 and 48"
 #endif
-#if BOARD_SQUARES < 64 || BOARD_SQUARES > 256
-#error "BOARD_SQUARES must be between 64 and 256"
-#endif
-#if BOARD_SQUARES > 128 && (BOARD_FILES != 16 || BOARD_RANKS != 16)
-#error "Only the 16x16 PEXT-only build supports more than 128 squares"
-#endif
-#if BOARD_SQUARES > 128 && !defined(USE_PEXT)
-#error "The 16x16 build requires USE_PEXT"
+#if BOARD_SQUARES < 64 || BOARD_SQUARES > 384
+#error "BOARD_SQUARES must be between 64 and 384"
 #endif
 #if BOARD_SQUARES > 128
-#define BITBOARD_256
+#define BITBOARD_MULTIWORD
+#define BITBOARD_WORDS ((BOARD_SQUARES + 63) / 64)
 #endif
 #if (defined(LARGEBOARDS) && (BOARD_FILES != 12 || BOARD_RANKS != 10))
 #error "LARGEBOARDS is a compatibility alias for BOARD_FILES=12 and BOARD_RANKS=10; define BOARD_FILES/BOARD_RANKS instead"
@@ -116,18 +113,11 @@
 
 #if defined(USE_PEXT)
 #  include <immintrin.h> // Header for _pext_u64() intrinsic
-#  ifdef BITBOARD_256
-#    define pext(b, m) (_pext_u64((b).b64[3], (m).b64[3]) \
-                      ^ (_pext_u64((b).b64[2], (m).b64[2]) << popcount(Bitboard(0, 0, 0, (m).b64[3]))) \
-                      ^ (_pext_u64((b).b64[1], (m).b64[1]) << popcount(Bitboard(0, 0, (m).b64[2], (m).b64[3]))) \
-                      ^ (_pext_u64((b).b64[0], (m).b64[0]) << popcount(Bitboard(0, (m).b64[1], (m).b64[2], (m).b64[3]))))
-#  elif defined(LARGEBOARDS)
+#  if defined(LARGEBOARDS) && !defined(BITBOARD_MULTIWORD)
 #    define pext(b, m) (_pext_u64(b, m) ^ (_pext_u64(b >> 64, m >> 64) << popcount((m << 64) >> 64)))
-#  else
+#  elif !defined(BITBOARD_MULTIWORD)
 #    define pext(b, m) _pext_u64(b, m)
 #  endif
-#else
-#  define pext(b, m) 0
 #endif
 
 namespace Stockfish {
@@ -151,30 +141,43 @@ constexpr bool Is64Bit = false;
 #endif
 
 typedef uint64_t Key;
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
 struct Bitboard {
-    uint64_t b64[4];
+    uint64_t b64[BITBOARD_WORDS];
 
-    constexpr Bitboard() : b64 {0, 0, 0, 0} {}
-    constexpr Bitboard(uint64_t i) : b64 {0, 0, 0, i} {}
-    constexpr Bitboard(uint64_t a, uint64_t b, uint64_t c, uint64_t d) : b64 {a, b, c, d} {}
+    constexpr Bitboard() : b64 {} {}
+    constexpr Bitboard(uint64_t i) : b64 {} { b64[BITBOARD_WORDS - 1] = i; }
 
-    constexpr operator bool() const { return b64[0] || b64[1] || b64[2] || b64[3]; }
-    constexpr operator long long unsigned () const { return b64[3]; }
-    constexpr operator unsigned() const { return unsigned(b64[3]); }
+    template<typename... T>
+    constexpr Bitboard(uint64_t first, T... rest) : b64 {} {
+        static_assert(1 + sizeof...(rest) <= BITBOARD_WORDS, "Too many words for Bitboard");
+        const uint64_t words[] = { first, uint64_t(rest)... };
+        constexpr int count = 1 + sizeof...(rest);
+        for (int i = 0; i < count; ++i)
+            b64[BITBOARD_WORDS - count + i] = words[i];
+    }
+
+    constexpr operator bool() const {
+        for (int i = 0; i < BITBOARD_WORDS; ++i)
+            if (b64[i])
+                return true;
+        return false;
+    }
+    constexpr operator long long unsigned () const { return b64[BITBOARD_WORDS - 1]; }
+    constexpr operator unsigned() const { return unsigned(b64[BITBOARD_WORDS - 1]); }
 
     constexpr Bitboard operator << (const unsigned int bits) const {
         Bitboard out;
-        if (bits >= 256)
+        if (bits >= BITBOARD_WORDS * 64)
             return out;
         const unsigned word = bits / 64;
         const unsigned rem = bits % 64;
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < BITBOARD_WORDS; ++i)
         {
             const int src = i + word;
-            if (src < 4)
+            if (src < BITBOARD_WORDS)
                 out.b64[i] |= b64[src] << rem;
-            if (rem && src + 1 < 4)
+            if (rem && src + 1 < BITBOARD_WORDS)
                 out.b64[i] |= b64[src + 1] >> (64 - rem);
         }
         return out;
@@ -182,11 +185,11 @@ struct Bitboard {
 
     constexpr Bitboard operator >> (const unsigned int bits) const {
         Bitboard out;
-        if (bits >= 256)
+        if (bits >= BITBOARD_WORDS * 64)
             return out;
         const unsigned word = bits / 64;
         const unsigned rem = bits % 64;
-        for (int i = 3; i >= 0; --i)
+        for (int i = BITBOARD_WORDS - 1; i >= 0; --i)
         {
             const int src = i - word;
             if (src >= 0)
@@ -199,26 +202,67 @@ struct Bitboard {
 
     constexpr Bitboard operator << (const int bits) const { return *this << unsigned(bits); }
     constexpr Bitboard operator >> (const int bits) const { return *this >> unsigned(bits); }
-    constexpr bool operator == (const Bitboard y) const { return b64[0] == y.b64[0] && b64[1] == y.b64[1] && b64[2] == y.b64[2] && b64[3] == y.b64[3]; }
-    constexpr bool operator != (const Bitboard y) const { return !(*this == y); }
-    inline Bitboard& operator |=(const Bitboard x) { b64[0] |= x.b64[0]; b64[1] |= x.b64[1]; b64[2] |= x.b64[2]; b64[3] |= x.b64[3]; return *this; }
-    inline Bitboard& operator &=(const Bitboard x) { b64[0] &= x.b64[0]; b64[1] &= x.b64[1]; b64[2] &= x.b64[2]; b64[3] &= x.b64[3]; return *this; }
-    inline Bitboard& operator ^=(const Bitboard x) { b64[0] ^= x.b64[0]; b64[1] ^= x.b64[1]; b64[2] ^= x.b64[2]; b64[3] ^= x.b64[3]; return *this; }
-    constexpr Bitboard operator ~ () const { return Bitboard(~b64[0], ~b64[1], ~b64[2], ~b64[3]); }
-    constexpr Bitboard operator - () const { return Bitboard(~*this + Bitboard(1)); }
-    constexpr Bitboard operator | (const Bitboard x) const { return Bitboard(b64[0] | x.b64[0], b64[1] | x.b64[1], b64[2] | x.b64[2], b64[3] | x.b64[3]); }
-    constexpr Bitboard operator & (const Bitboard x) const { return Bitboard(b64[0] & x.b64[0], b64[1] & x.b64[1], b64[2] & x.b64[2], b64[3] & x.b64[3]); }
-    constexpr Bitboard operator ^ (const Bitboard x) const { return Bitboard(b64[0] ^ x.b64[0], b64[1] ^ x.b64[1], b64[2] ^ x.b64[2], b64[3] ^ x.b64[3]); }
-    constexpr Bitboard operator + (const Bitboard x) const {
-        uint64_t d = b64[3] + x.b64[3], c = b64[2] + x.b64[2] + (d < b64[3]);
-        uint64_t b = b64[1] + x.b64[1] + (c < b64[2] || (c == b64[2] && d < b64[3]));
-        return Bitboard(b64[0] + x.b64[0] + (b < b64[1] || (b == b64[1] && (c < b64[2] || (c == b64[2] && d < b64[3])))), b, c, d);
+    constexpr bool operator == (const Bitboard y) const {
+        for (int i = 0; i < BITBOARD_WORDS; ++i)
+            if (b64[i] != y.b64[i])
+                return false;
+        return true;
     }
-    constexpr Bitboard operator - (const Bitboard x) const { return *this + (-x); }
+    constexpr bool operator != (const Bitboard y) const { return !(*this == y); }
+    inline Bitboard& operator |=(const Bitboard x) { for (int i = 0; i < BITBOARD_WORDS; ++i) b64[i] |= x.b64[i]; return *this; }
+    inline Bitboard& operator &=(const Bitboard x) { for (int i = 0; i < BITBOARD_WORDS; ++i) b64[i] &= x.b64[i]; return *this; }
+    inline Bitboard& operator ^=(const Bitboard x) { for (int i = 0; i < BITBOARD_WORDS; ++i) b64[i] ^= x.b64[i]; return *this; }
+    constexpr Bitboard operator ~ () const {
+        Bitboard out;
+        for (int i = 0; i < BITBOARD_WORDS; ++i)
+            out.b64[i] = ~b64[i];
+        return out;
+    }
+    constexpr Bitboard operator - () const { return Bitboard(0) - *this; }
+    constexpr Bitboard operator | (const Bitboard x) const {
+        Bitboard out;
+        for (int i = 0; i < BITBOARD_WORDS; ++i)
+            out.b64[i] = b64[i] | x.b64[i];
+        return out;
+    }
+    constexpr Bitboard operator & (const Bitboard x) const {
+        Bitboard out;
+        for (int i = 0; i < BITBOARD_WORDS; ++i)
+            out.b64[i] = b64[i] & x.b64[i];
+        return out;
+    }
+    constexpr Bitboard operator ^ (const Bitboard x) const {
+        Bitboard out;
+        for (int i = 0; i < BITBOARD_WORDS; ++i)
+            out.b64[i] = b64[i] ^ x.b64[i];
+        return out;
+    }
+    constexpr Bitboard operator + (const Bitboard x) const {
+        Bitboard out;
+        uint64_t carry = 0;
+        for (int i = BITBOARD_WORDS - 1; i >= 0; --i)
+        {
+            const uint64_t sum = b64[i] + x.b64[i];
+            out.b64[i] = sum + carry;
+            carry = (sum < b64[i]) || (carry && out.b64[i] == 0);
+        }
+        return out;
+    }
+    constexpr Bitboard operator - (const Bitboard x) const {
+        Bitboard out;
+        uint64_t borrow = 0;
+        for (int i = BITBOARD_WORDS - 1; i >= 0; --i)
+        {
+            const uint64_t sub = x.b64[i] + borrow;
+            out.b64[i] = b64[i] - sub;
+            borrow = (b64[i] < x.b64[i]) || (borrow && b64[i] == x.b64[i]);
+        }
+        return out;
+    }
     constexpr Bitboard operator - (const int x) const { return *this - Bitboard(x); }
     constexpr Bitboard operator * (const Bitboard) const { return Bitboard(0); }
 };
-constexpr int SQUARE_BITS = 8;
+constexpr int SQUARE_BITS = BOARD_SQUARES <= 256 ? 8 : 9;
 #elif defined(LARGEBOARDS)
 #if defined(__GNUC__) && defined(IS_64BIT)
 typedef unsigned __int128 Bitboard;
@@ -336,6 +380,73 @@ typedef uint64_t Bitboard;
 constexpr int SQUARE_BITS = 6;
 #endif
 
+inline uint64_t software_pext64(uint64_t b, uint64_t m) {
+
+    uint64_t result = 0;
+    unsigned bit = 0;
+
+    while (m)
+    {
+        const uint64_t lsb = m & -m;
+        if (b & lsb)
+            result |= uint64_t(1) << bit;
+        m ^= lsb;
+        ++bit;
+    }
+
+    return result;
+}
+
+inline unsigned software_popcount64(uint64_t b) {
+
+#if defined(__GNUC__)
+    return unsigned(__builtin_popcountll(b));
+#else
+    unsigned cnt = 0;
+    while (b)
+    {
+        b &= b - 1;
+        ++cnt;
+    }
+    return cnt;
+#endif
+}
+
+#if defined(BITBOARD_MULTIWORD)
+inline unsigned pext(Bitboard b, Bitboard m) {
+
+    unsigned result = 0;
+    unsigned shift = 0;
+
+    for (int i = BITBOARD_WORDS - 1; i >= 0; --i)
+    {
+#if defined(USE_PEXT)
+        result ^= unsigned(_pext_u64(b.b64[i], m.b64[i]) << shift);
+#else
+        result ^= unsigned(software_pext64(b.b64[i], m.b64[i]) << shift);
+#endif
+        shift += software_popcount64(m.b64[i]);
+    }
+
+    return result;
+}
+#elif !defined(USE_PEXT)
+inline unsigned pext(Bitboard b, Bitboard m) {
+
+#ifdef LARGEBOARDS
+#if defined(__GNUC__) && defined(IS_64BIT)
+    return unsigned(  software_pext64(uint64_t(b), uint64_t(m))
+                    ^ (software_pext64(uint64_t(b >> 64), uint64_t(m >> 64)) << software_popcount64(uint64_t(m))));
+#else
+    return unsigned(  software_pext64(b.b64[1], m.b64[1])
+                    ^ (software_pext64(b.b64[0], m.b64[0]) << software_popcount64(m.b64[1])));
+#endif
+#else
+    return unsigned(software_pext64(b, m));
+#endif
+}
+#endif
+
 //When defined, move list will be stored in heap. Delete this if you want to use stack to store move list. Using stack can cause overflow (Segmentation Fault) when the search is too deep.
 #define USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
 
@@ -365,23 +476,25 @@ constexpr int MAX_PLY = 246;
 /// any normal move destination square is always different from origin square
 /// while MOVE_NONE and MOVE_NULL have the same origin and destination square.
 
-enum Move : int {
+using MoveStorage = std::conditional_t<BOARD_SQUARES <= 256, uint32_t, uint64_t>;
+
+enum Move : MoveStorage {
   MOVE_NONE,
-  MOVE_NULL = 1 + (1 << SQUARE_BITS)
+  MOVE_NULL = MoveStorage(1) + (MoveStorage(1) << SQUARE_BITS)
 };
 
-enum MoveType : int {
+enum MoveType : MoveStorage {
   NORMAL,
-  EN_PASSANT          = 1 << (2 * SQUARE_BITS),
-  CASTLING           = 2 << (2 * SQUARE_BITS),
-  PROMOTION          = 3 << (2 * SQUARE_BITS),
-  DROP               = 4 << (2 * SQUARE_BITS),
-  PIECE_PROMOTION    = 5 << (2 * SQUARE_BITS),
-  PIECE_DEMOTION     = 6 << (2 * SQUARE_BITS),
-  SPECIAL            = 7 << (2 * SQUARE_BITS),
-  LION               = 8 << (2 * SQUARE_BITS),
-  HOOK               = 9 << (2 * SQUARE_BITS),
-  DOUBLE_MOVE        = 10 << (2 * SQUARE_BITS),
+  EN_PASSANT          = MoveStorage(1) << (2 * SQUARE_BITS),
+  CASTLING           = MoveStorage(2) << (2 * SQUARE_BITS),
+  PROMOTION          = MoveStorage(3) << (2 * SQUARE_BITS),
+  DROP               = MoveStorage(4) << (2 * SQUARE_BITS),
+  PIECE_PROMOTION    = MoveStorage(5) << (2 * SQUARE_BITS),
+  PIECE_DEMOTION     = MoveStorage(6) << (2 * SQUARE_BITS),
+  SPECIAL            = MoveStorage(7) << (2 * SQUARE_BITS),
+  LION               = MoveStorage(8) << (2 * SQUARE_BITS),
+  HOOK               = MoveStorage(9) << (2 * SQUARE_BITS),
+  DOUBLE_MOVE        = MoveStorage(10) << (2 * SQUARE_BITS),
 };
 
 constexpr int MOVE_TYPE_BITS = 4;
@@ -544,7 +657,7 @@ static_assert(KING < PIECE_TYPE_NB, "KING exceeds PIECE_TYPE_NB.");
 static_assert(PIECE_TYPE_BITS <= 6, "PIECE_TYPE uses more than 6 bit");
 static_assert(!(PIECE_TYPE_NB & (PIECE_TYPE_NB - 1)), "PIECE_TYPE_NB is not a power of 2");
 
-static_assert(2 * SQUARE_BITS + MOVE_TYPE_BITS + 2 * PIECE_TYPE_BITS <= 32, "Move encoding uses more than 32 bits");
+static_assert(2 * SQUARE_BITS + MOVE_TYPE_BITS + 2 * PIECE_TYPE_BITS <= 8 * sizeof(MoveStorage), "Move encoding uses more bits than MoveStorage");
 
 enum Piece {
   NO_PIECE,
@@ -604,31 +717,14 @@ enum : int {
 };
 
 enum Square : int {
-  SQ_A1 = 0 * BOARD_FILES + 0,   SQ_B1 = 0 * BOARD_FILES + 1,   SQ_C1 = 0 * BOARD_FILES + 2,   SQ_D1 = 0 * BOARD_FILES + 3,   SQ_E1 = 0 * BOARD_FILES + 4,   SQ_F1 = 0 * BOARD_FILES + 5,   SQ_G1 = 0 * BOARD_FILES + 6,   SQ_H1 = 0 * BOARD_FILES + 7,   SQ_I1 = 0 * BOARD_FILES + 8,   SQ_J1 = 0 * BOARD_FILES + 9,   SQ_K1 = 0 * BOARD_FILES + 10,   SQ_L1 = 0 * BOARD_FILES + 11,   SQ_M1 = 0 * BOARD_FILES + 12,   SQ_N1 = 0 * BOARD_FILES + 13,   SQ_O1 = 0 * BOARD_FILES + 14,   SQ_P1 = 0 * BOARD_FILES + 15,
-  SQ_A2 = 1 * BOARD_FILES + 0,   SQ_B2 = 1 * BOARD_FILES + 1,   SQ_C2 = 1 * BOARD_FILES + 2,   SQ_D2 = 1 * BOARD_FILES + 3,   SQ_E2 = 1 * BOARD_FILES + 4,   SQ_F2 = 1 * BOARD_FILES + 5,   SQ_G2 = 1 * BOARD_FILES + 6,   SQ_H2 = 1 * BOARD_FILES + 7,   SQ_I2 = 1 * BOARD_FILES + 8,   SQ_J2 = 1 * BOARD_FILES + 9,   SQ_K2 = 1 * BOARD_FILES + 10,   SQ_L2 = 1 * BOARD_FILES + 11,   SQ_M2 = 1 * BOARD_FILES + 12,   SQ_N2 = 1 * BOARD_FILES + 13,   SQ_O2 = 1 * BOARD_FILES + 14,   SQ_P2 = 1 * BOARD_FILES + 15,
-  SQ_A3 = 2 * BOARD_FILES + 0,   SQ_B3 = 2 * BOARD_FILES + 1,   SQ_C3 = 2 * BOARD_FILES + 2,   SQ_D3 = 2 * BOARD_FILES + 3,   SQ_E3 = 2 * BOARD_FILES + 4,   SQ_F3 = 2 * BOARD_FILES + 5,   SQ_G3 = 2 * BOARD_FILES + 6,   SQ_H3 = 2 * BOARD_FILES + 7,   SQ_I3 = 2 * BOARD_FILES + 8,   SQ_J3 = 2 * BOARD_FILES + 9,   SQ_K3 = 2 * BOARD_FILES + 10,   SQ_L3 = 2 * BOARD_FILES + 11,   SQ_M3 = 2 * BOARD_FILES + 12,   SQ_N3 = 2 * BOARD_FILES + 13,   SQ_O3 = 2 * BOARD_FILES + 14,   SQ_P3 = 2 * BOARD_FILES + 15,
-  SQ_A4 = 3 * BOARD_FILES + 0,   SQ_B4 = 3 * BOARD_FILES + 1,   SQ_C4 = 3 * BOARD_FILES + 2,   SQ_D4 = 3 * BOARD_FILES + 3,   SQ_E4 = 3 * BOARD_FILES + 4,   SQ_F4 = 3 * BOARD_FILES + 5,   SQ_G4 = 3 * BOARD_FILES + 6,   SQ_H4 = 3 * BOARD_FILES + 7,   SQ_I4 = 3 * BOARD_FILES + 8,   SQ_J4 = 3 * BOARD_FILES + 9,   SQ_K4 = 3 * BOARD_FILES + 10,   SQ_L4 = 3 * BOARD_FILES + 11,   SQ_M4 = 3 * BOARD_FILES + 12,   SQ_N4 = 3 * BOARD_FILES + 13,   SQ_O4 = 3 * BOARD_FILES + 14,   SQ_P4 = 3 * BOARD_FILES + 15,
-  SQ_A5 = 4 * BOARD_FILES + 0,   SQ_B5 = 4 * BOARD_FILES + 1,   SQ_C5 = 4 * BOARD_FILES + 2,   SQ_D5 = 4 * BOARD_FILES + 3,   SQ_E5 = 4 * BOARD_FILES + 4,   SQ_F5 = 4 * BOARD_FILES + 5,   SQ_G5 = 4 * BOARD_FILES + 6,   SQ_H5 = 4 * BOARD_FILES + 7,   SQ_I5 = 4 * BOARD_FILES + 8,   SQ_J5 = 4 * BOARD_FILES + 9,   SQ_K5 = 4 * BOARD_FILES + 10,   SQ_L5 = 4 * BOARD_FILES + 11,   SQ_M5 = 4 * BOARD_FILES + 12,   SQ_N5 = 4 * BOARD_FILES + 13,   SQ_O5 = 4 * BOARD_FILES + 14,   SQ_P5 = 4 * BOARD_FILES + 15,
-  SQ_A6 = 5 * BOARD_FILES + 0,   SQ_B6 = 5 * BOARD_FILES + 1,   SQ_C6 = 5 * BOARD_FILES + 2,   SQ_D6 = 5 * BOARD_FILES + 3,   SQ_E6 = 5 * BOARD_FILES + 4,   SQ_F6 = 5 * BOARD_FILES + 5,   SQ_G6 = 5 * BOARD_FILES + 6,   SQ_H6 = 5 * BOARD_FILES + 7,   SQ_I6 = 5 * BOARD_FILES + 8,   SQ_J6 = 5 * BOARD_FILES + 9,   SQ_K6 = 5 * BOARD_FILES + 10,   SQ_L6 = 5 * BOARD_FILES + 11,   SQ_M6 = 5 * BOARD_FILES + 12,   SQ_N6 = 5 * BOARD_FILES + 13,   SQ_O6 = 5 * BOARD_FILES + 14,   SQ_P6 = 5 * BOARD_FILES + 15,
-  SQ_A7 = 6 * BOARD_FILES + 0,   SQ_B7 = 6 * BOARD_FILES + 1,   SQ_C7 = 6 * BOARD_FILES + 2,   SQ_D7 = 6 * BOARD_FILES + 3,   SQ_E7 = 6 * BOARD_FILES + 4,   SQ_F7 = 6 * BOARD_FILES + 5,   SQ_G7 = 6 * BOARD_FILES + 6,   SQ_H7 = 6 * BOARD_FILES + 7,   SQ_I7 = 6 * BOARD_FILES + 8,   SQ_J7 = 6 * BOARD_FILES + 9,   SQ_K7 = 6 * BOARD_FILES + 10,   SQ_L7 = 6 * BOARD_FILES + 11,   SQ_M7 = 6 * BOARD_FILES + 12,   SQ_N7 = 6 * BOARD_FILES + 13,   SQ_O7 = 6 * BOARD_FILES + 14,   SQ_P7 = 6 * BOARD_FILES + 15,
-  SQ_A8 = 7 * BOARD_FILES + 0,   SQ_B8 = 7 * BOARD_FILES + 1,   SQ_C8 = 7 * BOARD_FILES + 2,   SQ_D8 = 7 * BOARD_FILES + 3,   SQ_E8 = 7 * BOARD_FILES + 4,   SQ_F8 = 7 * BOARD_FILES + 5,   SQ_G8 = 7 * BOARD_FILES + 6,   SQ_H8 = 7 * BOARD_FILES + 7,   SQ_I8 = 7 * BOARD_FILES + 8,   SQ_J8 = 7 * BOARD_FILES + 9,   SQ_K8 = 7 * BOARD_FILES + 10,   SQ_L8 = 7 * BOARD_FILES + 11,   SQ_M8 = 7 * BOARD_FILES + 12,   SQ_N8 = 7 * BOARD_FILES + 13,   SQ_O8 = 7 * BOARD_FILES + 14,   SQ_P8 = 7 * BOARD_FILES + 15,
-  SQ_A9 = 8 * BOARD_FILES + 0,   SQ_B9 = 8 * BOARD_FILES + 1,   SQ_C9 = 8 * BOARD_FILES + 2,   SQ_D9 = 8 * BOARD_FILES + 3,   SQ_E9 = 8 * BOARD_FILES + 4,   SQ_F9 = 8 * BOARD_FILES + 5,   SQ_G9 = 8 * BOARD_FILES + 6,   SQ_H9 = 8 * BOARD_FILES + 7,   SQ_I9 = 8 * BOARD_FILES + 8,   SQ_J9 = 8 * BOARD_FILES + 9,   SQ_K9 = 8 * BOARD_FILES + 10,   SQ_L9 = 8 * BOARD_FILES + 11,   SQ_M9 = 8 * BOARD_FILES + 12,   SQ_N9 = 8 * BOARD_FILES + 13,   SQ_O9 = 8 * BOARD_FILES + 14,   SQ_P9 = 8 * BOARD_FILES + 15,
-  SQ_A10 = 9 * BOARD_FILES + 0,   SQ_B10 = 9 * BOARD_FILES + 1,   SQ_C10 = 9 * BOARD_FILES + 2,   SQ_D10 = 9 * BOARD_FILES + 3,   SQ_E10 = 9 * BOARD_FILES + 4,   SQ_F10 = 9 * BOARD_FILES + 5,   SQ_G10 = 9 * BOARD_FILES + 6,   SQ_H10 = 9 * BOARD_FILES + 7,   SQ_I10 = 9 * BOARD_FILES + 8,   SQ_J10 = 9 * BOARD_FILES + 9,   SQ_K10 = 9 * BOARD_FILES + 10,   SQ_L10 = 9 * BOARD_FILES + 11,   SQ_M10 = 9 * BOARD_FILES + 12,   SQ_N10 = 9 * BOARD_FILES + 13,   SQ_O10 = 9 * BOARD_FILES + 14,   SQ_P10 = 9 * BOARD_FILES + 15,
-  SQ_A11 = 10 * BOARD_FILES + 0,   SQ_B11 = 10 * BOARD_FILES + 1,   SQ_C11 = 10 * BOARD_FILES + 2,   SQ_D11 = 10 * BOARD_FILES + 3,   SQ_E11 = 10 * BOARD_FILES + 4,   SQ_F11 = 10 * BOARD_FILES + 5,   SQ_G11 = 10 * BOARD_FILES + 6,   SQ_H11 = 10 * BOARD_FILES + 7,   SQ_I11 = 10 * BOARD_FILES + 8,   SQ_J11 = 10 * BOARD_FILES + 9,   SQ_K11 = 10 * BOARD_FILES + 10,   SQ_L11 = 10 * BOARD_FILES + 11,   SQ_M11 = 10 * BOARD_FILES + 12,   SQ_N11 = 10 * BOARD_FILES + 13,   SQ_O11 = 10 * BOARD_FILES + 14,   SQ_P11 = 10 * BOARD_FILES + 15,
-  SQ_A12 = 11 * BOARD_FILES + 0,   SQ_B12 = 11 * BOARD_FILES + 1,   SQ_C12 = 11 * BOARD_FILES + 2,   SQ_D12 = 11 * BOARD_FILES + 3,   SQ_E12 = 11 * BOARD_FILES + 4,   SQ_F12 = 11 * BOARD_FILES + 5,   SQ_G12 = 11 * BOARD_FILES + 6,   SQ_H12 = 11 * BOARD_FILES + 7,   SQ_I12 = 11 * BOARD_FILES + 8,   SQ_J12 = 11 * BOARD_FILES + 9,   SQ_K12 = 11 * BOARD_FILES + 10,   SQ_L12 = 11 * BOARD_FILES + 11,   SQ_M12 = 11 * BOARD_FILES + 12,   SQ_N12 = 11 * BOARD_FILES + 13,   SQ_O12 = 11 * BOARD_FILES + 14,   SQ_P12 = 11 * BOARD_FILES + 15,
-  SQ_A13 = 12 * BOARD_FILES + 0,   SQ_B13 = 12 * BOARD_FILES + 1,   SQ_C13 = 12 * BOARD_FILES + 2,   SQ_D13 = 12 * BOARD_FILES + 3,   SQ_E13 = 12 * BOARD_FILES + 4,   SQ_F13 = 12 * BOARD_FILES + 5,   SQ_G13 = 12 * BOARD_FILES + 6,   SQ_H13 = 12 * BOARD_FILES + 7,   SQ_I13 = 12 * BOARD_FILES + 8,   SQ_J13 = 12 * BOARD_FILES + 9,   SQ_K13 = 12 * BOARD_FILES + 10,   SQ_L13 = 12 * BOARD_FILES + 11,   SQ_M13 = 12 * BOARD_FILES + 12,   SQ_N13 = 12 * BOARD_FILES + 13,   SQ_O13 = 12 * BOARD_FILES + 14,   SQ_P13 = 12 * BOARD_FILES + 15,
-  SQ_A14 = 13 * BOARD_FILES + 0,   SQ_B14 = 13 * BOARD_FILES + 1,   SQ_C14 = 13 * BOARD_FILES + 2,   SQ_D14 = 13 * BOARD_FILES + 3,   SQ_E14 = 13 * BOARD_FILES + 4,   SQ_F14 = 13 * BOARD_FILES + 5,   SQ_G14 = 13 * BOARD_FILES + 6,   SQ_H14 = 13 * BOARD_FILES + 7,   SQ_I14 = 13 * BOARD_FILES + 8,   SQ_J14 = 13 * BOARD_FILES + 9,   SQ_K14 = 13 * BOARD_FILES + 10,   SQ_L14 = 13 * BOARD_FILES + 11,   SQ_M14 = 13 * BOARD_FILES + 12,   SQ_N14 = 13 * BOARD_FILES + 13,   SQ_O14 = 13 * BOARD_FILES + 14,   SQ_P14 = 13 * BOARD_FILES + 15,
-  SQ_A15 = 14 * BOARD_FILES + 0,   SQ_B15 = 14 * BOARD_FILES + 1,   SQ_C15 = 14 * BOARD_FILES + 2,   SQ_D15 = 14 * BOARD_FILES + 3,   SQ_E15 = 14 * BOARD_FILES + 4,   SQ_F15 = 14 * BOARD_FILES + 5,   SQ_G15 = 14 * BOARD_FILES + 6,   SQ_H15 = 14 * BOARD_FILES + 7,   SQ_I15 = 14 * BOARD_FILES + 8,   SQ_J15 = 14 * BOARD_FILES + 9,   SQ_K15 = 14 * BOARD_FILES + 10,   SQ_L15 = 14 * BOARD_FILES + 11,   SQ_M15 = 14 * BOARD_FILES + 12,   SQ_N15 = 14 * BOARD_FILES + 13,   SQ_O15 = 14 * BOARD_FILES + 14,   SQ_P15 = 14 * BOARD_FILES + 15,
-  SQ_A16 = 15 * BOARD_FILES + 0,   SQ_B16 = 15 * BOARD_FILES + 1,   SQ_C16 = 15 * BOARD_FILES + 2,   SQ_D16 = 15 * BOARD_FILES + 3,   SQ_E16 = 15 * BOARD_FILES + 4,   SQ_F16 = 15 * BOARD_FILES + 5,   SQ_G16 = 15 * BOARD_FILES + 6,   SQ_H16 = 15 * BOARD_FILES + 7,   SQ_I16 = 15 * BOARD_FILES + 8,   SQ_J16 = 15 * BOARD_FILES + 9,   SQ_K16 = 15 * BOARD_FILES + 10,   SQ_L16 = 15 * BOARD_FILES + 11,   SQ_M16 = 15 * BOARD_FILES + 12,   SQ_N16 = 15 * BOARD_FILES + 13,   SQ_O16 = 15 * BOARD_FILES + 14,   SQ_P16 = 15 * BOARD_FILES + 15,
   SQ_NONE = BOARD_SQUARES,
-
   SQUARE_ZERO = 0,
-  SQ_MIN = SQ_A1,
+  SQ_MIN = 0,
   SQUARE_NB = BOARD_SQUARES,
   SQUARE_BIT_MASK = (1 << SQUARE_BITS) - 1,
   SQ_MAX = SQUARE_NB - 1,
   SQUARE_NB_CHESS = 64,
-  SQUARE_NB_SHOGI = 81,
+  SQUARE_NB_SHOGI = 81
 };
 enum Direction : int {
   NORTH = BOARD_FILES,
@@ -643,12 +739,12 @@ enum Direction : int {
 };
 
 enum File : int {
-  FILE_A = 0, FILE_B = 1, FILE_C = 2, FILE_D = 3, FILE_E = 4, FILE_F = 5, FILE_G = 6, FILE_H = 7, FILE_I = 8, FILE_J = 9, FILE_K = 10, FILE_L = 11, FILE_M = 12, FILE_N = 13, FILE_O = 14, FILE_P = 15,
+  FILE_A = 0, FILE_B = 1, FILE_C = 2, FILE_D = 3, FILE_E = 4, FILE_F = 5, FILE_G = 6, FILE_H = 7, FILE_I = 8, FILE_J = 9, FILE_K = 10, FILE_L = 11, FILE_M = 12, FILE_N = 13, FILE_O = 14, FILE_P = 15, FILE_Q = 16, FILE_R = 17, FILE_S = 18, FILE_T = 19, FILE_U = 20, FILE_V = 21, FILE_W = 22, FILE_X = 23, FILE_Y = 24, FILE_Z = 25, FILE_AA = 26, FILE_AB = 27, FILE_AC = 28, FILE_AD = 29, FILE_AE = 30, FILE_AF = 31,
   FILE_NB = BOARD_FILES,
   FILE_MAX = FILE_NB - 1
 };
 enum Rank : int {
-  RANK_1 = 0, RANK_2 = 1, RANK_3 = 2, RANK_4 = 3, RANK_5 = 4, RANK_6 = 5, RANK_7 = 6, RANK_8 = 7, RANK_9 = 8, RANK_10 = 9, RANK_11 = 10, RANK_12 = 11, RANK_13 = 12, RANK_14 = 13, RANK_15 = 14, RANK_16 = 15,
+  RANK_1 = 0, RANK_2 = 1, RANK_3 = 2, RANK_4 = 3, RANK_5 = 4, RANK_6 = 5, RANK_7 = 6, RANK_8 = 7, RANK_9 = 8, RANK_10 = 9, RANK_11 = 10, RANK_12 = 11, RANK_13 = 12, RANK_14 = 13, RANK_15 = 14, RANK_16 = 15, RANK_17 = 16, RANK_18 = 17, RANK_19 = 18, RANK_20 = 19, RANK_21 = 20, RANK_22 = 21, RANK_23 = 22, RANK_24 = 23, RANK_25 = 24, RANK_26 = 25, RANK_27 = 26, RANK_28 = 27, RANK_29 = 28, RANK_30 = 29, RANK_31 = 30, RANK_32 = 31, RANK_33 = 32, RANK_34 = 33, RANK_35 = 34, RANK_36 = 35, RANK_37 = 36, RANK_38 = 37, RANK_39 = 38, RANK_40 = 39, RANK_41 = 40, RANK_42 = 41, RANK_43 = 42, RANK_44 = 43, RANK_45 = 44, RANK_46 = 45, RANK_47 = 46, RANK_48 = 47,
   RANK_NB = BOARD_RANKS,
   RANK_MAX = RANK_NB - 1
 };
@@ -834,6 +930,85 @@ constexpr Square make_square(File f, Rank r) {
   return Square(r * FILE_NB + f);
 }
 
+constexpr bool is_supported_file(File f) {
+  return f >= FILE_A && f <= FILE_AF;
+}
+
+constexpr bool is_supported_rank(Rank r) {
+  return r >= RANK_1 && r <= RANK_48;
+}
+
+constexpr bool is_square_literal_file_char(char c) {
+  return c >= 'a' && c <= 'z';
+}
+
+constexpr bool is_square_literal_rank_char(char c) {
+  return c >= '0' && c <= '9';
+}
+
+constexpr int file_index_from_string(std::string_view s) {
+  int file = -1;
+
+  for (char c : s)
+  {
+      if (!is_square_literal_file_char(c))
+          return -1;
+
+      file = (file + 1) * 26 + (c - 'a');
+  }
+
+  return file;
+}
+
+constexpr int rank_index_from_string(std::string_view s) {
+  if (s.empty())
+      return -1;
+
+  int rank = 0;
+
+  for (char c : s)
+  {
+      if (!is_square_literal_rank_char(c))
+          return -1;
+
+      rank = rank * 10 + (c - '0');
+  }
+
+  return rank > 0 ? rank - 1 : -1;
+}
+
+constexpr Square SQ(File f, Rank r) {
+  return is_supported_file(f) && is_supported_rank(r) ? make_square(f, r) : *static_cast<volatile Square*>(nullptr);
+}
+
+constexpr Square SQ(std::string_view s) {
+  size_t split = 0;
+
+  while (split < s.size() && is_square_literal_file_char(s[split]))
+      ++split;
+
+  int f = file_index_from_string(s.substr(0, split));
+  int r = rank_index_from_string(s.substr(split));
+
+  return is_supported_file(File(f)) && is_supported_rank(Rank(r)) ? SQ(File(f), Rank(r)) : *static_cast<volatile Square*>(nullptr);
+}
+
+constexpr bool square_file_rank_range_test() {
+  for (int f = FILE_A; f <= FILE_AF; ++f)
+      for (int r = RANK_1; r <= RANK_48; ++r)
+          if (SQ(File(f), Rank(r)) != make_square(File(f), Rank(r)))
+              return false;
+
+  return true;
+}
+
+static_assert(square_file_rank_range_test(), "SQ(File, Rank) must cover every supported file/rank pair");
+static_assert(SQ("a1") == SQ(FILE_A, RANK_1), "SQ string parser failed for a1");
+static_assert(SQ("h8") == SQ(FILE_H, RANK_8), "SQ string parser failed for h8");
+static_assert(SQ("j10") == SQ(FILE_J, RANK_10), "SQ string parser failed for j10");
+static_assert(SQ("ad12") == SQ(FILE_AD, RANK_12), "SQ string parser failed for ad12");
+static_assert(SQ("af48") == SQ(FILE_AF, RANK_48), "SQ string parser failed for af48");
+
 constexpr Piece make_piece(Color c, PieceType pt) {
   return Piece((c << PIECE_TYPE_BITS) + pt);
 }
@@ -924,16 +1099,16 @@ inline bool is_pass(Move m) {
 }
 
 constexpr Move make_move(Square from, Square to) {
-  return Move((from << SQUARE_BITS) + to);
+  return Move((MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 template<MoveType T>
 inline Move make(Square from, Square to, PieceType pt = NO_PIECE_TYPE) {
-  return Move((pt << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + T + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(pt) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(T) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr Move make_drop(Square to, PieceType pt_in_hand, PieceType pt_dropped) {
-  return Move((pt_in_hand << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (pt_dropped << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + DROP + to);
+  return Move((MoveStorage(pt_in_hand) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (MoveStorage(pt_dropped) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(DROP) + MoveStorage(to));
 }
 
 constexpr Move reverse_move(Move m) {
@@ -942,19 +1117,19 @@ constexpr Move reverse_move(Move m) {
 
 template<MoveType T>
 constexpr Move make_gating(Square from, Square to, PieceType pt, Square gate) {
-  return Move((gate << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (pt << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + T + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(gate) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (MoveStorage(pt) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(T) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr Move make_lion(Square from, int path, Square to) {
-  return Move((path << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + LION + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(path) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(LION) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr Move make_hook(Square from, Square hook, Square to) {
-  return Move((hook << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + HOOK + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(hook) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(HOOK) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr Move make_double_move(Square from, Square intermediate, Square to) {
-  return Move((intermediate << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + DOUBLE_MOVE + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(intermediate) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(DOUBLE_MOVE) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr PieceType dropped_piece_type(Move m) {
