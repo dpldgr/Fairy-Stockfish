@@ -30,10 +30,10 @@ namespace Stockfish::Eval::NNUE::Features {
   }
 
   // Orient a square according to perspective (rotates by 180 for black)
-  // Missing kings map to index 0 (SQ_A1)
+  // Missing kings map to index 0 (SQ<FILE_A, RANK_1>)
   inline Square HalfKAv2Variants::orient(Color perspective, Square s, const Position& pos) {
     return s != SQ_NONE ? to_variant_square(  perspective == WHITE || (pos.flag_region(BLACK) & Rank8BB) ? s
-                                            : flip_rank(s, pos.max_rank()), pos) : SQ_A1;
+                                            : flip_rank(s, pos.max_rank()), pos) : SQ<FILE_A, RANK_1>;
   }
 
   // Index of a feature for a given king position and another piece on some square

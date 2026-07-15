@@ -569,7 +569,7 @@ namespace {
                 // pawn diagonally in front of it is a very serious problem, especially
                 // when that pawn is also blocked.
                 if (   pos.is_chess960()
-                    && (s == relative_square(Us, SQ_A1) || s == relative_square(Us, SQ_H1)))
+                    && (s == relative_square(Us, SQ<FILE_A, RANK_1>) || s == relative_square(Us, SQ<FILE_H, RANK_1>)))
                 {
                     Direction d = pawn_push(Us) + (file_of(s) == FILE_A ? EAST : WEST);
                     if (pos.piece_on(s + d) == make_piece(Us, PAWN))
@@ -1568,31 +1568,31 @@ make_v:
 
   Value fix_FRC(const Position& pos) {
 
-    constexpr Bitboard Corners =  Bitboard(1ULL) << SQ_A1 | Bitboard(1ULL) << SQ_H1 | Bitboard(1ULL) << SQ_A8 | Bitboard(1ULL) << SQ_H8;
+    constexpr Bitboard Corners =  Bitboard(1ULL) << SQ<FILE_A, RANK_1> | Bitboard(1ULL) << SQ<FILE_H, RANK_1> | Bitboard(1ULL) << SQ<FILE_A, RANK_8> | Bitboard(1ULL) << SQ<FILE_H, RANK_8>;
 
     if (!(pos.pieces(BISHOP) & Corners))
         return VALUE_ZERO;
 
     int correction = 0;
 
-    if (   pos.piece_on(SQ_A1) == W_BISHOP
-        && pos.piece_on(SQ_B2) == W_PAWN)
-        correction += !pos.empty(SQ_B3) ? -CorneredBishop * 4
+    if (   pos.piece_on(SQ<FILE_A, RANK_1>) == W_BISHOP
+        && pos.piece_on(SQ<FILE_B, RANK_2>) == W_PAWN)
+        correction += !pos.empty(SQ<FILE_B, RANK_3>) ? -CorneredBishop * 4
                                         : -CorneredBishop * 3;
 
-    if (   pos.piece_on(SQ_H1) == W_BISHOP
-        && pos.piece_on(SQ_G2) == W_PAWN)
-        correction += !pos.empty(SQ_G3) ? -CorneredBishop * 4
+    if (   pos.piece_on(SQ<FILE_H, RANK_1>) == W_BISHOP
+        && pos.piece_on(SQ<FILE_G, RANK_2>) == W_PAWN)
+        correction += !pos.empty(SQ<FILE_G, RANK_3>) ? -CorneredBishop * 4
                                         : -CorneredBishop * 3;
 
-    if (   pos.piece_on(SQ_A8) == B_BISHOP
-        && pos.piece_on(SQ_B7) == B_PAWN)
-        correction += !pos.empty(SQ_B6) ? CorneredBishop * 4
+    if (   pos.piece_on(SQ<FILE_A, RANK_8>) == B_BISHOP
+        && pos.piece_on(SQ<FILE_B, RANK_7>) == B_PAWN)
+        correction += !pos.empty(SQ<FILE_B, RANK_6>) ? CorneredBishop * 4
                                         : CorneredBishop * 3;
 
-    if (   pos.piece_on(SQ_H8) == B_BISHOP
-        && pos.piece_on(SQ_G7) == B_PAWN)
-        correction += !pos.empty(SQ_G6) ? CorneredBishop * 4
+    if (   pos.piece_on(SQ<FILE_H, RANK_8>) == B_BISHOP
+        && pos.piece_on(SQ<FILE_G, RANK_7>) == B_PAWN)
+        correction += !pos.empty(SQ<FILE_G, RANK_6>) ? CorneredBishop * 4
                                         : CorneredBishop * 3;
 
     return pos.side_to_move() == WHITE ?  Value(correction)
