@@ -40,6 +40,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <type_traits>
 #include <algorithm>
 
 #ifndef BOARD_FILES
@@ -260,7 +261,7 @@ struct Bitboard {
     constexpr Bitboard operator - (const int x) const { return *this - Bitboard(x); }
     constexpr Bitboard operator * (const Bitboard) const { return Bitboard(0); }
 };
-constexpr int SQUARE_BITS = 9;
+constexpr int SQUARE_BITS = BOARD_SQUARES <= 256 ? 8 : 9;
 #elif defined(LARGEBOARDS)
 #if defined(__GNUC__) && defined(IS_64BIT)
 typedef unsigned __int128 Bitboard;
@@ -474,23 +475,25 @@ constexpr int MAX_PLY = 246;
 /// any normal move destination square is always different from origin square
 /// while MOVE_NONE and MOVE_NULL have the same origin and destination square.
 
-enum Move : uint64_t {
+using MoveStorage = std::conditional_t<BOARD_SQUARES <= 256, uint32_t, uint64_t>;
+
+enum Move : MoveStorage {
   MOVE_NONE,
-  MOVE_NULL = 1 + (1 << SQUARE_BITS)
+  MOVE_NULL = MoveStorage(1) + (MoveStorage(1) << SQUARE_BITS)
 };
 
-enum MoveType : uint64_t {
+enum MoveType : MoveStorage {
   NORMAL,
-  EN_PASSANT          = 1 << (2 * SQUARE_BITS),
-  CASTLING           = 2 << (2 * SQUARE_BITS),
-  PROMOTION          = 3 << (2 * SQUARE_BITS),
-  DROP               = 4 << (2 * SQUARE_BITS),
-  PIECE_PROMOTION    = 5 << (2 * SQUARE_BITS),
-  PIECE_DEMOTION     = 6 << (2 * SQUARE_BITS),
-  SPECIAL            = 7 << (2 * SQUARE_BITS),
-  LION               = 8 << (2 * SQUARE_BITS),
-  HOOK               = 9 << (2 * SQUARE_BITS),
-  DOUBLE_MOVE        = 10 << (2 * SQUARE_BITS),
+  EN_PASSANT          = MoveStorage(1) << (2 * SQUARE_BITS),
+  CASTLING           = MoveStorage(2) << (2 * SQUARE_BITS),
+  PROMOTION          = MoveStorage(3) << (2 * SQUARE_BITS),
+  DROP               = MoveStorage(4) << (2 * SQUARE_BITS),
+  PIECE_PROMOTION    = MoveStorage(5) << (2 * SQUARE_BITS),
+  PIECE_DEMOTION     = MoveStorage(6) << (2 * SQUARE_BITS),
+  SPECIAL            = MoveStorage(7) << (2 * SQUARE_BITS),
+  LION               = MoveStorage(8) << (2 * SQUARE_BITS),
+  HOOK               = MoveStorage(9) << (2 * SQUARE_BITS),
+  DOUBLE_MOVE        = MoveStorage(10) << (2 * SQUARE_BITS),
 };
 
 constexpr int MOVE_TYPE_BITS = 4;
@@ -653,7 +656,7 @@ static_assert(KING < PIECE_TYPE_NB, "KING exceeds PIECE_TYPE_NB.");
 static_assert(PIECE_TYPE_BITS <= 6, "PIECE_TYPE uses more than 6 bit");
 static_assert(!(PIECE_TYPE_NB & (PIECE_TYPE_NB - 1)), "PIECE_TYPE_NB is not a power of 2");
 
-static_assert(2 * SQUARE_BITS + MOVE_TYPE_BITS + 2 * PIECE_TYPE_BITS <= 64, "Move encoding uses more than 64 bits");
+static_assert(2 * SQUARE_BITS + MOVE_TYPE_BITS + 2 * PIECE_TYPE_BITS <= 8 * sizeof(MoveStorage), "Move encoding uses more bits than MoveStorage");
 
 enum Piece {
   NO_PIECE,
@@ -1401,16 +1404,16 @@ inline bool is_pass(Move m) {
 }
 
 constexpr Move make_move(Square from, Square to) {
-  return Move((from << SQUARE_BITS) + to);
+  return Move((MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 template<MoveType T>
 inline Move make(Square from, Square to, PieceType pt = NO_PIECE_TYPE) {
-  return Move((pt << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + T + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(pt) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(T) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr Move make_drop(Square to, PieceType pt_in_hand, PieceType pt_dropped) {
-  return Move((pt_in_hand << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (pt_dropped << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + DROP + to);
+  return Move((MoveStorage(pt_in_hand) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (MoveStorage(pt_dropped) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(DROP) + MoveStorage(to));
 }
 
 constexpr Move reverse_move(Move m) {
@@ -1419,19 +1422,19 @@ constexpr Move reverse_move(Move m) {
 
 template<MoveType T>
 constexpr Move make_gating(Square from, Square to, PieceType pt, Square gate) {
-  return Move((gate << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (pt << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + T + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(gate) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (MoveStorage(pt) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(T) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr Move make_lion(Square from, int path, Square to) {
-  return Move((path << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + LION + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(path) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(LION) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr Move make_hook(Square from, Square hook, Square to) {
-  return Move((hook << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + HOOK + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(hook) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(HOOK) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr Move make_double_move(Square from, Square intermediate, Square to) {
-  return Move((intermediate << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + DOUBLE_MOVE + (from << SQUARE_BITS) + to);
+  return Move((MoveStorage(intermediate) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(DOUBLE_MOVE) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
 constexpr PieceType dropped_piece_type(Move m) {
