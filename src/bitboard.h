@@ -336,7 +336,7 @@ constexpr Bitboard adjacent_files_bb(Square s) {
 /// line_bb() returns a bitboard representing an entire line (from board edge
 /// to board edge) that intersects the two given squares. If the given squares
 /// are not on a same file/rank/diagonal, the function returns 0. For instance,
-/// line_bb(SQ_C4, SQ_F7) will return a bitboard with the A2-G8 diagonal.
+/// line_bb(SQ<FILE_C, RANK_4>, SQ<FILE_F, RANK_7>) will return a bitboard with the A2-G8 diagonal.
 
 inline Bitboard line_bb(Square s1, Square s2) {
 
@@ -349,8 +349,8 @@ inline Bitboard line_bb(Square s1, Square s2) {
 /// between_bb(s1, s2) returns a bitboard representing the squares in the semi-open
 /// segment between the squares s1 and s2 (excluding s1 but including s2). If the
 /// given squares are not on a same file/rank/diagonal, it returns s2. For instance,
-/// between_bb(SQ_C4, SQ_F7) will return a bitboard with squares D5, E6 and F7, but
-/// between_bb(SQ_E6, SQ_F8) will return a bitboard with the square F8. This trick
+/// between_bb(SQ<FILE_C, RANK_4>, SQ<FILE_F, RANK_7>) will return a bitboard with squares D5, E6 and F7, but
+/// between_bb(SQ<FILE_E, RANK_6>, SQ<FILE_F, RANK_8>) will return a bitboard with the square F8. This trick
 /// allows to generate non-king evasion moves faster: the defending piece must either
 /// interpose itself to cover the check or capture the checking piece.
 
@@ -374,7 +374,7 @@ inline Bitboard between_bb(Square s1, Square s2, PieceType pt) {
 
 /// forward_ranks_bb() returns a bitboard representing the squares on the ranks in
 /// front of the given one, from the point of view of the given color. For instance,
-/// forward_ranks_bb(BLACK, SQ_D3) will return the 16 squares on ranks 1 and 2.
+/// forward_ranks_bb(BLACK, SQ<FILE_D, RANK_3>) will return the 16 squares on ranks 1 and 2.
 
 constexpr Bitboard forward_ranks_bb(Color c, Square s) {
   return c == WHITE ? (AllSquares ^ Rank1BB) << FILE_NB * relative_rank(WHITE, s, RANK_MAX)

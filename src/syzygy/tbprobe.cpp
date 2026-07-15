@@ -782,7 +782,7 @@ Ret do_probe_table(const Position& pos, T* entry, WDLScore wdl, ProbeState* resu
         if (!off_A1H8(squares[i]))
             continue;
 
-        if (off_A1H8(squares[i]) > 0) // A1-H8 diagonal flip: SQ_A3 -> SQ_C1
+        if (off_A1H8(squares[i]) > 0) // A1-H8 diagonal flip: SQ<FILE_A, RANK_3> -> SQ<FILE_C, RANK_1>
             for (int j = i; j < size; ++j)
                 squares[j] = Square(((squares[j] >> 3) | (squares[j] << 3)) & 63);
         break;
@@ -1281,14 +1281,14 @@ void Tablebases::init(const std::string& paths) {
 
     // MapB1H1H7[] encodes a square below a1-h8 diagonal to 0..27
     int code = 0;
-    for (Square s = SQ_A1; s <= SQ_H8; ++s)
+    for (Square s = SQ<FILE_A, RANK_1>; s <= SQ<FILE_H, RANK_8>; ++s)
         if (off_A1H8(s) < 0)
             MapB1H1H7[s] = code++;
 
     // MapA1D1D4[] encodes a square in the a1-d1-d4 triangle to 0..9
     std::vector<Square> diagonal;
     code = 0;
-    for (Square s = SQ_A1; s <= SQ_D4; ++s)
+    for (Square s = SQ<FILE_A, RANK_1>; s <= SQ<FILE_D, RANK_4>; ++s)
         if (off_A1H8(s) < 0 && file_of(s) <= FILE_D)
             MapA1D1D4[s] = code++;
 
@@ -1305,10 +1305,10 @@ void Tablebases::init(const std::string& paths) {
     std::vector<std::pair<int, Square>> bothOnDiagonal;
     code = 0;
     for (int idx = 0; idx < 10; idx++)
-        for (Square s1 = SQ_A1; s1 <= SQ_D4; ++s1)
-            if (MapA1D1D4[s1] == idx && (idx || s1 == SQ_B1)) // SQ_B1 is mapped to 0
+        for (Square s1 = SQ<FILE_A, RANK_1>; s1 <= SQ<FILE_D, RANK_4>; ++s1)
+            if (MapA1D1D4[s1] == idx && (idx || s1 == SQ<FILE_B, RANK_1>)) // SQ<FILE_B, RANK_1> is mapped to 0
             {
-                for (Square s2 = SQ_A1; s2 <= SQ_H8; ++s2)
+                for (Square s2 = SQ<FILE_A, RANK_1>; s2 <= SQ<FILE_H, RANK_8>; ++s2)
                     if ((PseudoAttacks[WHITE][KING][s1] | s1) & s2)
                         continue; // Illegal position
 
