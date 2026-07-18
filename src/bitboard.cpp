@@ -116,7 +116,7 @@ namespace {
 
 // Some magics need to be split in order to reduce memory consumption.
 // Otherwise on a 12x10 board they can be >100 MB.
-#ifndef BITBOARD_256
+#ifndef BITBOARD_MULTIWORD
 #ifdef LARGEBOARDS
   Bitboard RookTableH[magic_table_size(RookHTableDirections)];  // To store horizontal rook attacks
   Bitboard RookTableV[magic_table_size(RookVTableDirections)];  // To store vertical rook attacks
@@ -254,7 +254,7 @@ namespace {
 
 }
 
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
   enum RayIndex {
     RAY_NORTH, RAY_SOUTH, RAY_EAST, RAY_WEST,
     RAY_NORTH_EAST, RAY_SOUTH_WEST, RAY_NORTH_WEST, RAY_SOUTH_EAST,
@@ -481,7 +481,7 @@ void Bitboards::init() {
   if (std::getenv("FSF_INIT_TELEMETRY"))
       sync_cout << "info string Bitboards::init(): init_magics begin" << sync_endl;
 
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
   if (std::getenv("FSF_INIT_TELEMETRY"))
       sync_cout << "info string Bitboards::init(): init 256-bit ray attack masks" << sync_endl;
   const std::map<RayIndex, Direction> rayDirections {
@@ -531,7 +531,7 @@ void Bitboards::init() {
 
   for (Square s1 = SQ_MIN; s1 <= SQ_MAX; ++s1)
   {
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
       for (Square s2 = SQ_MIN; s2 <= SQ_MAX; ++s2)
       {
           int df = file_of(s2) - file_of(s1);

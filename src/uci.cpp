@@ -552,21 +552,27 @@ string UCI::wdl(Value v, int ply) {
 /// UCI::square() converts a Square to a string in algebraic notation (g1, a7, etc.)
 
 std::string UCI::square(const Position& pos, Square s) {
-#ifdef LARGEBOARDS
+  auto fileString = [](File f) {
+      std::string out;
+      int file = int(f);
+      do
+      {
+          out.insert(out.begin(), char('a' + file % 26));
+          file = file / 26 - 1;
+      } while (file >= 0);
+      return out;
+  };
+
+#if defined(LARGEBOARDS) || defined(BITBOARD_MULTIWORD)
   if (CurrentProtocol == USI)
-      return rank_of(s) < RANK_10 ? std::string{ char('1' + pos.max_file() - file_of(s)), char('a' + pos.max_rank() - rank_of(s)) }
-                                  : std::string{ char('0' + (pos.max_file() - file_of(s) + 1) / 10),
-                                                 char('0' + (pos.max_file() - file_of(s) + 1) % 10),
-                                                 char('a' + pos.max_rank() - rank_of(s)) };
+      return std::to_string(pos.max_file() - file_of(s) + 1) + char('a' + pos.max_rank() - rank_of(s));
   else if (pos.max_rank() == RANK_10 && CurrentProtocol != UCI_GENERAL)
-      return std::string{ char('a' + file_of(s)), char('0' + rank_of(s)) };
+      return fileString(file_of(s)) + char('0' + rank_of(s));
   else
-      return rank_of(s) < RANK_10 ? std::string{ char('a' + file_of(s)), char('1' + (rank_of(s) % 10)) }
-                                  : std::string{ char('a' + file_of(s)), char('0' + ((rank_of(s) + 1) / 10)),
-                                                 char('0' + ((rank_of(s) + 1) % 10)) };
+      return fileString(file_of(s)) + std::to_string(rank_of(s) + 1);
 #else
-  return CurrentProtocol == USI ? std::string{ char('1' + pos.max_file() - file_of(s)), char('a' + pos.max_rank() - rank_of(s)) }
-                                : std::string{ char('a' + file_of(s)), char('1' + rank_of(s)) };
+  return CurrentProtocol == USI ? std::to_string(pos.max_file() - file_of(s) + 1) + char('a' + pos.max_rank() - rank_of(s))
+                                : fileString(file_of(s)) + char('1' + rank_of(s));
 #endif
 }
 
