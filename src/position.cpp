@@ -225,7 +225,7 @@ std::ostream& operator<<(std::ostream& os, const Position& pos) {
 // https://marcelk.net/2013-04-06/paper/upcoming-rep-v2.pdf
 
 // First and second hash functions for indexing the cuckoo tables
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
 inline int H1(Key h) { return h & 0x3ffff; }
 inline int H2(Key h) { return (h >> 20) & 0x3ffff; }
 #elif defined(LARGEBOARDS)
@@ -237,7 +237,7 @@ inline int H2(Key h) { return (h >> 16) & 0x1fff; }
 #endif
 
 // Cuckoo tables with Zobrist hashes of valid reversible moves, and the moves themselves
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
 Key cuckoo[524288];
 Move cuckooMove[524288];
 #elif defined(LARGEBOARDS)
@@ -310,7 +310,7 @@ void Position::init() {
                   count++;
              }
       }
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
   assert(count > 9344);
 #elif defined(LARGEBOARDS)
   assert(count == 9344);
@@ -377,7 +377,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   ss >> std::noskipws;
 
   Rank r = max_rank();
-  Square sq = SQ_A1 + r * NORTH;
+  Square sq = SQ(FILE_A, RANK_1) + r * NORTH;
 
   // 1. Piece placement
   while ((ss >> token) && !isspace(token))
@@ -399,7 +399,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
 
       else if (token == '/')
       {
-          sq = SQ_A1 + --r * NORTH;
+          sq = SQ(FILE_A, RANK_1) + --r * NORTH;
           if (!is_ok(sq))
               break;
       }
@@ -1376,7 +1376,7 @@ bool Position::legal(Move m) const {
               return false;
 
       // In case of Chess960, verify if the Rook blocks some checks
-      // For instance an enemy queen in SQ_A1 when castling rook is in SQ_B1.
+      // For instance an enemy queen in SQ(FILE_A, RANK_1) when castling rook is in SQ(FILE_B, RANK_1).
       return !attackers_to(to, pieces() ^ to_sq(m), ~us);
   }
 
