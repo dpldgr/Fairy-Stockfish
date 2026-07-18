@@ -202,12 +202,99 @@ extern Magic GrasshopperMagicsD[SQUARE_NB];
 
 extern Magic* magics[];
 
+
+constexpr Bitboard invalid_bitboard_literal() {
+#if defined(__GNUC__) || defined(__clang__)
+  __builtin_unreachable();
+#endif
+  return Bitboard(0);
+}
+
+
+constexpr Bitboard bb_literal_square(std::string_view token) {
+  size_t split = 0;
+
+  while (split < token.size() && is_square_literal_file_char(token[split]))
+      ++split;
+
+  int f = file_index_from_string(token.substr(0, split));
+  int r = rank_index_from_string(token.substr(split));
+
+  return f >= FILE_A && f <= FILE_MAX && r >= RANK_1 && r <= RANK_MAX
+       ? Bitboard(1) << SQ(File(f), Rank(r))
+       : invalid_bitboard_literal();
+}
+
+constexpr Bitboard bb_literal_file(std::string_view token) {
+  int f = file_index_from_string(token);
+
+  return f >= FILE_A && f <= FILE_MAX ? make_file_mask(f) : invalid_bitboard_literal();
+}
+
+constexpr Bitboard bb_literal_rank(std::string_view token) {
+  int r = rank_index_from_string(token);
+
+  return r >= RANK_1 && r <= RANK_MAX ? make_rank_mask(r) : invalid_bitboard_literal();
+}
+
+constexpr Bitboard bb_literal_token(std::string_view token) {
+  return token.empty() ? invalid_bitboard_literal()
+       : token == "*" ? AllSquares
+       : token.back() == '*' ? bb_literal_file(token.substr(0, token.size() - 1))
+       : token.front() == '*' ? bb_literal_rank(token.substr(1))
+       : bb_literal_square(token);
+}
+
+constexpr Bitboard bb_literal(std::string_view s) {
+  Bitboard b = 0;
+  size_t pos = 0;
+
+  while (pos < s.size())
+  {
+      while (pos < s.size() && s[pos] == ' ')
+          ++pos;
+
+      if (pos == s.size())
+          break;
+
+      size_t end = pos;
+      while (end < s.size() && s[end] != ' ')
+          ++end;
+
+      std::string_view token = s.substr(pos, end - pos);
+      bool remove = token.front() == '-';
+
+      if (remove)
+          token.remove_prefix(1);
+
+      Bitboard mask = bb_literal_token(token);
+      b = remove ? b & ~mask : b | mask;
+      pos = end;
+  }
+
+  return b;
+}
+
+constexpr Bitboard operator"" _bb(const char* s, size_t n) {
+  return bb_literal(std::string_view(s, n));
+}
+
 constexpr Bitboard make_bitboard() { return 0; }
 
 template<typename ...Squares>
 constexpr Bitboard make_bitboard(Square s, Squares... squares) {
   return (Bitboard(1) << s) | make_bitboard(squares...);
 }
+
+static_assert("a1"_bb == make_bitboard(SQ(FILE_A, RANK_1)), "bitboard literal failed for square a1");
+static_assert("a*"_bb == make_file_mask(FILE_A), "bitboard literal failed for file a");
+static_assert("*1"_bb == make_rank_mask(RANK_1), "bitboard literal failed for rank 1");
+static_assert("a* h* *1 *8"_bb == (make_file_mask(FILE_A) | make_file_mask(FILE_H) | make_rank_mask(RANK_1) | make_rank_mask(RANK_8)), "bitboard literal failed for edge mask");
+static_assert("* -*8"_bb == (AllSquares & ~make_rank_mask(RANK_8)), "bitboard literal failed for subtraction");
+#if BOARD_FILES > 29 && BOARD_RANKS > 11
+static_assert("ad12"_bb == make_bitboard(SQ(FILE_AD, RANK_12)), "bitboard literal failed for square ad12");
+static_assert("ad* *12"_bb == (make_file_mask(FILE_AD) | make_rank_mask(RANK_12)), "bitboard literal failed for extended file/rank mask");
+#endif
 
 inline Bitboard square_bb(Square s) {
   assert(is_ok(s));
