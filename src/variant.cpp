@@ -778,7 +778,7 @@ namespace {
         return v;
     }
 
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 6, int VariantRanks = 8>
     Variant* isolation_variant() { //https://boardgamegeek.com/boardgame/1875/isolation
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -796,7 +796,7 @@ namespace {
         return v;
     }
 
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 7, int VariantRanks = 7>
     Variant* isolation7x7_variant() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -810,7 +810,7 @@ namespace {
         return v;
     }
 
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 7, int VariantRanks = 7>
     Variant* snailtrail_variant() { //https://boardgamegeek.com/boardgame/37135/snailtrail
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -1112,7 +1112,7 @@ namespace {
         return v;
     }
     // Base used for most shogi variants
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 5, int VariantRanks = 5>
     Variant* minishogi_variant_base() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -1225,7 +1225,7 @@ namespace {
     // Dobutsu
     // Educational shogi variant on a 3x4 board
     // https://en.wikipedia.org/wiki/D%C5%8Dbutsu_sh%C5%8Dgi
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 3, int VariantRanks = 4>
     Variant* dobutsu_variant() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -1261,7 +1261,7 @@ namespace {
     }
     // Goro goro shogi
     // https://en.wikipedia.org/wiki/D%C5%8Dbutsu_sh%C5%8Dgi#Variation
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 5, int VariantRanks = 6>
     Variant* gorogoroshogi_variant() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -1279,7 +1279,7 @@ namespace {
     }
     // Judkins shogi
     // https://en.wikipedia.org/wiki/Judkins_shogi
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 6, int VariantRanks = 6>
     Variant* judkinsshogi_variant() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -1298,7 +1298,7 @@ namespace {
     }
     // Tori shogi
     // https://en.wikipedia.org/wiki/Tori_shogi
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 7, int VariantRanks = 7>
     Variant* torishogi_variant() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -1362,7 +1362,7 @@ namespace {
     }
     // Los Alamos chess
     // https://en.wikipedia.org/wiki/Los_Alamos_chess
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 6, int VariantRanks = 6>
     Variant* losalamos_variant() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -1384,7 +1384,7 @@ namespace {
     }
     // Gardner's minichess
     // https://en.wikipedia.org/wiki/Minichess#5%C3%975_chess
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 5, int VariantRanks = 5>
     Variant* gardner_variant() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -1538,7 +1538,7 @@ namespace {
     }
     // Clobber
     // https://en.wikipedia.org/wiki/Clobber
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 5, int VariantRanks = 6>
     Variant* clobber_variant() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
@@ -1580,7 +1580,7 @@ namespace {
     }
     // Ataxx
     // https://en.wikipedia.org/wiki/Ataxx
-    template<int VariantFiles = 8, int VariantRanks = 8>
+    template<int VariantFiles = 7, int VariantRanks = 7>
     Variant* ataxx_variant() {
         Variant* v = nullptr;
         if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
