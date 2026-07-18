@@ -34,58 +34,58 @@ VariantMap variants; // Global object
 
 namespace {
     // Base variant
-    template<int BoardFiles = 0, int BoardRanks = 0>
+    template<int VariantFiles = 0, int VariantRanks = 0>
     Variant* variant_base() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
             v = new Variant();
         }
         return v;
     }
     // Base for all fairy variants
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* chess_variant_base() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = variant_base<BoardFiles, BoardRanks>()->init();
+            v = variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ................Kpnbrq................k";
         }
         return v;
     }
     // Standard chess
     // https://en.wikipedia.org/wiki/Chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* chess_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->nnueAlias = "nn-";
         }
         return v;
     }
     // Chess960 aka Fischer random chess
     // https://en.wikipedia.org/wiki/Fischer_random_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* chess960_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant<BoardFiles, BoardRanks>()->init();
+            v = chess_variant<VariantFiles, VariantRanks>()->init();
             v->chess960 = true;
             v->nnueAlias = "nn-";
         }
         return v;
     }
     // Standard chess without castling
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* nocastle_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant<BoardFiles, BoardRanks>()->init();
+            v = chess_variant<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
             v->castling = false;
         }
@@ -93,24 +93,24 @@ namespace {
     }
     // Armageddon Chess
     // https://en.wikipedia.org/wiki/Fast_chess#Armageddon
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* armageddon_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant<BoardFiles, BoardRanks>()->init();
+            v = chess_variant<VariantFiles, VariantRanks>()->init();
             v->materialCounting = BLACK_DRAW_ODDS;
         }
         return v;
     }
     // Torpedo Chess
     // https://arxiv.org/abs/2009.04374
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* torpedo_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->doubleStepRegion[WHITE] = AllSquares;
             v->doubleStepRegion[BLACK] = AllSquares;
         }
@@ -118,12 +118,12 @@ namespace {
     }
     // Berolina Chess
     // https://www.chessvariants.com/dpieces.dir/berlin.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* berolina_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(PAWN);
             v->add_piece(CUSTOM_PIECE_1, 'p', "mfFcfeWimfnA");
             v->mainPromotionPawnType[WHITE] = v->mainPromotionPawnType[BLACK] = CUSTOM_PIECE_1;
@@ -135,12 +135,12 @@ namespace {
     }
     // Pawnsideways
     // https://arxiv.org/abs/2009.04374
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* pawnsideways_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(PAWN);
             v->add_piece(CUSTOM_PIECE_1, 'p', "fsmWfceFifmnD");
             v->mainPromotionPawnType[WHITE] = v->mainPromotionPawnType[BLACK] = CUSTOM_PIECE_1;
@@ -152,12 +152,12 @@ namespace {
     }
     // Pawnback
     // https://arxiv.org/abs/2009.04374
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* pawnback_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(PAWN);
             v->add_piece(CUSTOM_PIECE_1, 'p', "fbmWfceFifmnD");
             v->mobilityRegion[WHITE][CUSTOM_PIECE_1] = ("*2 *3 *4 *5 *6 *7 *8"_bb);
@@ -171,12 +171,12 @@ namespace {
     }
     // Legan Chess
     // https://en.wikipedia.org/wiki/Legan_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* legan_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v =  chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v =  chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(PAWN);
             v->add_piece(CUSTOM_PIECE_1, 'p', "mflFcflW");
             v->promotionRegion[WHITE] = "a8 b8 c8 d8 a7 a6 a5"_bb;
@@ -190,12 +190,12 @@ namespace {
         return v;
     }
     // Pseudo-variant only used for endgame initialization
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* fairy_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->add_piece(SILVER, 's');
             v->add_piece(FERS, 'f');
             v->add_piece(ARCHBISHOP, 'a');
@@ -205,12 +205,12 @@ namespace {
         return v;
     }
       // Raazuva (Maldivian Chess)
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* raazuvaa_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
             v->castling = false;
             v->doubleStep = false;
@@ -219,12 +219,12 @@ namespace {
     }
     // Makruk (Thai Chess)
     // https://en.wikipedia.org/wiki/Makruk
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* makruk_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "makruk";
             v->pieceToCharTable = "PN.R.M....SKpn.r.m....sk";
             v->remove_piece(BISHOP);
@@ -246,24 +246,24 @@ namespace {
     // Makpong (Defensive Chess)
     // A Makruk variant used for tie-breaks
     // https://www.mayhematics.com/v/vol8/vc64b.pdf, p. 177
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* makpong_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = makruk_variant<BoardFiles, BoardRanks>()->init();
+            v = makruk_variant<VariantFiles, VariantRanks>()->init();
             v->makpongRule = true;
         }
         return v;
     }
     // Ouk Chatrang, Cambodian chess
     // https://en.wikipedia.org/wiki/Makruk#Cambodian_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* cambodian_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = makruk_variant<BoardFiles, BoardRanks>()->init();
+            v = makruk_variant<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnsmksnr/8/pppppppp/8/8/PPPPPPPP/8/RNSKMSNR w DEde - 0 1";
             v->gating = true;
             v->cambodianMoves = true;
@@ -275,12 +275,12 @@ namespace {
     // Kar Ouk
     // A variant of Cambodian chess where the first check wins
     // https://en.wikipedia.org/wiki/Makruk#Ka_Ouk
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* karouk_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = cambodian_variant<BoardFiles, BoardRanks>()->init();
+            v = cambodian_variant<VariantFiles, VariantRanks>()->init();
             v->checkCounting = true;
         }
         return v;
@@ -288,12 +288,12 @@ namespace {
     // ASEAN chess
     // A simplified version of south-east asian variants
     // https://aseanchess.org/laws-of-asean-chess/
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* asean_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(BISHOP);
             v->remove_piece(QUEEN);
             v->add_piece(KHON, 'b');
@@ -309,12 +309,12 @@ namespace {
     }
     // Ai-wok
     // A makruk variant where the met is replaced by a super-piece moving as rook, knight, or met
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* aiwok_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = makruk_variant<BoardFiles, BoardRanks>()->init();
+            v = makruk_variant<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PN.R...A..SKpn.r...a..sk";
             v->remove_piece(MET);
             v->add_piece(AIWOK, 'a');
@@ -327,12 +327,12 @@ namespace {
     // Shatranj
     // The medieval form of chess, originating from chaturanga
     // https://en.wikipedia.org/wiki/Shatranj
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* shatranj_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "shatranj";
             v->pieceToCharTable = "PN.R.QB....Kpn.r.qb....k";
             v->remove_piece(BISHOP);
@@ -357,12 +357,12 @@ namespace {
     // Chaturanga
     // The actual rules of the game are not known. This reflects the rules as used on chess.com.
     // https://en.wikipedia.org/wiki/Chaturanga
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* chaturanga_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = shatranj_variant<BoardFiles, BoardRanks>()->init();
+            v = shatranj_variant<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
             v->extinctionValue = VALUE_NONE;
             v->nnueAlias = "shatranj";
@@ -372,12 +372,12 @@ namespace {
     // Amazon chess
     // The queen has the additional power of moving like a knight.
     // https://www.chessvariants.com/diffmove.dir/amazone.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* amazon_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBR..............AKpnbr..............ak";
             v->remove_piece(QUEEN);
             v->add_piece(AMAZON, 'a');
@@ -393,12 +393,12 @@ namespace {
     // - No castling
     // - No en passant
     // Also see Murray p. 378
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* georgian_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = amazon_variant<BoardFiles, BoardRanks>()->init();
+            v = amazon_variant<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnbakbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBAKBNR w - - 0 1";
             v->castling = false;
             v->enPassantRegion[WHITE] = v->enPassantRegion[BLACK] = 0; // no en passant
@@ -409,12 +409,12 @@ namespace {
     // Nightrider chess
     // Knights are replaced by nightriders.
     // https://en.wikipedia.org/wiki/Nightrider_(chess)
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* nightrider_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(KNIGHT);
             v->add_piece(CUSTOM_PIECE_1, 'n', "NN");
             v->promotionPieceTypes[WHITE] = piece_set(QUEEN) | ROOK | BISHOP | CUSTOM_PIECE_1;
@@ -424,12 +424,12 @@ namespace {
     }
     // Grasshopper chess
     // https://en.wikipedia.org/wiki/Grasshopper_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* grasshopper_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->add_piece(CUSTOM_PIECE_1, 'g', "gQ");
             v->promotionPieceTypes[WHITE] |= CUSTOM_PIECE_1;
             v->promotionPieceTypes[BLACK] |= CUSTOM_PIECE_1;
@@ -441,12 +441,12 @@ namespace {
     // Hoppel-Poppel
     // A variant from Germany where knights capture like bishops and vice versa
     // https://www.chessvariants.com/diffmove.dir/hoppel-poppel.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* hoppelpoppel_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(KNIGHT);
             v->remove_piece(BISHOP);
             v->add_piece(KNIBIS, 'n');
@@ -458,12 +458,12 @@ namespace {
     }
     // New Zealand
     // Knights capture like rooks and vice versa.
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* newzealand_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(ROOK);
             v->remove_piece(KNIGHT);
             v->add_piece(ROOKNI, 'r');
@@ -476,12 +476,12 @@ namespace {
     }
     // King of the Hill
     // https://lichess.org/variant/kingOfTheHill
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* kingofthehill_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->flagPiece[WHITE] = v->flagPiece[BLACK] = KING;
             v->flagRegion[WHITE] = ("*4 *5"_bb) & ("d* e*"_bb);
             v->flagRegion[BLACK] = ("*4 *5"_bb) & ("d* e*"_bb);
@@ -491,12 +491,12 @@ namespace {
     }
     // Racing Kings
     // https://lichess.org/variant/racingKings
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* racingkings_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->startFen = "8/8/8/8/8/8/krbnNBRK/qrbnNBRQ w - - 0 1";
             v->flagPiece[WHITE] = v->flagPiece[BLACK] = KING;
             v->flagRegion[WHITE] = "*8"_bb;
@@ -510,12 +510,12 @@ namespace {
     }
     // Knightmate
     // https://www.chessvariants.com/diffobjective.dir/knightmate.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* knightmate_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->add_piece(COMMONER, 'm');
             v->remove_piece(KNIGHT);
             v->startFen = "rmbqkbmr/pppppppp/8/8/8/8/PPPPPPPP/RMBQKBMR w KQkq - 0 1";
@@ -529,12 +529,12 @@ namespace {
     // Misere chess
     // Get checkmated to win.
     // Variant used to run some selfmate analysis http://www.kotesovec.cz/gustav/gustav_alybadix.htm
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* misere_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->checkmateValue = VALUE_MATE;
             v->endgameEval = EG_EVAL_MISERE;
         }
@@ -542,12 +542,12 @@ namespace {
     }
     // Losers chess
     // https://www.chessclub.com/help/Wild17
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* losers_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->checkmateValue = VALUE_MATE;
             v->stalemateValue = VALUE_MATE;
             v->extinctionValue = VALUE_MATE;
@@ -560,12 +560,12 @@ namespace {
     // Giveaway chess
     // Antichess with castling.
     // https://www.chessvariants.com/diffobjective.dir/giveaway.old.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* giveaway_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "giveaway";
             v->remove_piece(KING);
             v->add_piece(COMMONER, 'k');
@@ -583,12 +583,12 @@ namespace {
     }
     // Antichess
     // https://lichess.org/variant/antichess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* antichess_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = giveaway_variant<BoardFiles, BoardRanks>()->init();
+            v = giveaway_variant<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
             v->castling = false;
             v->endgameEval = EG_EVAL_ANTI;
@@ -598,12 +598,12 @@ namespace {
     // Suicide chess
     // Antichess with modified stalemate adjudication.
     // https://www.freechess.org/Help/HelpFiles/suicide_chess.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* suicide_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = antichess_variant<BoardFiles, BoardRanks>()->init();
+            v = antichess_variant<VariantFiles, VariantRanks>()->init();
             v->stalematePieceCount = true;
             v->nnueAlias = "antichess";
             v->endgameEval = EG_EVAL_ANTI;
@@ -613,12 +613,12 @@ namespace {
     // Codrus
     // Lose the king to win. Captures are mandatory.
     // http://www.binnewirtz.com/Schlagschach1.htm
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* codrus_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = giveaway_variant<BoardFiles, BoardRanks>()->init();
+            v = giveaway_variant<VariantFiles, VariantRanks>()->init();
             v->promotionPieceTypes[WHITE] = piece_set(QUEEN) | ROOK | BISHOP | KNIGHT;
             v->promotionPieceTypes[BLACK] = piece_set(QUEEN) | ROOK | BISHOP | KNIGHT;
             v->extinctionPieceTypes = piece_set(COMMONER);
@@ -627,12 +627,12 @@ namespace {
     }
     // Extinction chess
     // https://en.wikipedia.org/wiki/Extinction_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* extinction_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(KING);
             v->add_piece(COMMONER, 'k');
             v->castlingKingPiece[WHITE] = v->castlingKingPiece[BLACK] = COMMONER;
@@ -645,12 +645,12 @@ namespace {
     }
     // Kinglet
     // https://en.wikipedia.org/wiki/V._R._Parton#Kinglet_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* kinglet_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = extinction_variant<BoardFiles, BoardRanks>()->init();
+            v = extinction_variant<VariantFiles, VariantRanks>()->init();
             v->promotionPieceTypes[WHITE] = piece_set(COMMONER);
             v->promotionPieceTypes[BLACK] = piece_set(COMMONER);
             v->extinctionPieceTypes = piece_set(PAWN);
@@ -659,12 +659,12 @@ namespace {
     }
     // Three Kings Chess
     // https://github.com/cutechess/cutechess/blob/master/projects/lib/src/board/threekingsboard.h
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* threekings_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(KING);
             v->add_piece(COMMONER, 'k');
             v->castlingKingPiece[WHITE] = v->castlingKingPiece[BLACK] = COMMONER;
@@ -677,12 +677,12 @@ namespace {
     }
     // Horde chess
     // https://en.wikipedia.org/wiki/Dunsany%27s_chess#Horde_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* horde_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1";
             v->doubleStepRegion[WHITE] |= "*1"_bb;
             v->enPassantRegion[WHITE] = "*6"_bb; // exclude en passant on second rank
@@ -695,12 +695,12 @@ namespace {
     // Petrified
     // Sideways pawns + petrification on capture
     // https://www.chess.com/variants/petrified
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* petrified_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = pawnsideways_variant<BoardFiles, BoardRanks>()->init();
+            v = pawnsideways_variant<VariantFiles, VariantRanks>()->init();
             v->remove_piece(KING);
             v->add_piece(COMMONER, 'k');
             v->castlingKingPiece[WHITE] = v->castlingKingPiece[BLACK] = COMMONER;
@@ -713,12 +713,12 @@ namespace {
     }
     // Atomic chess without checks (ICC rules)
     // https://www.chessclub.com/help/atomic
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* nocheckatomic_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "atomic";
             v->remove_piece(KING);
             v->add_piece(COMMONER, 'k');
@@ -732,12 +732,12 @@ namespace {
     }
     // Atomic chess
     // https://en.wikipedia.org/wiki/Atomic_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* atomic_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = nocheckatomic_variant<BoardFiles, BoardRanks>()->init();
+            v = nocheckatomic_variant<VariantFiles, VariantRanks>()->init();
             v->extinctionPseudoRoyal = true;
             v->endgameEval = EG_EVAL_ATOMIC;
         }
@@ -746,27 +746,26 @@ namespace {
 
     // Atomar chess
     // https://web.archive.org/web/20230519082613/https://chronatog.com/wp-content/uploads/2021/09/atomar-chess-rules.pdf
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* atomar_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = nocheckatomic_variant<BoardFiles, BoardRanks>()->init();
+            v = nocheckatomic_variant<VariantFiles, VariantRanks>()->init();
             v->blastImmuneTypes = piece_set(COMMONER);
             v->mutuallyImmuneTypes = piece_set(COMMONER);
         }
         return v;
     }
 
-#ifdef ALLVARS
     // Duck chess
     // https://duckchess.com/
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* duck_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks && IsAllVars)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(KING);
             v->add_piece(COMMONER, 'k');
             v->castlingKingPiece[WHITE] = v->castlingKingPiece[BLACK] = COMMONER;
@@ -778,14 +777,13 @@ namespace {
         }
         return v;
     }
-#endif
 
-    template<int BoardFiles = 6, int BoardRanks = 8>
+    template<int VariantFiles = 6, int VariantRanks = 8>
     Variant* isolation_variant() { //https://boardgamegeek.com/boardgame/1875/isolation
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_8;
             v->maxFile = FILE_F;
             v->reset_pieces();
@@ -798,12 +796,12 @@ namespace {
         return v;
     }
 
-    template<int BoardFiles = 7, int BoardRanks = 7>
+    template<int VariantFiles = 7, int VariantRanks = 7>
     Variant* isolation7x7_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = isolation_variant<BoardFiles, BoardRanks>()->init();
+            v = isolation_variant<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_7;
             v->maxFile = FILE_G;
             v->startFen = "3p3/7/7/7/7/7/3P3 w - - 0 1";
@@ -812,12 +810,12 @@ namespace {
         return v;
     }
 
-    template<int BoardFiles = 7, int BoardRanks = 7>
+    template<int VariantFiles = 7, int VariantRanks = 7>
     Variant* snailtrail_variant() { //https://boardgamegeek.com/boardgame/37135/snailtrail
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_7;
             v->maxFile = FILE_G;
             v->reset_pieces();
@@ -829,13 +827,13 @@ namespace {
         return v;
     }
 
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* joust_variant() { //https://www.chessvariants.com/programs.dir/joust.html
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
             //This page mainly describes a variant where position on home row is randomized, but also a variant where they start in the centre(implemented here)
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->reset_pieces();
             v->add_piece(CUSTOM_PIECE_1, 'n', "mN"); //move as a Knight, but can't capture
             v->startFen = "8/8/8/4n3/3N4/8/8/8 w - - 0 1";
@@ -845,12 +843,12 @@ namespace {
         return v;
     }
 
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* fox_and_hounds_variant() { //https://boardgamegeek.com/boardgame/148180/fox-and-hounds
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->reset_pieces();
             v->add_piece(CUSTOM_PIECE_1, 'h', "mfF"); //Hound
             v->add_piece(CUSTOM_PIECE_2, 'f', "mF"); //Fox
@@ -865,12 +863,12 @@ namespace {
     // Three-check chess
     // Check the king three times to win
     // https://lichess.org/variant/threeCheck
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* threecheck_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 3+3 0 1";
             v->checkCounting = true;
         }
@@ -878,12 +876,12 @@ namespace {
     }
     // Five-check chess
     // Check the king five times to win
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* fivecheck_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = threecheck_variant<BoardFiles, BoardRanks>()->init();
+            v = threecheck_variant<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 5+5 0 1";
             v->nnueAlias = "3check";
         }
@@ -892,12 +890,12 @@ namespace {
     // Crazyhouse
     // Chess with piece drops
     // https://en.wikipedia.org/wiki/Crazyhouse
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* crazyhouse_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "crazyhouse";
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[] w KQkq - 0 1";
             v->pieceDrops = true;
@@ -908,12 +906,12 @@ namespace {
     // Loop chess
     // Variant of crazyhouse where promoted pawns are not demoted when captured
     // https://en.wikipedia.org/wiki/Crazyhouse#Variations
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* loop_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = crazyhouse_variant<BoardFiles, BoardRanks>()->init();
+            v = crazyhouse_variant<VariantFiles, VariantRanks>()->init();
             v->dropLoop = true;
             v->nnueAlias = "crazyhouse";
         }
@@ -922,12 +920,12 @@ namespace {
     // Chessgi
     // Variant of loop chess where pawns can be dropped to the first rank
     // https://en.wikipedia.org/wiki/Crazyhouse#Variations
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* chessgi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = loop_variant<BoardFiles, BoardRanks>()->init();
+            v = loop_variant<VariantFiles, VariantRanks>()->init();
             v->firstRankPawnDrops = true;
             v->nnueAlias = "crazyhouse";
         }
@@ -936,12 +934,12 @@ namespace {
     // Bughouse
     // A four player variant where captured pieces are introduced on the other board
     // https://en.wikipedia.org/wiki/Bughouse_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* bughouse_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = crazyhouse_variant<BoardFiles, BoardRanks>()->init();
+            v = crazyhouse_variant<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "bughouse";
             v->twoBoards = true;
             v->capturesToHand = false;
@@ -951,12 +949,12 @@ namespace {
     }
     // Koedem (Bughouse variant)
     // http://schachclub-oetigheim.de/wp-content/uploads/2016/04/Koedem-rules.pdf
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* koedem_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = bughouse_variant<BoardFiles, BoardRanks>()->init();
+            v = bughouse_variant<VariantFiles, VariantRanks>()->init();
             v->remove_piece(KING);
             v->add_piece(COMMONER, 'k');
             v->castlingKingPiece[WHITE] = v->castlingKingPiece[BLACK] = COMMONER;
@@ -971,12 +969,12 @@ namespace {
     // Pocket Knight chess
     // Each player has an additional knight in hand which can be dropped at any move
     // https://www.chessvariants.com/other.dir/pocket.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* pocketknight_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "bughouse";
             v->pocketSize = 2;
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Nn] w KQkq - 0 1";
@@ -988,12 +986,12 @@ namespace {
     // Placement/Pre-chess
     // A shuffle variant where the players determine the placing of the back rank pieces
     // https://www.chessvariants.com/link/placement-chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* placement_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "bughouse";
             v->startFen = "8/pppppppp/8/8/8/8/PPPPPPPP/8[KQRRBBNNkqrrbbnn] w - - 0 1";
             v->mustDrop = true;
@@ -1010,12 +1008,12 @@ namespace {
     // Sittuyin (Burmese chess)
     // Regional chess variant from Myanmar, similar to Makruk but with a setup phase.
     // https://en.wikipedia.org/wiki/Sittuyin
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* sittuyin_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = makruk_variant<BoardFiles, BoardRanks>()->init();
+            v = makruk_variant<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "bughouse";
             v->pieceToCharTable = "PN.R.F....SKpn.r.f....sk";
             v->startFen = "8/8/4pppp/pppp4/4PPPP/PPPP4/8/8[KFRRSSNNkfrrssnn] w - - 0 1";
@@ -1039,12 +1037,12 @@ namespace {
     // S-Chess (aka Seirawan-, or SHarper chess)
     // 8x8 variant introducing the knighted pieces from capablanca chess
     // via gating when a piece first moves from its initial square.
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* seirawan_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "seirawan";
             v->pieceToCharTable = "PNBRQ.E..........H...Kpnbrq.e..........h...k";
             v->add_piece(ARCHBISHOP, 'h');
@@ -1060,12 +1058,12 @@ namespace {
     // S-House
     // A hybrid variant of S-Chess and Crazyhouse.
     // Pieces in the pocket can either be gated or dropped.
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* shouse_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = seirawan_variant<BoardFiles, BoardRanks>()->init();
+            v = seirawan_variant<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "crazyhouse";
             v->pieceDrops = true;
             v->capturesToHand = true;
@@ -1078,12 +1076,12 @@ namespace {
     // Like regular chess, but with an extra piece, the dragon, which moves like
     // an archbishop (i.e. bishop+knight). The dragon can be dropped at an empty
     // square on the back rank instead of making a normal move.
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* dragon_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "bughouse";
             v->pieceToCharTable = "PNBRQ............D...Kpnbrq............d...k";
             v->add_piece(ARCHBISHOP, 'd');
@@ -1100,12 +1098,12 @@ namespace {
     // Paradigm chess30
     // 8x8 variant with a bishop+horse hybrid piece replacing bishops
     // https://www.chessvariants.com/rules/paradigm-chess30
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* paradigm_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(BISHOP);
             v->add_piece(CUSTOM_PIECE_1, 'b', "BnN");
             v->promotionPieceTypes[WHITE] = piece_set(QUEEN) | CUSTOM_PIECE_1 | ROOK | KNIGHT;
@@ -1114,12 +1112,12 @@ namespace {
         return v;
     }
     // Base used for most shogi variants
-    template<int BoardFiles = 5, int BoardRanks = 5>
+    template<int VariantFiles = 5, int VariantRanks = 5>
     Variant* minishogi_variant_base() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = variant_base<BoardFiles, BoardRanks>()->init();
+            v = variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "shogi";
             v->maxRank = RANK_5;
             v->maxFile = FILE_E;
@@ -1156,12 +1154,12 @@ namespace {
     // Minishogi
     // 5x5 variant of shogi
     // https://en.wikipedia.org/wiki/Minishogi
-    template<int BoardFiles = 5, int BoardRanks = 5>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* minishogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = minishogi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = minishogi_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "P.BR.S...G.+.++.+Kp.br.s...g.+.++.+k";
             v->pocketSize = 5;
             v->nFoldValue = -VALUE_MATE;
@@ -1173,12 +1171,12 @@ namespace {
     // Kyoto shogi
     // 5x5 variant of shogi with pieces alternating between promotion and demotion
     // https://en.wikipedia.org/wiki/Kyoto_shogi
-    template<int BoardFiles = 5, int BoardRanks = 5>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* kyotoshogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = minishogi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = minishogi_variant_base<VariantFiles, VariantRanks>()->init();
             v->add_piece(LANCE, 'l');
             v->add_piece(SHOGI_KNIGHT, 'n');
             v->startFen = "p+nks+l/5/5/5/+LSK+NP[-] w 0 1";
@@ -1203,12 +1201,12 @@ namespace {
     // Micro shogi
     // 4x5 shogi variant where pieces promoted and demote when capturing
     // https://en.wikipedia.org/wiki/Micro_shogi
-    template<int BoardFiles = 4, int BoardRanks = 5>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* microshogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = kyotoshogi_variant<BoardFiles, BoardRanks>()->init();
+            v = kyotoshogi_variant<VariantFiles, VariantRanks>()->init();
             v->maxFile = FILE_D;
             v->startFen = "kb+r+l/p3/4/3P/+L+RBK[-] w 0 1";
             v->promotionRegion[WHITE] = AllSquares;
@@ -1227,12 +1225,12 @@ namespace {
     // Dobutsu
     // Educational shogi variant on a 3x4 board
     // https://en.wikipedia.org/wiki/D%C5%8Dbutsu_sh%C5%8Dgi
-    template<int BoardFiles = 3, int BoardRanks = 4>
+    template<int VariantFiles = 3, int VariantRanks = 4>
     Variant* dobutsu_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = minishogi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = minishogi_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "C....E...G.+.....Lc....e...g.+.....l";
             v->pocketSize = 3;
             v->maxRank = RANK_4;
@@ -1263,12 +1261,12 @@ namespace {
     }
     // Goro goro shogi
     // https://en.wikipedia.org/wiki/D%C5%8Dbutsu_sh%C5%8Dgi#Variation
-    template<int BoardFiles = 5, int BoardRanks = 6>
+    template<int VariantFiles = 5, int VariantRanks = 6>
     Variant* gorogoroshogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = minishogi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = minishogi_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "P....S...G.+....+Kp....s...g.+....+k";
             v->pocketSize = 3;
             v->maxRank = RANK_6;
@@ -1281,12 +1279,12 @@ namespace {
     }
     // Judkins shogi
     // https://en.wikipedia.org/wiki/Judkins_shogi
-    template<int BoardFiles = 6, int BoardRanks = 6>
+    template<int VariantFiles = 6, int VariantRanks = 6>
     Variant* judkinsshogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = minishogi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = minishogi_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBR.S...G.++++.+Kpnbr.s...g.++++.+k";
             v->maxRank = RANK_6;
             v->maxFile = FILE_F;
@@ -1300,12 +1298,12 @@ namespace {
     }
     // Tori shogi
     // https://en.wikipedia.org/wiki/Tori_shogi
-    template<int BoardFiles = 7, int BoardRanks = 7>
+    template<int VariantFiles = 7, int VariantRanks = 7>
     Variant* torishogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = variant_base<BoardFiles, BoardRanks>()->init();
+            v = variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "shogi";
             v->pieceToCharTable = "S.....FLR.C+.....+.PKs.....flr.c+.....+.pk";
             v->maxRank = RANK_7;
@@ -1344,12 +1342,12 @@ namespace {
     }
     // EuroShogi
     // https://en.wikipedia.org/wiki/EuroShogi
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* euroshogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = minishogi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = minishogi_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBR.....G.++++Kpnbr.....g.++++k";
             v->maxRank = RANK_8;
             v->maxFile = FILE_H;
@@ -1364,12 +1362,12 @@ namespace {
     }
     // Los Alamos chess
     // https://en.wikipedia.org/wiki/Los_Alamos_chess
-    template<int BoardFiles = 6, int BoardRanks = 6>
+    template<int VariantFiles = 6, int VariantRanks = 6>
     Variant* losalamos_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PN.RQ................Kpn.rq................k";
             v->maxRank = RANK_6;
             v->maxFile = FILE_F;
@@ -1386,12 +1384,12 @@ namespace {
     }
     // Gardner's minichess
     // https://en.wikipedia.org/wiki/Minichess#5%C3%975_chess
-    template<int BoardFiles = 5, int BoardRanks = 5>
+    template<int VariantFiles = 5, int VariantRanks = 5>
     Variant* gardner_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_5;
             v->maxFile = FILE_E;
             v->startFen = "rnbqk/ppppp/5/PPPPP/RNBQK w - - 0 1";
@@ -1405,12 +1403,12 @@ namespace {
     // Almost chess
     // Queens are replaced by chancellors
     // https://en.wikipedia.org/wiki/Almost_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* almost_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBR............CKpnbr............ck";
             v->remove_piece(QUEEN);
             v->add_piece(CHANCELLOR, 'c');
@@ -1423,12 +1421,12 @@ namespace {
     // Sort of almost chess
     // One queen is replaced by a chancellor
     // https://en.wikipedia.org/wiki/Almost_chess#Sort_of_almost_chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* sortofalmost_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant<BoardFiles, BoardRanks>();
+            v = chess_variant<VariantFiles, VariantRanks>();
             v->pieceToCharTable = "PNBRQ...........CKpnbrq...........ck";
             v->add_piece(CHANCELLOR, 'c');
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBCKBNR w KQkq - 0 1";
@@ -1440,12 +1438,12 @@ namespace {
     // Chigorin chess
     // Asymmetric variant with knight vs. bishop movements
     // https://www.chessvariants.com/diffsetup.dir/chigorin.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* chigorin_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBR............CKpnbrq............k";
             v->add_piece(CHANCELLOR, 'c');
             v->startFen = "rbbqkbbr/pppppppp/8/8/8/8/PPPPPPPP/RNNCKNNR w KQkq - 0 1";
@@ -1456,12 +1454,12 @@ namespace {
     }
     // Perfect chess
     // https://www.chessvariants.com/diffmove.dir/perfectchess.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* perfect_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->add_piece(CHANCELLOR, 'c');
             v->add_piece(ARCHBISHOP, 'm');
             v->add_piece(AMAZON, 'g');
@@ -1474,12 +1472,12 @@ namespace {
     }
     // Spartan chess
     // https://www.chessvariants.com/rules/spartan-chess
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* spartan_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = threekings_variant<BoardFiles, BoardRanks>()->init();
+            v = threekings_variant<VariantFiles, VariantRanks>()->init();
             v->add_piece(DRAGON, 'g');
             v->add_piece(ARCHBISHOP, 'w');
             v->add_piece(CUSTOM_PIECE_1, 'h', "fmFfcWimA");
@@ -1501,12 +1499,12 @@ namespace {
     }
     // Shatar (Mongolian chess)
     // https://en.wikipedia.org/wiki/Shatar
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* shatar_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBR..........J......Kpnbr..........j......k";
             v->remove_piece(QUEEN);
             v->add_piece(BERS, 'j');
@@ -1525,12 +1523,12 @@ namespace {
     // Coregal chess
     // Queens are also subject to check and checkmate
     // https://www.chessvariants.com/winning.dir/coregal.html
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* coregal_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->extinctionValue = -VALUE_MATE;
             v->extinctionPieceTypes = piece_set(QUEEN);
             v->extinctionPseudoRoyal = true;
@@ -1540,12 +1538,12 @@ namespace {
     }
     // Clobber
     // https://en.wikipedia.org/wiki/Clobber
-    template<int BoardFiles = 5, int BoardRanks = 6>
+    template<int VariantFiles = 5, int VariantRanks = 6>
     Variant* clobber_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "P.................p.................";
             v->maxRank = RANK_6;
             v->maxFile = FILE_E;
@@ -1561,12 +1559,12 @@ namespace {
     }
     // Breakthrough
     // https://en.wikipedia.org/wiki/Breakthrough_(board_game)
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* breakthrough_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "P.................p.................";
             v->reset_pieces();
             v->add_piece(BREAKTHROUGH_PIECE, 'p');
@@ -1582,12 +1580,12 @@ namespace {
     }
     // Ataxx
     // https://en.wikipedia.org/wiki/Ataxx
-    template<int BoardFiles = 7, int BoardRanks = 7>
+    template<int VariantFiles = 7, int VariantRanks = 7>
     Variant* ataxx_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "P.................p.................";
             v->maxRank = RANK_7;
             v->maxFile = FILE_G;
@@ -1613,12 +1611,12 @@ namespace {
     }
     // Flipersi
     // https://en.wikipedia.org/wiki/Reversi
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* flipersi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "P.................p.................";
             v->maxRank = RANK_8;
             v->maxFile = FILE_H;
@@ -1643,12 +1641,12 @@ namespace {
     }
     // Flipello
     // https://en.wikipedia.org/wiki/Reversi#Othello
-    template<int BoardFiles = 8, int BoardRanks = 8>
+    template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* flipello_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = flipersi_variant<BoardFiles, BoardRanks>()->init();
+            v = flipersi_variant<VariantFiles, VariantRanks>()->init();
             v->startFen = "8/8/8/3pP3/3Pp3/8/8/8[PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPpppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp] w 0 1";
             v->passOnStalemate[WHITE] = true;
             v->passOnStalemate[BLACK] = true;
@@ -1657,12 +1655,12 @@ namespace {
     }
     // Minixiangqi
     // http://mlwi.magix.net/bg/minixiangqi.htm
-    template<int BoardFiles = 7, int BoardRanks = 7>
+    template<int VariantFiles = 7, int VariantRanks = 7>
     Variant* minixiangqi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "xiangqi";
             v->pieceToCharTable = "PN.R.....K.C.pn.r.....k.c.";
             v->maxRank = RANK_7;
@@ -1688,12 +1686,12 @@ namespace {
     }
     // Shogi (Japanese chess)
     // https://en.wikipedia.org/wiki/Shogi
-    template<int BoardFiles = 9, int BoardRanks = 9>
+    template<int VariantFiles = 9, int VariantRanks = 9>
     Variant* shogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = minishogi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = minishogi_variant_base<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_9;
             v->maxFile = FILE_I;
             v->add_piece(LANCE, 'l');
@@ -1708,12 +1706,12 @@ namespace {
     }
     // Check-Shogi
     // Shogi variant with check counting enabled
-    template<int BoardFiles = 9, int BoardRanks = 9>
+    template<int VariantFiles = 9, int VariantRanks = 9>
     Variant* checkshogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = shogi_variant<BoardFiles, BoardRanks>()->init();
+            v = shogi_variant<VariantFiles, VariantRanks>()->init();
             v->checkCounting = true;
         }
         return v;
@@ -1721,12 +1719,12 @@ namespace {
     // Sho-Shogi
     // 16-th century shogi variant with one additional piece and no drops
     // https://en.wikipedia.org/wiki/Sho_shogi
-    template<int BoardFiles = 9, int BoardRanks = 9>
+    template<int VariantFiles = 9, int VariantRanks = 9>
     Variant* shoshogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = shogi_variant<BoardFiles, BoardRanks>()->init();
+            v = shogi_variant<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRLSE..G.+.++.++Kpnbrlse..g.+.++.++k";
             v->remove_piece(KING);
             v->add_piece(COMMONER, 'k');
@@ -1745,12 +1743,12 @@ namespace {
     }
     // Yari shogi
     // https://en.wikipedia.org/wiki/Yari_shogi
-    template<int BoardFiles = 7, int BoardRanks = 9>
+    template<int VariantFiles = 7, int VariantRanks = 9>
     Variant* yarishogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = variant_base<BoardFiles, BoardRanks>()->init();
+            v = variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "shogi";
             v->pieceToCharTable = "PNBR.......++++Kpnbr.......++++k";
             v->maxRank = RANK_9;
@@ -1787,12 +1785,12 @@ namespace {
     }
     // Okisaki shogi
     // https://en.wikipedia.org/wiki/Okisaki_shogi
-    template<int BoardFiles = 10, int BoardRanks = 10>
+    template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* okisakishogi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = minishogi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = minishogi_variant_base<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
             v->add_piece(CUSTOM_PIECE_1, 'l', "vR"); // Vertical slider
@@ -1808,12 +1806,12 @@ namespace {
     }
     // Capablanca chess
     // https://en.wikipedia.org/wiki/Capablanca_chess
-    template<int BoardFiles = 10, int BoardRanks = 8>
+    template<int VariantFiles = 10, int VariantRanks = 8>
     Variant* capablanca_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ..AC............Kpnbrq..ac............k";
             v->maxRank = RANK_8;
             v->maxFile = FILE_J;
@@ -1830,12 +1828,12 @@ namespace {
     // Capahouse
     // Capablanca chess with crazyhouse-style piece drops
     // https://www.pychess.org/variant/capahouse
-    template<int BoardFiles = 10, int BoardRanks = 8>
+    template<int VariantFiles = 10, int VariantRanks = 8>
     Variant* capahouse_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = capablanca_variant<BoardFiles, BoardRanks>()->init();
+            v = capablanca_variant<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR[] w KQkq - 0 1";
             v->pieceDrops = true;
             v->capturesToHand = true;
@@ -1845,12 +1843,12 @@ namespace {
     // Capablanca random chess (CRC)
     // Shuffle variant of capablanca chess
     // https://en.wikipedia.org/wiki/Capablanca_random_chess
-    template<int BoardFiles = 10, int BoardRanks = 8>
+    template<int VariantFiles = 10, int VariantRanks = 8>
     Variant* caparandom_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = capablanca_variant<BoardFiles, BoardRanks>()->init();
+            v = capablanca_variant<VariantFiles, VariantRanks>()->init();
             v->chess960 = true;
             v->nnueAlias = "capablanca";
         }
@@ -1859,12 +1857,12 @@ namespace {
     // Gothic chess
     // Capablanca chess with changed starting position
     // https://www.chessvariants.com/large.dir/gothicchess.html
-    template<int BoardFiles = 10, int BoardRanks = 8>
+    template<int VariantFiles = 10, int VariantRanks = 8>
     Variant* gothic_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = capablanca_variant<BoardFiles, BoardRanks>()->init();
+            v = capablanca_variant<VariantFiles, VariantRanks>()->init();
             v->startFen = "rnbqckabnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNBQCKABNR w KQkq - 0 1";
             v->nnueAlias = "capablanca";
         }
@@ -1873,12 +1871,12 @@ namespace {
     // Janus chess
     // 10x8 variant with two archbishops per side
     // https://en.wikipedia.org/wiki/Janus_Chess
-    template<int BoardFiles = 10, int BoardRanks = 8>
+    template<int VariantFiles = 10, int VariantRanks = 8>
     Variant* janus_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ............J...Kpnbrq............j...k";
             v->maxRank = RANK_8;
             v->maxFile = FILE_J;
@@ -1894,12 +1892,12 @@ namespace {
     // Modern chess
     // 9x9 variant with archbishops
     // https://en.wikipedia.org/wiki/Modern_chess
-    template<int BoardFiles = 9, int BoardRanks = 9>
+    template<int VariantFiles = 9, int VariantRanks = 9>
     Variant* modern_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ..M.............Kpnbrq..m.............k";
             v->maxRank = RANK_9;
             v->maxFile = FILE_I;
@@ -1919,12 +1917,12 @@ namespace {
     // Chancellor chess
     // 9x9 variant with chancellors
     // https://en.wikipedia.org/wiki/Chancellor_chess
-    template<int BoardFiles = 9, int BoardRanks = 9>
+    template<int VariantFiles = 9, int VariantRanks = 9>
     Variant* chancellor_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ...........CKpnbrq...........ck";
             v->maxRank = RANK_9;
             v->maxFile = FILE_I;
@@ -1944,12 +1942,12 @@ namespace {
     // Embassy chess
     // Capablanca chess with different starting position
     // https://en.wikipedia.org/wiki/Embassy_chess
-    template<int BoardFiles = 10, int BoardRanks = 8>
+    template<int VariantFiles = 10, int VariantRanks = 8>
     Variant* embassy_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = capablanca_variant<BoardFiles, BoardRanks>()->init();
+            v = capablanca_variant<VariantFiles, VariantRanks>()->init();
             v->castlingKingsideFile = FILE_H;
             v->castlingQueensideFile = FILE_B;
             v->startFen = "rnbqkcabnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNBQKCABNR w KQkq - 0 1";
@@ -1960,12 +1958,12 @@ namespace {
     // Centaur chess (aka Royal Court)
     // 10x8 variant with a knight+commoner compound
     // https://www.chessvariants.com/large.dir/contest/royalcourt.html
-    template<int BoardFiles = 10, int BoardRanks = 8>
+    template<int VariantFiles = 10, int VariantRanks = 8>
     Variant* centaur_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ...............CKpnbrq...............ck";
             v->maxRank = RANK_8;
             v->maxFile = FILE_J;
@@ -1981,12 +1979,12 @@ namespace {
     // Gustav III chess
     // 10x8 variant with an amazon piece and wall squares
     // https://www.chessvariants.com/play/gustav-iiis-chess
-    template<int BoardFiles = 10, int BoardRanks = 8>
+    template<int VariantFiles = 10, int VariantRanks = 8>
     Variant* gustav3_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ.............AKpnbrq.............ak";
             v->maxRank = RANK_8;
             v->maxFile = FILE_J;
@@ -2002,12 +2000,12 @@ namespace {
     // Jeson mor
     // Mongolian chess variant with knights only and a king of the hill like goal
     // https://en.wikipedia.org/wiki/Jeson_Mor
-    template<int BoardFiles = 9, int BoardRanks = 9>
+    template<int VariantFiles = 9, int VariantRanks = 9>
     Variant* jesonmor_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_9;
             v->maxFile = FILE_I;
             v->reset_pieces();
@@ -2028,12 +2026,12 @@ namespace {
     // Courier chess
     // Medieval variant of Shatranj on a 12x8 board
     // https://en.wikipedia.org/wiki/Courier_chess
-    template<int BoardFiles = 12, int BoardRanks = 8>
+    template<int VariantFiles = 12, int VariantRanks = 8>
     Variant* courier_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_8;
             v->maxFile = FILE_L;
             v->remove_piece(QUEEN);
@@ -2058,12 +2056,12 @@ namespace {
     // Grand chess
     // 10x10 variant with chancellors and archbishops
     // https://en.wikipedia.org/wiki/Grand_chess
-    template<int BoardFiles = 10, int BoardRanks = 10>
+    template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* grand_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "grand";
             v->pieceToCharTable = "PNBRQ..AC............Kpnbrq..ac............k";
             v->maxRank = RANK_10;
@@ -2092,12 +2090,12 @@ namespace {
     // Opulent chess
     // Variant of Grand chess with two extra pieces
     // https://www.chessvariants.com/rules/opulent-chess
-    template<int BoardFiles = 10, int BoardRanks = 10>
+    template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* opulent_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = grand_variant<BoardFiles, BoardRanks>()->init();
+            v = grand_variant<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ..AC....W.......LKpnbrq..ac....w.......lk";
             v->remove_piece(KNIGHT);
             v->add_piece(CUSTOM_PIECE_1, 'n', "NW");
@@ -2117,12 +2115,12 @@ namespace {
     }
     // Tencubed
     // https://www.chessvariants.com/contests/10/tencubedchess.html
-    template<int BoardFiles = 10, int BoardRanks = 10>
+    template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* tencubed_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ.CAM...........WKpnbrq.cam...........wk";
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
@@ -2144,12 +2142,12 @@ namespace {
     // Omicron chess
     // Omega chess on a 12x10 board
     // http://www.eglebbk.dds.nl/program/chess-omicron.html
-    template<int BoardFiles = 12, int BoardRanks = 10>
+    template<int VariantFiles = 12, int VariantRanks = 10>
     Variant* omicron_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ..C.W...........Kpnbrq..c.w...........k";
             v->maxRank = RANK_10;
             v->maxFile = FILE_L;
@@ -2170,12 +2168,12 @@ namespace {
     }
     // Troitzky Chess
     // https://www.chessvariants.com/play/troitzky-chess
-    template<int BoardFiles = 10, int BoardRanks = 10>
+    template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* troitzky_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v =  chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v =  chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
             v->startFen = "****qk****/**rnbbnr**/*pppppppp*/*8*/10/10/*8*/*PPPPPPPP*/**RNBBNR**/****QK**** w - - 0 1";
@@ -2189,12 +2187,12 @@ namespace {
     }
     // Wolf chess
     // https://en.wikipedia.org/wiki/Wolf_chess
-    template<int BoardFiles = 8, int BoardRanks = 10>
+    template<int VariantFiles = 8, int VariantRanks = 10>
     Variant* wolf_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_10;
             v->remove_piece(KNIGHT);
             v->add_piece(CHANCELLOR, 'w'); // wolf
@@ -2221,12 +2219,12 @@ namespace {
     // Shako
     // 10x10 variant with cannons by Jean-Louis Cazaux
     // https://www.chessvariants.com/large.dir/shako.html
-    template<int BoardFiles = 10, int BoardRanks = 10>
+    template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* shako_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PNBRQ.E....C.........Kpnbrq.e....c.........k";
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
@@ -2250,12 +2248,12 @@ namespace {
     // Clobber 10x10
     // Clobber on a 10x10 board, mainly played by computers
     // https://en.wikipedia.org/wiki/Clobber
-    template<int BoardFiles = 10, int BoardRanks = 10>
+    template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* clobber10_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = clobber_variant<BoardFiles, BoardRanks>()->init();
+            v = clobber_variant<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
             v->startFen = "PpPpPpPpPp/pPpPpPpPpP/PpPpPpPpPp/pPpPpPpPpP/PpPpPpPpPp/"
@@ -2266,12 +2264,12 @@ namespace {
     // Flipello 10x10
     // Othello on a 10x10 board, mainly played by computers
     // https://en.wikipedia.org/wiki/Reversi
-    template<int BoardFiles = 10, int BoardRanks = 10>
+    template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* flipello10_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = flipello_variant<BoardFiles, BoardRanks>()->init();
+            v = flipello_variant<VariantFiles, VariantRanks>()->init();
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
             v->startFen = "10/10/10/10/4pP4/4Pp4/10/10/10/10[PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPpppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp] w - - 0 1";
@@ -2279,15 +2277,14 @@ namespace {
         }
         return v;
     }
-#ifdef ALLVARS
     // Game of the Amazons
     // https://en.wikipedia.org/wiki/Game_of_the_Amazons
-    template<int BoardFiles = 10, int BoardRanks = 10>
+    template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* amazons_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks && IsAllVars)
         {
-            v = chess_variant_base<BoardFiles, BoardRanks>()->init();
+            v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "....Q.....................q.................";
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
@@ -2299,16 +2296,15 @@ namespace {
         }
         return v;
     }
-#endif
     // Xiangqi (Chinese chess)
     // https://en.wikipedia.org/wiki/Xiangqi
     // Xiangqi base variant for inheriting rules without chasing rules
-    template<int BoardFiles = 9, int BoardRanks = 10>
+    template<int VariantFiles = 9, int VariantRanks = 10>
     Variant* xiangqi_variant_base() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = minixiangqi_variant<BoardFiles, BoardRanks>()->init();
+            v = minixiangqi_variant<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PN.R.AB..K.C..........pn.r.ab..k.c..........";
             v->maxRank = RANK_10;
             v->maxFile = FILE_I;
@@ -2325,12 +2321,12 @@ namespace {
         }
         return v;
     }
-    template<int BoardFiles = 9, int BoardRanks = 10>
+    template<int VariantFiles = 9, int VariantRanks = 10>
     Variant* xiangqi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = xiangqi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = xiangqi_variant_base<VariantFiles, VariantRanks>()->init();
             v->chasingRule = AXF_CHASING;
         }
         return v;
@@ -2338,12 +2334,12 @@ namespace {
     // Manchu/Yitong chess
     // Asymmetric Xiangqi variant with a super-piece
     // https://en.wikipedia.org/wiki/Manchu_chess
-    template<int BoardFiles = 9, int BoardRanks = 10>
+    template<int VariantFiles = 9, int VariantRanks = 10>
     Variant* manchu_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = xiangqi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = xiangqi_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "PN.R.AB..K.C....M.....pn.r.ab..k.c..........";
             v->add_piece(BANNER, 'm');
             v->startFen = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/9/9/M1BAKAB2 w - - 0 1";
@@ -2352,12 +2348,12 @@ namespace {
     }
     // Supply chess
     // https://en.wikipedia.org/wiki/Xiangqi#Variations
-    template<int BoardFiles = 9, int BoardRanks = 10>
+    template<int VariantFiles = 9, int VariantRanks = 10>
     Variant* supply_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = xiangqi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = xiangqi_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "bughouse";
             v->startFen = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR[] w - - 0 1";
             v->twoBoards = true;
@@ -2377,12 +2373,12 @@ namespace {
     // Janggi (Korean chess)
     // https://en.wikipedia.org/wiki/Janggi
     // Official tournament rules with bikjang and material counting.
-    template<int BoardFiles = 9, int BoardRanks = 10>
+    template<int VariantFiles = 9, int VariantRanks = 10>
     Variant* janggi_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = xiangqi_variant_base<BoardFiles, BoardRanks>()->init();
+            v = xiangqi_variant_base<VariantFiles, VariantRanks>()->init();
             v->variantTemplate = "janggi";
             v->pieceToCharTable = ".N.R.AB.P..C.........K.n.r.ab.p..c.........k";
             v->remove_piece(FERS);
@@ -2394,7 +2390,7 @@ namespace {
             v->startFen = "rnba1abnr/4k4/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/4K4/RNBA1ABNR w - - 0 1";
             v->mobilityRegion[WHITE][WAZIR] = v->mobilityRegion[WHITE][KING];
             v->mobilityRegion[BLACK][WAZIR] = v->mobilityRegion[BLACK][KING];
-            v->soldierPromotionRank = RANK_1;
+            v->soldierPromotionRank = 1_rank;
             v->flyingGeneral = false;
             v->bikjangRule = true;
             v->materialCounting = JANGGI_MATERIAL;
@@ -2407,12 +2403,12 @@ namespace {
         return v;
     }
     // Traditional rules of Janggi, where bikjang is a draw
-    template<int BoardFiles = 9, int BoardRanks = 10>
+    template<int VariantFiles = 9, int VariantRanks = 10>
     Variant* janggi_traditional_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = janggi_variant<BoardFiles, BoardRanks>()->init();
+            v = janggi_variant<VariantFiles, VariantRanks>()->init();
             v->bikjangRule = true;
             v->materialCounting = NO_MATERIAL_COUNTING;
             v->nnueAlias = "janggi";
@@ -2421,12 +2417,12 @@ namespace {
     }
     // Modern rules of Janggi, where bikjang is not considered, but material counting is.
     // The repetition rules are also adjusted for better compatibility with Kakao Janggi.
-    template<int BoardFiles = 9, int BoardRanks = 10>
+    template<int VariantFiles = 9, int VariantRanks = 10>
     Variant* janggi_modern_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = janggi_variant<BoardFiles, BoardRanks>()->init();
+            v = janggi_variant<VariantFiles, VariantRanks>()->init();
             v->bikjangRule = false;
             v->materialCounting = JANGGI_MATERIAL;
             v->moveRepetitionIllegal = true;
@@ -2437,12 +2433,12 @@ namespace {
         return v;
     }
     // Casual rules of Janggi, where bikjang and material counting are not considered
-    template<int BoardFiles = 9, int BoardRanks = 10>
+    template<int VariantFiles = 9, int VariantRanks = 10>
     Variant* janggi_casual_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= BoardFiles && BOARD_RANKS >= BoardRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
         {
-            v = janggi_variant<BoardFiles, BoardRanks>()->init();
+            v = janggi_variant<VariantFiles, VariantRanks>()->init();
             v->bikjangRule = false;
             v->materialCounting = NO_MATERIAL_COUNTING;
             v->nnueAlias = "janggi";
@@ -2561,9 +2557,7 @@ void VariantMap::init() {
     add("isolation7x7", isolation7x7_variant());
     add("snailtrail", snailtrail_variant());
     add("fox-and-hounds", fox_and_hounds_variant());
-#ifdef ALLVARS
     add("duck", duck_variant());
-#endif
     add("joust", joust_variant());
     add("3check", threecheck_variant());
     add("5check", fivecheck_variant());
@@ -2630,9 +2624,7 @@ void VariantMap::init() {
     add("shako", shako_variant());
     add("clobber10", clobber10_variant());
     add("flipello10", flipello10_variant());
-#ifdef ALLVARS
     add("amazons", amazons_variant());
-#endif
     add("xiangqi", xiangqi_variant());
     add("manchu", manchu_variant());
     add("supply", supply_variant());
