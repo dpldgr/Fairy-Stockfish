@@ -152,7 +152,7 @@ extern Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 extern RiderType AttackRiderTypes[PIECE_TYPE_NB];
 extern RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
 
-#if defined(LARGEBOARDS) || defined(BITBOARD_256)
+#if defined(LARGEBOARDS) || defined(BITBOARD_MULTIWORD)
 int popcount(Bitboard b); // required for multiword pext
 #endif
 
@@ -169,7 +169,7 @@ struct Magic {
     if (HasPext)
         return unsigned(pext(occupied, mask));
 
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
     assert(false);
     return 0;
 #elif defined(LARGEBOARDS)
@@ -202,12 +202,99 @@ extern Magic GrasshopperMagicsD[SQUARE_NB];
 
 extern Magic* magics[];
 
+
+constexpr Bitboard invalid_bitboard_literal() {
+#if defined(__GNUC__) || defined(__clang__)
+  __builtin_unreachable();
+#endif
+  return Bitboard(0);
+}
+
+
+constexpr Bitboard bb_literal_square(std::string_view token) {
+  size_t split = 0;
+
+  while (split < token.size() && is_square_literal_file_char(token[split]))
+      ++split;
+
+  int f = file_index_from_string(token.substr(0, split));
+  int r = rank_index_from_string(token.substr(split));
+
+  return f >= FILE_A && f <= FILE_MAX && r >= RANK_1 && r <= RANK_MAX
+       ? Bitboard(1) << SQ(File(f), Rank(r))
+       : invalid_bitboard_literal();
+}
+
+constexpr Bitboard bb_literal_file(std::string_view token) {
+  int f = file_index_from_string(token);
+
+  return f >= FILE_A && f <= FILE_MAX ? make_file_mask(f) : invalid_bitboard_literal();
+}
+
+constexpr Bitboard bb_literal_rank(std::string_view token) {
+  int r = rank_index_from_string(token);
+
+  return r >= RANK_1 && r <= RANK_MAX ? make_rank_mask(r) : invalid_bitboard_literal();
+}
+
+constexpr Bitboard bb_literal_token(std::string_view token) {
+  return token.empty() ? invalid_bitboard_literal()
+       : token == "*" ? AllSquares
+       : token.back() == '*' ? bb_literal_file(token.substr(0, token.size() - 1))
+       : token.front() == '*' ? bb_literal_rank(token.substr(1))
+       : bb_literal_square(token);
+}
+
+constexpr Bitboard bb_literal(std::string_view s) {
+  Bitboard b = 0;
+  size_t pos = 0;
+
+  while (pos < s.size())
+  {
+      while (pos < s.size() && s[pos] == ' ')
+          ++pos;
+
+      if (pos == s.size())
+          break;
+
+      size_t end = pos;
+      while (end < s.size() && s[end] != ' ')
+          ++end;
+
+      std::string_view token = s.substr(pos, end - pos);
+      bool remove = token.front() == '-';
+
+      if (remove)
+          token.remove_prefix(1);
+
+      Bitboard mask = bb_literal_token(token);
+      b = remove ? b & ~mask : b | mask;
+      pos = end;
+  }
+
+  return b;
+}
+
+constexpr Bitboard operator"" _bb(const char* s, size_t n) {
+  return bb_literal(std::string_view(s, n));
+}
+
 constexpr Bitboard make_bitboard() { return 0; }
 
 template<typename ...Squares>
 constexpr Bitboard make_bitboard(Square s, Squares... squares) {
   return (Bitboard(1) << s) | make_bitboard(squares...);
 }
+
+static_assert("a1"_bb == make_bitboard(SQ(FILE_A, RANK_1)), "bitboard literal failed for square a1");
+static_assert("a*"_bb == make_file_mask(FILE_A), "bitboard literal failed for file a");
+static_assert("*1"_bb == make_rank_mask(RANK_1), "bitboard literal failed for rank 1");
+static_assert("a* h* *1 *8"_bb == (make_file_mask(FILE_A) | make_file_mask(FILE_H) | make_rank_mask(RANK_1) | make_rank_mask(RANK_8)), "bitboard literal failed for edge mask");
+static_assert("* -*8"_bb == (AllSquares & ~make_rank_mask(RANK_8)), "bitboard literal failed for subtraction");
+#if BOARD_FILES > 29 && BOARD_RANKS > 11
+static_assert("ad12"_bb == make_bitboard(SQ(FILE_AD, RANK_12)), "bitboard literal failed for square ad12");
+static_assert("ad* *12"_bb == (make_file_mask(FILE_AD) | make_rank_mask(RANK_12)), "bitboard literal failed for extended file/rank mask");
+#endif
 
 inline Bitboard square_bb(Square s) {
   assert(is_ok(s));
@@ -336,7 +423,7 @@ constexpr Bitboard adjacent_files_bb(Square s) {
 /// line_bb() returns a bitboard representing an entire line (from board edge
 /// to board edge) that intersects the two given squares. If the given squares
 /// are not on a same file/rank/diagonal, the function returns 0. For instance,
-/// line_bb(SQ_C4, SQ_F7) will return a bitboard with the A2-G8 diagonal.
+/// line_bb(SQ(FILE_C, RANK_4), SQ(FILE_F, RANK_7)) will return a bitboard with the A2-G8 diagonal.
 
 inline Bitboard line_bb(Square s1, Square s2) {
 
@@ -349,8 +436,8 @@ inline Bitboard line_bb(Square s1, Square s2) {
 /// between_bb(s1, s2) returns a bitboard representing the squares in the semi-open
 /// segment between the squares s1 and s2 (excluding s1 but including s2). If the
 /// given squares are not on a same file/rank/diagonal, it returns s2. For instance,
-/// between_bb(SQ_C4, SQ_F7) will return a bitboard with squares D5, E6 and F7, but
-/// between_bb(SQ_E6, SQ_F8) will return a bitboard with the square F8. This trick
+/// between_bb(SQ(FILE_C, RANK_4), SQ(FILE_F, RANK_7)) will return a bitboard with squares D5, E6 and F7, but
+/// between_bb(SQ(FILE_E, RANK_6), SQ(FILE_F, RANK_8)) will return a bitboard with the square F8. This trick
 /// allows to generate non-king evasion moves faster: the defending piece must either
 /// interpose itself to cover the check or capture the checking piece.
 
@@ -374,7 +461,7 @@ inline Bitboard between_bb(Square s1, Square s2, PieceType pt) {
 
 /// forward_ranks_bb() returns a bitboard representing the squares on the ranks in
 /// front of the given one, from the point of view of the given color. For instance,
-/// forward_ranks_bb(BLACK, SQ_D3) will return the 16 squares on ranks 1 and 2.
+/// forward_ranks_bb(BLACK, SQ(FILE_D, RANK_3)) will return the 16 squares on ranks 1 and 2.
 
 constexpr Bitboard forward_ranks_bb(Color c, Square s) {
   return c == WHITE ? (AllSquares ^ Rank1BB) << FILE_NB * relative_rank(WHITE, s, RANK_MAX)
@@ -444,7 +531,7 @@ inline int edge_distance(Rank r, Rank maxRank = RANK_8) { return std::min(r, Ran
 template<RiderType R>
 inline Bitboard rider_attacks_bb(Square s, Bitboard occupied) {
 
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
   extern Bitboard rider_attacks_bb_256(RiderType r, Square s, Bitboard occupied);
   return rider_attacks_bb_256(R, s, occupied);
 #else
@@ -472,7 +559,7 @@ inline Square lsb(Bitboard b);
 inline Bitboard rider_attacks_bb(RiderType R, Square s, Bitboard occupied) {
 
   assert(R != NO_RIDER && !(R & (R - 1))); // exactly one bit
-#ifdef BITBOARD_256
+#ifdef BITBOARD_MULTIWORD
   extern Bitboard rider_attacks_bb_256(RiderType R, Square s, Bitboard occupied);
   return rider_attacks_bb_256(R, s, occupied);
 #else
@@ -544,14 +631,25 @@ inline Bitboard moves_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
 
 inline int popcount(Bitboard b) {
 
+#ifdef BITBOARD_MULTIWORD
+  int count = 0;
+  for (int i = 0; i < BITBOARD_WORDS; ++i)
+  {
+  #ifndef USE_POPCNT
+      count += PopCnt16[b.b64[i] >> 48] + PopCnt16[(b.b64[i] >> 32) & 0xffff]
+             + PopCnt16[(b.b64[i] >> 16) & 0xffff] + PopCnt16[b.b64[i] & 0xffff];
+  #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
+      count += (int)_mm_popcnt_u64(b.b64[i]);
+  #else
+      count += __builtin_popcountll(b.b64[i]);
+  #endif
+  }
+  return count;
+#else
+
 #ifndef USE_POPCNT
 
-#ifdef BITBOARD_256
-  return  PopCnt16[b.b64[0] >> 48] + PopCnt16[(b.b64[0] >> 32) & 0xffff] + PopCnt16[(b.b64[0] >> 16) & 0xffff] + PopCnt16[b.b64[0] & 0xffff]
-        + PopCnt16[b.b64[1] >> 48] + PopCnt16[(b.b64[1] >> 32) & 0xffff] + PopCnt16[(b.b64[1] >> 16) & 0xffff] + PopCnt16[b.b64[1] & 0xffff]
-        + PopCnt16[b.b64[2] >> 48] + PopCnt16[(b.b64[2] >> 32) & 0xffff] + PopCnt16[(b.b64[2] >> 16) & 0xffff] + PopCnt16[b.b64[2] & 0xffff]
-        + PopCnt16[b.b64[3] >> 48] + PopCnt16[(b.b64[3] >> 32) & 0xffff] + PopCnt16[(b.b64[3] >> 16) & 0xffff] + PopCnt16[b.b64[3] & 0xffff];
-#elif defined(LARGEBOARDS)
+#ifdef LARGEBOARDS
   union { Bitboard bb; uint16_t u[8]; } v = { b };
   return  PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]]
         + PopCnt16[v.u[4]] + PopCnt16[v.u[5]] + PopCnt16[v.u[6]] + PopCnt16[v.u[7]];
@@ -562,9 +660,7 @@ inline int popcount(Bitboard b) {
 
 #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
 
-#ifdef BITBOARD_256
-  return (int)_mm_popcnt_u64(b.b64[0]) + (int)_mm_popcnt_u64(b.b64[1]) + (int)_mm_popcnt_u64(b.b64[2]) + (int)_mm_popcnt_u64(b.b64[3]);
-#elif defined(LARGEBOARDS)
+#ifdef LARGEBOARDS
   return (int)_mm_popcnt_u64(uint64_t(b >> 64)) + (int)_mm_popcnt_u64(uint64_t(b));
 #else
   return (int)_mm_popcnt_u64(b);
@@ -572,14 +668,13 @@ inline int popcount(Bitboard b) {
 
 #else // Assumed gcc or compatible compiler
 
-#ifdef BITBOARD_256
-  return __builtin_popcountll(b.b64[0]) + __builtin_popcountll(b.b64[1]) + __builtin_popcountll(b.b64[2]) + __builtin_popcountll(b.b64[3]);
-#elif defined(LARGEBOARDS)
+#ifdef LARGEBOARDS
   return __builtin_popcountll(b >> 64) + __builtin_popcountll(b);
 #else
   return __builtin_popcountll(b);
 #endif
 
+#endif
 #endif
 }
 
@@ -590,14 +685,10 @@ inline int popcount(Bitboard b) {
 
 inline Square lsb(Bitboard b) {
   assert(b);
-#ifdef BITBOARD_256
-  if (b.b64[3])
-      return Square(__builtin_ctzll(b.b64[3]));
-  if (b.b64[2])
-      return Square(__builtin_ctzll(b.b64[2]) + 64);
-  if (b.b64[1])
-      return Square(__builtin_ctzll(b.b64[1]) + 128);
-  return Square(__builtin_ctzll(b.b64[0]) + 192);
+#ifdef BITBOARD_MULTIWORD
+  for (int i = BITBOARD_WORDS - 1; i >= 0; --i)
+      if (b.b64[i])
+          return Square(__builtin_ctzll(b.b64[i]) + 64 * (BITBOARD_WORDS - 1 - i));
 #elif defined(LARGEBOARDS)
   if (!(b << 64))
       return Square(__builtin_ctzll(b >> 64) + 64);
@@ -607,14 +698,12 @@ inline Square lsb(Bitboard b) {
 
 inline Square msb(Bitboard b) {
   assert(b);
-#ifdef BITBOARD_256
-  if (b.b64[0])
-      return Square(255 ^ __builtin_clzll(b.b64[0]));
-  if (b.b64[1])
-      return Square(191 ^ __builtin_clzll(b.b64[1]));
-  if (b.b64[2])
-      return Square(127 ^ __builtin_clzll(b.b64[2]));
-  return Square(63 ^ __builtin_clzll(b.b64[3]));
+#ifdef BITBOARD_MULTIWORD
+  for (int i = 0; i < BITBOARD_WORDS; ++i)
+      if (b.b64[i])
+          return Square(64 * (BITBOARD_WORDS - i) - 1 - __builtin_clzll(b.b64[i]));
+  assert(false);
+  return SQ_NONE;
 #elif defined(LARGEBOARDS)
   if (b >> 64)
       return Square(int(SQUARE_BIT_MASK) ^ __builtin_clzll(b >> 64));

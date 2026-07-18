@@ -125,32 +125,71 @@ namespace {
         return value == "arrow" || value == "duck" || value == "edge" || value =="past" || value == "static" || value == "none";
     }
 
+    bool bitboard_token(const std::string& symbol, Bitboard& mask) {
+        std::string_view token(symbol.data(), symbol.size());
+
+        if (token.empty())
+            return false;
+
+        if (token == "*")
+        {
+            mask = AllSquares;
+            return true;
+        }
+
+        if (token.back() == '*')
+        {
+            int file = file_index_from_string(token.substr(0, token.size() - 1));
+
+            if (file < FILE_A || file > FILE_MAX)
+                return false;
+
+            mask = file_bb(File(file));
+            return true;
+        }
+
+        if (token.front() == '*')
+        {
+            int rank = rank_index_from_string(token.substr(1));
+
+            if (rank < RANK_1 || rank > RANK_MAX)
+                return false;
+
+            mask = rank_bb(Rank(rank));
+            return true;
+        }
+
+        size_t split = 0;
+        while (split < token.size() && is_square_literal_file_char(token[split]))
+            ++split;
+
+        int file = file_index_from_string(token.substr(0, split));
+        int rank = rank_index_from_string(token.substr(split));
+
+        if (file < FILE_A || file > FILE_MAX || rank < RANK_1 || rank > RANK_MAX)
+            return false;
+
+        mask = square_bb(SQ(File(file), Rank(rank)));
+        return true;
+    }
+
     template <> bool set(const std::string& value, Bitboard& target) {
         std::string symbol;
         std::stringstream ss(value);
         target = 0;
         while (!ss.eof() && ss >> symbol && symbol != "-")
         {
-            if (symbol.back() == '*') {
-                if (isalpha(symbol[0]) && symbol.length() == 2) {
-                    char file = tolower(symbol[0]);
-                    if (File(file - 'a') > FILE_MAX) return false;
-                    target |= file_bb(File(file - 'a'));
-                } else {
-                    return false;
-                }
-            } else if (symbol[0] == '*') {
-                int rank = std::stoi(symbol.substr(1));
-                if (Rank(rank - 1) > RANK_MAX) return false;
-                target |= rank_bb(Rank(rank - 1));
-            } else if (isalpha(symbol[0]) && symbol.length() > 1) {
-                char file = tolower(symbol[0]);
-                int rank = std::stoi(symbol.substr(1));
-                if (Rank(rank - 1) > RANK_MAX || File(file - 'a') > FILE_MAX) return false;
-                target |= square_bb(make_square(File(file - 'a'), Rank(rank - 1)));
-            } else {
+            std::transform(symbol.begin(), symbol.end(), symbol.begin(), [](unsigned char c) { return std::tolower(c); });
+
+            bool remove = symbol[0] == '-';
+            if (remove)
+                symbol.erase(0, 1);
+
+            Bitboard mask;
+            if (!bitboard_token(symbol, mask))
                 return false;
-            }
+
+            target = remove ? target & ~mask : target | mask;
         }
         return !ss.fail();
     }
