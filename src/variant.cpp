@@ -160,8 +160,8 @@ namespace {
             v = chess_variant_base<BoardFiles, BoardRanks>()->init();
             v->remove_piece(PAWN);
             v->add_piece(CUSTOM_PIECE_1, 'p', "fbmWfceFifmnD");
-            v->mobilityRegion[WHITE][CUSTOM_PIECE_1] = (Rank2BB | Rank3BB | Rank4BB | Rank5BB | Rank6BB | Rank7BB | Rank8BB);
-            v->mobilityRegion[BLACK][CUSTOM_PIECE_1] = (Rank7BB | Rank6BB | Rank5BB | Rank4BB | Rank3BB | Rank2BB | Rank1BB);
+            v->mobilityRegion[WHITE][CUSTOM_PIECE_1] = ("*2 *3 *4 *5 *6 *7 *8"_bb);
+            v->mobilityRegion[BLACK][CUSTOM_PIECE_1] = ("*7 *6 *5 *4 *3 *2 *1"_bb);
             v->mainPromotionPawnType[WHITE] = v->mainPromotionPawnType[BLACK] = CUSTOM_PIECE_1;
             v->promotionPawnTypes[WHITE] = v->promotionPawnTypes[BLACK] = piece_set(CUSTOM_PIECE_1);
             v->enPassantTypes[WHITE] = v->enPassantTypes[BLACK] = piece_set(CUSTOM_PIECE_1);
@@ -179,8 +179,8 @@ namespace {
             v =  chess_variant_base<BoardFiles, BoardRanks>()->init();
             v->remove_piece(PAWN);
             v->add_piece(CUSTOM_PIECE_1, 'p', "mflFcflW");
-            v->promotionRegion[WHITE] = make_bitboard(SQ(FILE_A, RANK_8), SQ(FILE_B, RANK_8), SQ(FILE_C, RANK_8), SQ(FILE_D, RANK_8), SQ(FILE_A, RANK_7), SQ(FILE_A, RANK_6), SQ(FILE_A, RANK_5));
-            v->promotionRegion[BLACK] = make_bitboard(SQ(FILE_E, RANK_1), SQ(FILE_F, RANK_1), SQ(FILE_G, RANK_1), SQ(FILE_H, RANK_1), SQ(FILE_H, RANK_2), SQ(FILE_H, RANK_3), SQ(FILE_H, RANK_4));
+            v->promotionRegion[WHITE] = "a8 b8 c8 d8 a7 a6 a5"_bb;
+            v->promotionRegion[BLACK] = "e1 f1 g1 h1 h2 h3 h4"_bb;
             v->mainPromotionPawnType[WHITE] = v->mainPromotionPawnType[BLACK] = CUSTOM_PIECE_1;
             v->promotionPawnTypes[WHITE] = v->promotionPawnTypes[BLACK] = piece_set(CUSTOM_PIECE_1);
             v->nMoveRuleTypes[WHITE] = v->nMoveRuleTypes[BLACK] = piece_set(CUSTOM_PIECE_1);
@@ -232,8 +232,8 @@ namespace {
             v->add_piece(KHON, 's');
             v->add_piece(MET, 'm');
             v->startFen = "rnsmksnr/8/pppppppp/8/8/PPPPPPPP/8/RNSKMSNR w - - 0 1";
-            v->promotionRegion[WHITE] = Rank6BB | Rank7BB | Rank8BB;
-            v->promotionRegion[BLACK] = Rank3BB | Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*6 *7 *8"_bb;
+            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
             v->promotionPieceTypes[WHITE] = piece_set(MET);
             v->promotionPieceTypes[BLACK] = piece_set(MET);
             v->doubleStep = false;
@@ -483,8 +483,8 @@ namespace {
         {
             v = chess_variant_base<BoardFiles, BoardRanks>()->init();
             v->flagPiece[WHITE] = v->flagPiece[BLACK] = KING;
-            v->flagRegion[WHITE] = (Rank4BB | Rank5BB) & (FileDBB | FileEBB);
-            v->flagRegion[BLACK] = (Rank4BB | Rank5BB) & (FileDBB | FileEBB);
+            v->flagRegion[WHITE] = ("*4 *5"_bb) & ("d* e*"_bb);
+            v->flagRegion[BLACK] = ("*4 *5"_bb) & ("d* e*"_bb);
             v->flagMove = false;
         }
         return v;
@@ -499,8 +499,8 @@ namespace {
             v = chess_variant_base<BoardFiles, BoardRanks>()->init();
             v->startFen = "8/8/8/8/8/8/krbnNBRK/qrbnNBRQ w - - 0 1";
             v->flagPiece[WHITE] = v->flagPiece[BLACK] = KING;
-            v->flagRegion[WHITE] = Rank8BB;
-            v->flagRegion[BLACK] = Rank8BB;
+            v->flagRegion[WHITE] = "*8"_bb;
+            v->flagRegion[BLACK] = "*8"_bb;
             v->flagMove = true;
             v->castling = false;
             v->checking = false;
@@ -684,9 +684,9 @@ namespace {
         {
             v = chess_variant_base<BoardFiles, BoardRanks>()->init();
             v->startFen = "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1";
-            v->doubleStepRegion[WHITE] |= Rank1BB;
-            v->enPassantRegion[WHITE] = Rank6BB; // exclude en passant on second rank
-            v->enPassantRegion[BLACK] = Rank3BB; // exclude en passant on second rank
+            v->doubleStepRegion[WHITE] |= "*1"_bb;
+            v->enPassantRegion[WHITE] = "*6"_bb; // exclude en passant on second rank
+            v->enPassantRegion[BLACK] = "*3"_bb; // exclude en passant on second rank
             v->extinctionValue = -VALUE_MATE;
             v->extinctionPieceTypes = piece_set(ALL_PIECES);
         }
@@ -793,7 +793,7 @@ namespace {
             v->startFen = "3p2/6/6/6/6/6/6/2P3 w - - 0 1";
             v->stalemateValue = -VALUE_MATE;
             v->wallingRule = STATIC;
-            v->wallingRegion[WHITE] = v->wallingRegion[BLACK] = AllSquares ^ make_bitboard(SQ(FILE_C, RANK_1), SQ(FILE_D, RANK_8));
+            v->wallingRegion[WHITE] = v->wallingRegion[BLACK] = AllSquares ^ "c1 d8"_bb;
         }
         return v;
     }
@@ -807,7 +807,7 @@ namespace {
             v->maxRank = RANK_7;
             v->maxFile = FILE_G;
             v->startFen = "3p3/7/7/7/7/7/3P3 w - - 0 1";
-            v->wallingRegion[WHITE] = v->wallingRegion[BLACK] = AllSquares ^ make_bitboard(SQ(FILE_D, RANK_1), SQ(FILE_D, RANK_7));
+            v->wallingRegion[WHITE] = v->wallingRegion[BLACK] = AllSquares ^ "d1 d7"_bb;
         }
         return v;
     }
@@ -857,7 +857,7 @@ namespace {
             v->startFen = "1h1h1h1h/8/8/8/8/8/8/4F3 w - - 0 1";
             v->stalemateValue = -VALUE_MATE;
             v->flagPiece[WHITE] = CUSTOM_PIECE_2;
-            v->flagRegion[WHITE] = Rank8BB;
+            v->flagRegion[WHITE] = "*8"_bb;
         }
         return v;
     }
@@ -999,8 +999,8 @@ namespace {
             v->mustDrop = true;
             v->pieceDrops = true;
             v->capturesToHand = false;
-            v->dropRegion[WHITE] = Rank1BB;
-            v->dropRegion[BLACK] = Rank8BB;
+            v->dropRegion[WHITE] = "*1"_bb;
+            v->dropRegion[BLACK] = "*8"_bb;
             v->dropOppositeColoredBishop = true;
             v->castlingDroppedPiece = true;
             v->nnueAlias = "nn-";
@@ -1023,12 +1023,12 @@ namespace {
             v->mustDrop = true;
             v->pieceDrops = true;
             v->capturesToHand = false;
-            v->dropRegion[WHITE] = Rank1BB | Rank2BB | Rank3BB;
-            v->dropRegion[BLACK] = Rank8BB | Rank7BB | Rank6BB;
+            v->dropRegion[WHITE] = "*1 *2 *3"_bb;
+            v->dropRegion[BLACK] = "*8 *7 *6"_bb;
             v->sittuyinRookDrop = true;
             v->sittuyinPromotion = true;
-            v->promotionRegion[WHITE] = make_bitboard(SQ(FILE_A, RANK_8), SQ(FILE_B, RANK_7), SQ(FILE_C, RANK_6), SQ(FILE_D, RANK_5), SQ(FILE_E, RANK_5), SQ(FILE_F, RANK_6), SQ(FILE_G, RANK_7), SQ(FILE_H, RANK_8));
-            v->promotionRegion[BLACK] = make_bitboard(SQ(FILE_A, RANK_1), SQ(FILE_B, RANK_2), SQ(FILE_C, RANK_3), SQ(FILE_D, RANK_4), SQ(FILE_E, RANK_4), SQ(FILE_F, RANK_3), SQ(FILE_G, RANK_2), SQ(FILE_H, RANK_1));
+            v->promotionRegion[WHITE] = "a8 b7 c6 d5 e5 f6 g7 h8"_bb;
+            v->promotionRegion[BLACK] = "a1 b2 c3 d4 e4 f3 g2 h1"_bb;
             v->promotionLimit[FERS] = 1;
             v->immobilityIllegal = false;
             v->countingRule = ASEAN_COUNTING;
@@ -1090,8 +1090,8 @@ namespace {
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Dd] w KQkq - 0 1";
             v->pieceDrops = true;
             v->capturesToHand = false;
-            v->dropRegion[WHITE] = Rank1BB;
-            v->dropRegion[BLACK] = Rank8BB;
+            v->dropRegion[WHITE] = "*1"_bb;
+            v->dropRegion[BLACK] = "*8"_bb;
             v->promotionPieceTypes[WHITE] = piece_set(ARCHBISHOP) | QUEEN | ROOK | BISHOP | KNIGHT;
             v->promotionPieceTypes[BLACK] = piece_set(ARCHBISHOP) | QUEEN | ROOK | BISHOP | KNIGHT;
         }
@@ -1135,8 +1135,8 @@ namespace {
             v->startFen = "rbsgk/4p/5/P4/KGSBR[-] w 0 1";
             v->pieceDrops = true;
             v->capturesToHand = true;
-            v->promotionRegion[WHITE] = Rank5BB;
-            v->promotionRegion[BLACK] = Rank1BB;
+            v->promotionRegion[WHITE] = "*5"_bb;
+            v->promotionRegion[BLACK] = "*1"_bb;
             v->doubleStep = false;
             v->castling = false;
             v->promotedPieceType[SHOGI_PAWN] = GOLD;
@@ -1244,16 +1244,16 @@ namespace {
             v->add_piece(WAZIR, 'g');
             v->add_piece(COMMONER, 'l');
             v->startFen = "gle/1c1/1C1/ELG[-] w 0 1";
-            v->promotionRegion[WHITE] = Rank4BB;
-            v->promotionRegion[BLACK] = Rank1BB;
+            v->promotionRegion[WHITE] = "*4"_bb;
+            v->promotionRegion[BLACK] = "*1"_bb;
             v->mandatoryPiecePromotion = true;
             v->immobilityIllegal = false;
             v->shogiPawnDropMateIllegal = false;
             v->extinctionValue = -VALUE_MATE;
             v->extinctionPieceTypes = piece_set(COMMONER);
             v->flagPiece[WHITE] = v->flagPiece[BLACK] = COMMONER;
-            v->flagRegion[WHITE] = Rank4BB;
-            v->flagRegion[BLACK] = Rank1BB;
+            v->flagRegion[WHITE] = "*4"_bb;
+            v->flagRegion[BLACK] = "*1"_bb;
             v->flagPieceSafe = true;
             v->dropNoDoubled = NO_PIECE_TYPE;
             v->nFoldValue = VALUE_DRAW;
@@ -1274,8 +1274,8 @@ namespace {
             v->maxRank = RANK_6;
             v->maxFile = FILE_E;
             v->startFen = "sgkgs/5/1ppp1/1PPP1/5/SGKGS[-] w 0 1";
-            v->promotionRegion[WHITE] = Rank5BB | Rank6BB;
-            v->promotionRegion[BLACK] = Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*5 *6"_bb;
+            v->promotionRegion[BLACK] = "*2 *1"_bb;
         }
         return v;
     }
@@ -1292,8 +1292,8 @@ namespace {
             v->maxFile = FILE_F;
             v->add_piece(SHOGI_KNIGHT, 'n');
             v->startFen = "rbnsgk/5p/6/6/P5/KGSNBR[-] w 0 1";
-            v->promotionRegion[WHITE] = Rank5BB | Rank6BB;
-            v->promotionRegion[BLACK] = Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*5 *6"_bb;
+            v->promotionRegion[BLACK] = "*2 *1"_bb;
             v->promotedPieceType[SHOGI_KNIGHT] = GOLD;
         }
         return v;
@@ -1323,8 +1323,8 @@ namespace {
             v->startFen = "rpckcpl/3f3/sssssss/2s1S2/SSSSSSS/3F3/LPCKCPR[-] w 0 1";
             v->pieceDrops = true;
             v->capturesToHand = true;
-            v->promotionRegion[WHITE] = Rank6BB | Rank7BB;
-            v->promotionRegion[BLACK] = Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*6 *7"_bb;
+            v->promotionRegion[BLACK] = "*2 *1"_bb;
             v->doubleStep = false;
             v->castling = false;
             v->promotedPieceType[SHOGI_PAWN]    = CUSTOM_PIECE_6; // swallow promotes to goose
@@ -1355,8 +1355,8 @@ namespace {
             v->maxFile = FILE_H;
             v->add_piece(CUSTOM_PIECE_1, 'n', "fNsW");
             v->startFen = "1nbgkgn1/1r4b1/pppppppp/8/8/PPPPPPPP/1B4R1/1NGKGBN1[-] w 0 1";
-            v->promotionRegion[WHITE] = Rank6BB | Rank7BB | Rank8BB;
-            v->promotionRegion[BLACK] = Rank3BB | Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*6 *7 *8"_bb;
+            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
             v->promotedPieceType[CUSTOM_PIECE_1] = GOLD;
             v->mandatoryPiecePromotion = true;
         }
@@ -1375,8 +1375,8 @@ namespace {
             v->maxFile = FILE_F;
             v->remove_piece(BISHOP);
             v->startFen = "rnqknr/pppppp/6/6/PPPPPP/RNQKNR w - - 0 1";
-            v->promotionRegion[WHITE] = Rank6BB;
-            v->promotionRegion[BLACK] = Rank1BB;
+            v->promotionRegion[WHITE] = "*6"_bb;
+            v->promotionRegion[BLACK] = "*1"_bb;
             v->promotionPieceTypes[WHITE] = piece_set(QUEEN) | ROOK | KNIGHT;
             v->promotionPieceTypes[BLACK] = piece_set(QUEEN) | ROOK | KNIGHT;
             v->doubleStep = false;
@@ -1395,8 +1395,8 @@ namespace {
             v->maxRank = RANK_5;
             v->maxFile = FILE_E;
             v->startFen = "rnbqk/ppppp/5/PPPPP/RNBQK w - - 0 1";
-            v->promotionRegion[WHITE] = Rank5BB;
-            v->promotionRegion[BLACK] = Rank1BB;
+            v->promotionRegion[WHITE] = "*5"_bb;
+            v->promotionRegion[BLACK] = "*1"_bb;
             v->doubleStep = false;
             v->castling = false;
         }
@@ -1575,8 +1575,8 @@ namespace {
             v->castling = false;
             v->stalemateValue = -VALUE_MATE;
             v->flagPiece[WHITE] = v->flagPiece[BLACK] = BREAKTHROUGH_PIECE;
-            v->flagRegion[WHITE] = Rank8BB;
-            v->flagRegion[BLACK] = Rank1BB;
+            v->flagRegion[WHITE] = "*8"_bb;
+            v->flagRegion[BLACK] = "*1"_bb;
         }
         return v;
     }
@@ -1634,7 +1634,7 @@ namespace {
             v->passOnStalemate[WHITE] = false;
             v->passOnStalemate[BLACK] = false;
             v->enclosingDrop = REVERSI;
-            v->enclosingDropStart = make_bitboard(SQ(FILE_D, RANK_4), SQ(FILE_E, RANK_4), SQ(FILE_D, RANK_5), SQ(FILE_E, RANK_5));
+            v->enclosingDropStart = "d4 e4 d5 e5"_bb;
             v->flipEnclosedPieces = REVERSI;
             v->materialCounting = UNWEIGHTED_MATERIAL;
             v->adjudicateFullBoard = true;
@@ -1674,8 +1674,8 @@ namespace {
             v->add_piece(CANNON, 'c');
             v->add_piece(SOLDIER, 'p');
             v->startFen = "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1";
-            v->mobilityRegion[WHITE][KING] = (Rank1BB | Rank2BB | Rank3BB) & (FileCBB | FileDBB | FileEBB);
-            v->mobilityRegion[BLACK][KING] = (Rank5BB | Rank6BB | Rank7BB) & (FileCBB | FileDBB | FileEBB);
+            v->mobilityRegion[WHITE][KING] = ("*1 *2 *3"_bb) & ("c* d* e*"_bb);
+            v->mobilityRegion[BLACK][KING] = ("*5 *6 *7"_bb) & ("c* d* e*"_bb);
             v->kingType = WAZIR;
             v->doubleStep = false;
             v->castling = false;
@@ -1699,8 +1699,8 @@ namespace {
             v->add_piece(LANCE, 'l');
             v->add_piece(SHOGI_KNIGHT, 'n');
             v->startFen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL[-] w 0 1";
-            v->promotionRegion[WHITE] = Rank7BB | Rank8BB | Rank9BB;
-            v->promotionRegion[BLACK] = Rank3BB | Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*7 *8 *9"_bb;
+            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
             v->promotedPieceType[LANCE]        = GOLD;
             v->promotedPieceType[SHOGI_KNIGHT] = GOLD;
         }
@@ -1765,8 +1765,8 @@ namespace {
             v->add_piece(CUSTOM_PIECE_4, 'g', "WfFbR"); // Yari gold
             v->add_piece(CUSTOM_PIECE_5, 's', "fKbR"); // Yari silver
             v->startFen = "rnnkbbr/7/ppppppp/7/7/7/PPPPPPP/7/RBBKNNR[-] w 0 1";
-            v->promotionRegion[WHITE] = Rank7BB | Rank8BB | Rank9BB;
-            v->promotionRegion[BLACK] = Rank3BB | Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*7 *8 *9"_bb;
+            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
             v->promotedPieceType[SHOGI_PAWN] = CUSTOM_PIECE_5;
             v->promotedPieceType[CUSTOM_PIECE_1] = CUSTOM_PIECE_4;
             v->promotedPieceType[CUSTOM_PIECE_2] = CUSTOM_PIECE_4;
@@ -1799,8 +1799,8 @@ namespace {
             v->add_piece(KNIGHT, 'n');
             v->add_piece(QUEEN, 'q');
             v->startFen = "lnsgkqgsnl/1r6b1/pppppppppp/10/10/10/10/PPPPPPPPPP/1B6R1/LNSGQKGSNL[-] w 0 1";
-            v->promotionRegion[WHITE] = Rank8BB | Rank9BB | Rank10BB;
-            v->promotionRegion[BLACK] = Rank3BB | Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*8 *9 *10"_bb;
+            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
             v->promotedPieceType[CUSTOM_PIECE_1] = GOLD;
             v->promotedPieceType[KNIGHT] = GOLD;
         }
@@ -1903,10 +1903,10 @@ namespace {
             v->pieceToCharTable = "PNBRQ..M.............Kpnbrq..m.............k";
             v->maxRank = RANK_9;
             v->maxFile = FILE_I;
-            v->promotionRegion[WHITE] = Rank9BB;
-            v->promotionRegion[BLACK] = Rank1BB;
-            v->doubleStepRegion[WHITE] = Rank2BB;
-            v->doubleStepRegion[BLACK] = Rank8BB;
+            v->promotionRegion[WHITE] = "*9"_bb;
+            v->promotionRegion[BLACK] = "*1"_bb;
+            v->doubleStepRegion[WHITE] = "*2"_bb;
+            v->doubleStepRegion[BLACK] = "*8"_bb;
             v->castlingKingsideFile = FILE_G;
             v->castlingQueensideFile = FILE_C;
             v->add_piece(ARCHBISHOP, 'm');
@@ -1928,10 +1928,10 @@ namespace {
             v->pieceToCharTable = "PNBRQ...........CKpnbrq...........ck";
             v->maxRank = RANK_9;
             v->maxFile = FILE_I;
-            v->promotionRegion[WHITE] = Rank9BB;
-            v->promotionRegion[BLACK] = Rank1BB;
-            v->doubleStepRegion[WHITE] = Rank2BB;
-            v->doubleStepRegion[BLACK] = Rank8BB;
+            v->promotionRegion[WHITE] = "*9"_bb;
+            v->promotionRegion[BLACK] = "*1"_bb;
+            v->doubleStepRegion[WHITE] = "*2"_bb;
+            v->doubleStepRegion[BLACK] = "*8"_bb;
             v->castlingKingsideFile = FILE_G;
             v->castlingQueensideFile = FILE_C;
             v->add_piece(CHANCELLOR, 'c');
@@ -2017,8 +2017,8 @@ namespace {
             v->castling = false;
             v->stalemateValue = -VALUE_MATE;
             v->flagPiece[WHITE] = v->flagPiece[BLACK] = KNIGHT;
-            v->flagRegion[WHITE] = make_bitboard(SQ(FILE_E, RANK_5));
-            v->flagRegion[BLACK] = make_bitboard(SQ(FILE_E, RANK_5));
+            v->flagRegion[WHITE] = "e5"_bb;
+            v->flagRegion[BLACK] = "e5"_bb;
             v->flagMove = true;
             // we could remove the useless extra move when the flag piece can not be captured
             // v->flagPieceSafe = true;
@@ -2073,8 +2073,8 @@ namespace {
             v->startFen = "r8r/1nbqkcabn1/pppppppppp/10/10/10/10/PPPPPPPPPP/1NBQKCABN1/R8R w - - 0 1";
             v->promotionPieceTypes[WHITE] = piece_set(ARCHBISHOP) | CHANCELLOR | QUEEN | ROOK | BISHOP | KNIGHT;
             v->promotionPieceTypes[BLACK] = piece_set(ARCHBISHOP) | CHANCELLOR | QUEEN | ROOK | BISHOP | KNIGHT;
-            v->promotionRegion[WHITE] = Rank8BB | Rank9BB | Rank10BB;
-            v->promotionRegion[BLACK] = Rank3BB | Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*8 *9 *10"_bb;
+            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
             v->promotionLimit[ARCHBISHOP] = 1;
             v->promotionLimit[CHANCELLOR] = 1;
             v->promotionLimit[QUEEN] = 1;
@@ -2083,8 +2083,8 @@ namespace {
             v->promotionLimit[KNIGHT] = 2;
             v->mandatoryPawnPromotion = false;
             v->immobilityIllegal = true;
-            v->doubleStepRegion[WHITE] = Rank3BB;
-            v->doubleStepRegion[BLACK] = Rank8BB;
+            v->doubleStepRegion[WHITE] = "*3"_bb;
+            v->doubleStepRegion[BLACK] = "*8"_bb;
             v->castling = false;
         }
         return v;
@@ -2133,10 +2133,10 @@ namespace {
             v->add_piece(CUSTOM_PIECE_2, 'w', "CF"); // Wizard
             v->promotionPieceTypes[WHITE] = piece_set(ARCHBISHOP) | CHANCELLOR | QUEEN;
             v->promotionPieceTypes[BLACK] = piece_set(ARCHBISHOP) | CHANCELLOR | QUEEN;
-            v->promotionRegion[WHITE] = Rank10BB;
-            v->promotionRegion[BLACK] = Rank1BB;
-            v->doubleStepRegion[WHITE] = Rank3BB;
-            v->doubleStepRegion[BLACK] = Rank8BB;
+            v->promotionRegion[WHITE] = "*10"_bb;
+            v->promotionRegion[BLACK] = "*1"_bb;
+            v->doubleStepRegion[WHITE] = "*3"_bb;
+            v->doubleStepRegion[BLACK] = "*8"_bb;
             v->castling = false;
         }
         return v;
@@ -2159,12 +2159,12 @@ namespace {
             v->castlingKingsideFile = FILE_I;
             v->castlingQueensideFile = FILE_E;
             v->castlingRank = RANK_2;
-            v->promotionRegion[WHITE] = Rank9BB | Rank10BB;
-            v->promotionRegion[BLACK] = Rank2BB | Rank1BB;
+            v->promotionRegion[WHITE] = "*9 *10"_bb;
+            v->promotionRegion[BLACK] = "*2 *1"_bb;
             v->promotionPieceTypes[WHITE] = piece_set(CUSTOM_PIECE_2) | CUSTOM_PIECE_1 | QUEEN | ROOK | BISHOP | KNIGHT;
             v->promotionPieceTypes[BLACK] = piece_set(CUSTOM_PIECE_2) | CUSTOM_PIECE_1 | QUEEN | ROOK | BISHOP | KNIGHT;
-            v->doubleStepRegion[WHITE] = Rank3BB;
-            v->doubleStepRegion[BLACK] = Rank8BB;
+            v->doubleStepRegion[WHITE] = "*3"_bb;
+            v->doubleStepRegion[BLACK] = "*8"_bb;
         }
         return v;
     }
@@ -2179,10 +2179,10 @@ namespace {
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
             v->startFen = "****qk****/**rnbbnr**/*pppppppp*/*8*/10/10/*8*/*PPPPPPPP*/**RNBBNR**/****QK**** w - - 0 1";
-            v->promotionRegion[WHITE] = make_bitboard(SQ(FILE_A, RANK_6), SQ(FILE_B, RANK_8), SQ(FILE_C, RANK_9), SQ(FILE_D, RANK_9), SQ(FILE_E, RANK_10), SQ(FILE_F, RANK_10), SQ(FILE_G, RANK_9), SQ(FILE_H, RANK_9), SQ(FILE_I, RANK_8), SQ(FILE_J, RANK_6));
-            v->promotionRegion[BLACK] = make_bitboard(SQ(FILE_A, RANK_5), SQ(FILE_B, RANK_3), SQ(FILE_C, RANK_2), SQ(FILE_D, RANK_2), SQ(FILE_E, RANK_1), SQ(FILE_F, RANK_1), SQ(FILE_G, RANK_2), SQ(FILE_H, RANK_2), SQ(FILE_I, RANK_3), SQ(FILE_J, RANK_5));
-            v->doubleStepRegion[WHITE] = Rank3BB;
-            v->doubleStepRegion[BLACK] = Rank8BB;
+            v->promotionRegion[WHITE] = "a6 b8 c9 d9 e10 f10 g9 h9 i8 j6"_bb;
+            v->promotionRegion[BLACK] = "a5 b3 c2 d2 e1 f1 g2 h2 i3 j5"_bb;
+            v->doubleStepRegion[WHITE] = "*3"_bb;
+            v->doubleStepRegion[BLACK] = "*8"_bb;
             v->castling = false;
         }
         return v;
@@ -2208,10 +2208,10 @@ namespace {
             v->promotionPieceTypes[WHITE] = piece_set(QUEEN) | CHANCELLOR | ARCHBISHOP | ROOK | BISHOP;
             v->promotionPieceTypes[BLACK] = piece_set(QUEEN) | CHANCELLOR | ARCHBISHOP | ROOK | BISHOP;
             v->promotedPieceType[PAWN] = CUSTOM_PIECE_3;
-            v->promotionRegion[WHITE] = Rank10BB;
-            v->promotionRegion[BLACK] = Rank1BB;
-            v->doubleStepRegion[WHITE] = Rank2BB | make_bitboard(SQ(FILE_B, RANK_3), SQ(FILE_C, RANK_3), SQ(FILE_F, RANK_3), SQ(FILE_G, RANK_3));
-            v->doubleStepRegion[BLACK] = Rank9BB | make_bitboard(SQ(FILE_B, RANK_8), SQ(FILE_C, RANK_8), SQ(FILE_F, RANK_8), SQ(FILE_G, RANK_8));
+            v->promotionRegion[WHITE] = "*10"_bb;
+            v->promotionRegion[BLACK] = "*1"_bb;
+            v->doubleStepRegion[WHITE] = "*2 b3 c3 f3 g3"_bb;
+            v->doubleStepRegion[BLACK] = "*9 b8 c8 f8 g8"_bb;
             v->enPassantTypes[WHITE] = v->enPassantTypes[BLACK] = piece_set(PAWN);
             v->nMoveRuleTypes[WHITE] = v->nMoveRuleTypes[BLACK] = piece_set(PAWN) | piece_set(CUSTOM_PIECE_1);
             v->castling = false;
@@ -2235,15 +2235,15 @@ namespace {
             v->startFen = "c8c/ernbqkbnre/pppppppppp/10/10/10/10/PPPPPPPPPP/ERNBQKBNRE/C8C w KQkq - 0 1";
             v->promotionPieceTypes[WHITE] = piece_set(QUEEN) | ROOK | BISHOP | KNIGHT | CANNON | FERS_ALFIL ;
             v->promotionPieceTypes[BLACK] = piece_set(QUEEN) | ROOK | BISHOP | KNIGHT | CANNON | FERS_ALFIL ;
-            v->promotionRegion[WHITE] = Rank10BB;
-            v->promotionRegion[BLACK] = Rank1BB;
+            v->promotionRegion[WHITE] = "*10"_bb;
+            v->promotionRegion[BLACK] = "*1"_bb;
             v->castlingKingsideFile = FILE_H;
             v->castlingQueensideFile = FILE_D;
             v->castlingRookKingsideFile = FILE_I;
             v->castlingRookQueensideFile = FILE_B;
             v->castlingRank = RANK_2;
-            v->doubleStepRegion[WHITE] = Rank3BB;
-            v->doubleStepRegion[BLACK] = Rank8BB;
+            v->doubleStepRegion[WHITE] = "*3"_bb;
+            v->doubleStepRegion[BLACK] = "*8"_bb;
         }
         return v;
     }
@@ -2275,7 +2275,7 @@ namespace {
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
             v->startFen = "10/10/10/10/4pP4/4Pp4/10/10/10/10[PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPpppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp] w - - 0 1";
-            v->enclosingDropStart = make_bitboard(SQ(FILE_E, RANK_5), SQ(FILE_F, RANK_5), SQ(FILE_E, RANK_6), SQ(FILE_F, RANK_6));
+            v->enclosingDropStart = "e5 f5 e6 f6"_bb;
         }
         return v;
     }
@@ -2315,12 +2315,12 @@ namespace {
             v->add_piece(ELEPHANT, 'b', 'e');
             v->add_piece(FERS, 'a');
             v->startFen = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1";
-            v->mobilityRegion[WHITE][KING] = (Rank1BB | Rank2BB | Rank3BB) & (FileDBB | FileEBB | FileFBB);
-            v->mobilityRegion[BLACK][KING] = (Rank8BB | Rank9BB | Rank10BB) & (FileDBB | FileEBB | FileFBB);
+            v->mobilityRegion[WHITE][KING] = ("*1 *2 *3"_bb) & ("d* e* f*"_bb);
+            v->mobilityRegion[BLACK][KING] = ("*8 *9 *10"_bb) & ("d* e* f*"_bb);
             v->mobilityRegion[WHITE][FERS] = v->mobilityRegion[WHITE][KING];
             v->mobilityRegion[BLACK][FERS] = v->mobilityRegion[BLACK][KING];
-            v->mobilityRegion[WHITE][ELEPHANT] = Rank1BB | Rank2BB | Rank3BB | Rank4BB | Rank5BB;
-            v->mobilityRegion[BLACK][ELEPHANT] = Rank6BB | Rank7BB | Rank8BB | Rank9BB | Rank10BB;
+            v->mobilityRegion[WHITE][ELEPHANT] = "*1 *2 *3 *4 *5"_bb;
+            v->mobilityRegion[BLACK][ELEPHANT] = "*6 *7 *8 *9 *10"_bb;
             v->soldierPromotionRank = RANK_6;
         }
         return v;
@@ -2365,14 +2365,12 @@ namespace {
             v->dropChecks = false;
             v->dropRegion[WHITE] = v->mobilityRegion[WHITE][ELEPHANT];
             v->dropRegion[BLACK] = v->mobilityRegion[BLACK][ELEPHANT];
-            v->mobilityRegion[WHITE][FERS] = make_bitboard(SQ(FILE_D, RANK_1), SQ(FILE_F, RANK_1), SQ(FILE_E, RANK_2), SQ(FILE_D, RANK_3), SQ(FILE_F, RANK_3));
-            v->mobilityRegion[BLACK][FERS] = make_bitboard(SQ(FILE_D, RANK_8), SQ(FILE_F, RANK_8), SQ(FILE_E, RANK_9), SQ(FILE_D, RANK_10), SQ(FILE_F, RANK_10));
-            v->mobilityRegion[WHITE][ELEPHANT] = make_bitboard(SQ(FILE_C, RANK_1), SQ(FILE_G, RANK_1), SQ(FILE_A, RANK_3), SQ(FILE_E, RANK_3), SQ(FILE_I, RANK_3), SQ(FILE_C, RANK_5), SQ(FILE_G, RANK_5));
-            v->mobilityRegion[BLACK][ELEPHANT] = make_bitboard(SQ(FILE_C, RANK_6), SQ(FILE_G, RANK_6), SQ(FILE_A, RANK_8), SQ(FILE_E, RANK_8), SQ(FILE_I, RANK_8), SQ(FILE_C, RANK_10), SQ(FILE_G, RANK_10));
-            v->mobilityRegion[WHITE][SOLDIER] = Rank6BB | Rank7BB | Rank8BB | Rank9BB | Rank10BB |
-                make_bitboard(SQ(FILE_A, RANK_4), SQ(FILE_A, RANK_5), SQ(FILE_C, RANK_4), SQ(FILE_C, RANK_5), SQ(FILE_E, RANK_4), SQ(FILE_E, RANK_5), SQ(FILE_G, RANK_4), SQ(FILE_G, RANK_5), SQ(FILE_I, RANK_4), SQ(FILE_I, RANK_5));
-            v->mobilityRegion[BLACK][SOLDIER] = Rank1BB | Rank2BB | Rank3BB | Rank4BB | Rank5BB |
-                make_bitboard(SQ(FILE_A, RANK_6), SQ(FILE_A, RANK_7), SQ(FILE_C, RANK_6), SQ(FILE_C, RANK_7), SQ(FILE_E, RANK_6), SQ(FILE_E, RANK_7), SQ(FILE_G, RANK_6), SQ(FILE_G, RANK_7), SQ(FILE_I, RANK_6), SQ(FILE_I, RANK_7));
+            v->mobilityRegion[WHITE][FERS] = "d1 f1 e2 d3 f3"_bb;
+            v->mobilityRegion[BLACK][FERS] = "d8 f8 e9 d10 f10"_bb;
+            v->mobilityRegion[WHITE][ELEPHANT] = "c1 g1 a3 e3 i3 c5 g5"_bb;
+            v->mobilityRegion[BLACK][ELEPHANT] = "c6 g6 a8 e8 i8 c10 g10"_bb;
+            v->mobilityRegion[WHITE][SOLDIER] = "*6 *7 *8 *9 *10 a4 a5 c4 c5 e4 e5 g4 g5 i4 i5"_bb;
+            v->mobilityRegion[BLACK][SOLDIER] = "*1 *2 *3 *4 *5 a6 a7 c6 c7 e6 e7 g6 g7 i6 i7"_bb;
         }
         return v;
     }
@@ -2400,8 +2398,7 @@ namespace {
             v->flyingGeneral = false;
             v->bikjangRule = true;
             v->materialCounting = JANGGI_MATERIAL;
-            v->diagonalLines = make_bitboard(SQ(FILE_D, RANK_1), SQ(FILE_F, RANK_1), SQ(FILE_E, RANK_2), SQ(FILE_D, RANK_3), SQ(FILE_F, RANK_3),
-                                             SQ(FILE_D, RANK_8), SQ(FILE_F, RANK_8), SQ(FILE_E, RANK_9), SQ(FILE_D, RANK_10), SQ(FILE_F, RANK_10));
+            v->diagonalLines = "d1 f1 e2 d3 f3 d8 f8 e9 d10 f10"_bb;
             v->pass[WHITE] = true;
             v->pass[BLACK] = true;
             v->nFoldValue = VALUE_DRAW;
