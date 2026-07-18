@@ -758,13 +758,12 @@ namespace {
         return v;
     }
 
-#ifdef ALLVARS
     // Duck chess
     // https://duckchess.com/
     template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* duck_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks && IsAllVars)
         {
             v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(KING);
@@ -778,7 +777,6 @@ namespace {
         }
         return v;
     }
-#endif
 
     template<int VariantFiles = 8, int VariantRanks = 8>
     Variant* isolation_variant() { //https://boardgamegeek.com/boardgame/1875/isolation
@@ -2279,13 +2277,12 @@ namespace {
         }
         return v;
     }
-#ifdef ALLVARS
     // Game of the Amazons
     // https://en.wikipedia.org/wiki/Game_of_the_Amazons
     template<int VariantFiles = 10, int VariantRanks = 10>
     Variant* amazons_variant() {
         Variant* v = nullptr;
-        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks)
+        if constexpr (BOARD_FILES >= VariantFiles && BOARD_RANKS >= VariantRanks && IsAllVars)
         {
             v = chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->pieceToCharTable = "....Q.....................q.................";
@@ -2299,7 +2296,6 @@ namespace {
         }
         return v;
     }
-#endif
     // Xiangqi (Chinese chess)
     // https://en.wikipedia.org/wiki/Xiangqi
     // Xiangqi base variant for inheriting rules without chasing rules
@@ -2561,9 +2557,7 @@ void VariantMap::init() {
     add("isolation7x7", isolation7x7_variant());
     add("snailtrail", snailtrail_variant());
     add("fox-and-hounds", fox_and_hounds_variant());
-#ifdef ALLVARS
     add("duck", duck_variant());
-#endif
     add("joust", joust_variant());
     add("3check", threecheck_variant());
     add("5check", fivecheck_variant());
@@ -2630,9 +2624,7 @@ void VariantMap::init() {
     add("shako", shako_variant());
     add("clobber10", clobber10_variant());
     add("flipello10", flipello10_variant());
-#ifdef ALLVARS
     add("amazons", amazons_variant());
-#endif
     add("xiangqi", xiangqi_variant());
     add("manchu", manchu_variant());
     add("supply", supply_variant());

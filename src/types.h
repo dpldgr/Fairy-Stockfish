@@ -140,6 +140,12 @@ constexpr bool Is64Bit = true;
 constexpr bool Is64Bit = false;
 #endif
 
+#ifdef ALLVARS
+constexpr bool IsAllVars = true;
+#else
+constexpr bool IsAllVars = false;
+#endif
+
 typedef uint64_t Key;
 #ifdef BITBOARD_MULTIWORD
 struct Bitboard {
