@@ -24,20 +24,20 @@
 
 namespace Stockfish {
 
-/// TTEntry struct is the 12 bytes transposition table entry, defined as below:
+/// TTEntry struct is the 12/16 bytes transposition table entry, defined as below:
 ///
 /// key        16 bit
 /// depth       8 bit
 /// generation  5 bit
 /// pv node     1 bit
 /// bound type  2 bit
-/// move       32 bit (official SF: 16 bit)
+/// move       32/64 bit (official SF: 16 bit)
 /// value      16 bit
 /// eval value 16 bit
 
 struct TTEntry {
 
-  Move  move()  const { return (Move )move32; }
+  Move  move()  const { return (Move )moveStorage; }
   Value value() const { return (Value)value16; }
   Value eval()  const { return (Value)eval16; }
   Depth depth() const { return (Depth)depth8 + DEPTH_OFFSET; }
@@ -48,13 +48,28 @@ struct TTEntry {
 private:
   friend class TranspositionTable;
 
+#if BOARD_SQUARES <= 256
   uint16_t key16;
   uint8_t  depth8;
   uint8_t  genBound8;
-  uint32_t move32;
+  MoveStorage moveStorage;
   int16_t  value16;
   int16_t  eval16;
+#else
+  MoveStorage moveStorage;
+  uint16_t key16;
+  int16_t  value16;
+  int16_t  eval16;
+  uint8_t  depth8;
+  uint8_t  genBound8;
+#endif
 };
+
+template<size_t Padding>
+struct TTClusterPadding { char padding[Padding]; };
+
+template<>
+struct TTClusterPadding<0> {};
 
 
 /// A TranspositionTable is an array of Cluster, of size clusterCount. Each
@@ -65,11 +80,13 @@ private:
 
 class TranspositionTable {
 
-  static constexpr int ClusterSize = 5;
+  static constexpr int ClusterSize = BOARD_SQUARES <= 256 ? 5 : 4;
+  static constexpr size_t ClusterEntryBytes = sizeof(TTEntry) * ClusterSize;
 
-  struct Cluster {
+  static_assert(ClusterEntryBytes <= 64, "TT cluster entries exceed cache line size");
+
+  struct Cluster : TTClusterPadding<64 - ClusterEntryBytes> {
     TTEntry entry[ClusterSize];
-    char padding[4]; // Pad to 64 bytes
   };
 
   static_assert(sizeof(Cluster) == 64, "Unexpected Cluster size");
