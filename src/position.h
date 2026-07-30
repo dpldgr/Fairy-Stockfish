@@ -117,6 +117,7 @@ public:
 
   // FEN string input/output
   Position& set(const Variant* v, const std::string& fenStr, bool isChess960, StateInfo* si, Thread* th, bool sfen = false);
+  std::string shuffle_start(uint64_t seed);
   Position& set(const std::string& code, Color c, StateInfo* si);
   std::string fen(bool sfen = false, bool showPromoted = false, int countStarted = 0, std::string holdings = "-", Bitboard fogArea = 0) const;
 
@@ -404,6 +405,9 @@ private:
   void undrop_piece(Piece pc_hand, Square s);
   Bitboard find_drop_region(Direction dir, Square s, Bitboard occupied) const;
 };
+
+std::string shuffle_position(const Variant* v, uint64_t seed, Thread* th);
+uint64_t random_shuffle_seed();
 
 extern std::ostream& print_board(std::ostream& os, const Position& pos);
 extern std::ostream& operator<<(std::ostream& os, const Position& pos);
