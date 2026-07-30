@@ -118,6 +118,23 @@ extern "C" PyObject* pyffish_startFen(PyObject* self, PyObject *args) {
     return Py_BuildValue("s", variants.find(std::string(variant))->second->startFen.c_str());
 }
 
+// INPUT variant, optional seed
+extern "C" PyObject* pyffish_shufflePosition(PyObject* self, PyObject *args) {
+    const char *variant;
+    unsigned long long seed = 0;
+    if (!PyArg_ParseTuple(args, "s|K", &variant, &seed))
+        return NULL;
+    if (!seed)
+        seed = random_shuffle_seed();
+    std::string fen = shuffle_position(variants.find(std::string(variant))->second, seed, Threads.main());
+    if (fen.empty())
+    {
+        PyErr_SetString(PyExc_ValueError, "Variant has no valid shuffle-position configuration");
+        return NULL;
+    }
+    return Py_BuildValue("s", fen.c_str());
+}
+
 // INPUT variant
 extern "C" PyObject* pyffish_twoBoards(PyObject* self, PyObject *args) {
     const char *variant;
@@ -407,6 +424,7 @@ static PyMethodDef PyFFishMethods[] = {
     {"set_option", (PyCFunction)pyffish_setOption, METH_VARARGS, "Set UCI option."},
     {"load_variant_config", (PyCFunction)pyffish_loadVariantConfig, METH_VARARGS, "Load variant configuration."},
     {"start_fen", (PyCFunction)pyffish_startFen, METH_VARARGS, "Get starting position FEN."},
+    {"shuffle_position", (PyCFunction)pyffish_shufflePosition, METH_VARARGS, "Generate a shuffled starting position FEN."},
     {"two_boards", (PyCFunction)pyffish_twoBoards, METH_VARARGS, "Checks whether the variant is played on two boards."},
     {"captures_to_hand", (PyCFunction)pyffish_capturesToHand, METH_VARARGS, "Checks whether the variant rules contains capturesToHand."},
     {"get_san", (PyCFunction)pyffish_getSAN, METH_VARARGS, "Get SAN move from given FEN and UCI move."},

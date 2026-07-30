@@ -460,6 +460,27 @@ void UCI::loop(int argc, char* argv[]) {
               banmoves.push_back(UCI::to_move(pos, token));
       else if (token == "go")         go(pos, is, states, banmoves);
       else if (token == "position")   position(pos, is, states), banmoves.clear();
+      else if (token == "shuffle-position")
+      {
+          uint64_t seed = random_shuffle_seed();
+          string seedToken;
+          if (is >> seedToken)
+          {
+              if (seedToken == "seed")
+                  is >> seed;
+              else
+              {
+                  std::stringstream ss(seedToken);
+                  ss >> seed;
+              }
+          }
+          string shuffled = shuffle_position(variants.find(Options["UCI_Variant"])->second,
+                                             seed ? seed : 1, Threads.main());
+          if (shuffled.empty())
+              sync_cout << "info string error shuffle-position is not configured or invalid" << sync_endl;
+          else
+              sync_cout << "info string startFen " << shuffled << sync_endl;
+      }
       else if (token == "ucinewgame" || token == "usinewgame" || token == "uccinewgame") Search::clear();
       else if (token == "isready")    sync_cout << "readyok" << sync_endl;
 
