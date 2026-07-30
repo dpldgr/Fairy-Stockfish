@@ -500,8 +500,21 @@ Variant* VariantParser<DoCheck>::parse() {
 
 template <bool DoCheck>
 Variant* VariantParser<DoCheck>::parse(Variant* v) {
+    bool maxRankOverridden = config.find("maxRank") != config.end();
     parse_attribute("maxRank", v->maxRank);
     parse_attribute("maxFile", v->maxFile);
+    // A child inherits its parent's shuffle ranks unless it explicitly changes
+    // the board height. Standalone variants start with the edge ranks.
+    if (maxRankOverridden || !v->shuffleSquares[WHITE])
+    {
+        v->shuffleSquares[WHITE] = 0;
+        v->shuffleSquares[BLACK] = 0;
+        for (File f = FILE_A; f <= v->maxFile; ++f)
+        {
+            v->shuffleSquares[WHITE] |= make_square(f, RANK_1);
+            v->shuffleSquares[BLACK] |= make_square(f, v->maxRank);
+        }
+    }
     // piece types
     for (PieceType pt = PAWN; pt <= KING; ++pt)
     {
@@ -680,6 +693,31 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("chess960", v->chess960);
     parse_attribute("twoBoards", v->twoBoards);
     parse_attribute("startFen", v->startFen);
+    parse_attribute("shuffleSquaresFenTemplate", v->shuffleSquaresFenTemplate);
+    parse_attribute("shuffleSquaresWhite", v->shuffleSquares[WHITE]);
+    parse_attribute("shuffleSquaresBlack", v->shuffleSquares[BLACK]);
+    const auto& shuffleMethods = config.find("shuffleSquaresMethod");
+    if (shuffleMethods != config.end())
+    {
+        std::string white, black, extra;
+        std::stringstream ss(shuffleMethods->second);
+        ss >> white >> black >> extra;
+        auto method = [](const std::string& s) {
+            return s == "mirror"  ? SHUFFLE_MIRROR
+                 : s == "rotate"  ? SHUFFLE_ROTATE
+                 : s == "permute" ? SHUFFLE_PERMUTE
+                 : s == "bb*rkr"  ? SHUFFLE_BB_RKR
+                 : s == "bb*"     ? SHUFFLE_BB
+                                    : SHUFFLE_NONE;
+        };
+        v->shuffleSquaresMethod[WHITE] = method(white);
+        v->shuffleSquaresMethod[BLACK] = method(black);
+        if (DoCheck && (white.empty() || black.empty() || !extra.empty()
+            || (white != "none" && method(white) == SHUFFLE_NONE)
+            || (black != "none" && method(black) == SHUFFLE_NONE)
+            || white == "mirror" || white == "rotate"))
+            std::cerr << "shuffleSquaresMethod - Invalid methods: " << shuffleMethods->second << std::endl;
+    }
     parse_attribute("promotionRegionWhite", v->promotionRegion[WHITE]);
     parse_attribute("promotionRegionBlack", v->promotionRegion[BLACK]);
     // Take the first promotionPawnTypes as the main promotionPawnType
@@ -983,6 +1021,17 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         // startFen
         if (FEN::validate_fen(v->startFen, v, v->chess960) != FEN::FEN_OK)
             std::cerr << "startFen - Invalid starting position: " << v->startFen << std::endl;
+
+        bool shuffleEnabled = v->shuffleSquaresMethod[WHITE] != SHUFFLE_NONE
+                           || v->shuffleSquaresMethod[BLACK] != SHUFFLE_NONE;
+        if (shuffleEnabled && v->shuffleSquaresFenTemplate.empty())
+            std::cerr << "shuffleSquaresFenTemplate - Missing FEN template for active shuffle method." << std::endl;
+        else if (!v->shuffleSquaresFenTemplate.empty()
+              && FEN::validate_fen(v->shuffleSquaresFenTemplate, v, v->chess960) != FEN::FEN_OK)
+            std::cerr << "shuffleSquaresFenTemplate - Invalid position: " << v->shuffleSquaresFenTemplate << std::endl;
+        if ((v->shuffleSquaresMethod[BLACK] == SHUFFLE_MIRROR || v->shuffleSquaresMethod[BLACK] == SHUFFLE_ROTATE)
+            && v->shuffleSquaresMethod[WHITE] == SHUFFLE_NONE)
+            std::cerr << "shuffleSquaresMethod - Black symmetry requires a white shuffle method." << std::endl;
 
         // pieceToCharTable
         if (v->pieceToCharTable != "-")
