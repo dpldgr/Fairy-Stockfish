@@ -606,11 +606,15 @@ std::string UCI::square(const Position& pos, Square s) {
 
 string UCI::dropped_piece(const Position& pos, Move m) {
   assert(type_of(m) == DROP);
+  string symbol;
   if (dropped_piece_type(m) == pos.promoted_piece_type(in_hand_piece_type(m)))
       // Dropping as promoted piece
-      return "+" + pos.piece_symbol(make_piece(BLACK, in_hand_piece_type(m)));
+      symbol = "+" + pos.piece_symbol(make_piece(BLACK, in_hand_piece_type(m)));
   else
-      return pos.piece_symbol(make_piece(BLACK, dropped_piece_type(m)));
+      symbol = pos.piece_symbol(make_piece(BLACK, dropped_piece_type(m)));
+
+  std::transform(symbol.begin(), symbol.end(), symbol.begin(), [](unsigned char c) { return std::toupper(c); });
+  return symbol;
 }
 
 
