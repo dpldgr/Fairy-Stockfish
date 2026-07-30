@@ -462,6 +462,8 @@ void UCI::loop(int argc, char* argv[]) {
       else if (token == "position")   position(pos, is, states), banmoves.clear();
       else if (token == "shuffle-position")
       {
+          string variantName = Options["UCI_Variant"];
+          const Variant* v = variants.find(variantName)->second;
           uint64_t seed = random_shuffle_seed();
           string seedToken;
           if (is >> seedToken)
@@ -474,12 +476,15 @@ void UCI::loop(int argc, char* argv[]) {
                   ss >> seed;
               }
           }
-          string shuffled = shuffle_position(variants.find(Options["UCI_Variant"])->second,
-                                             seed ? seed : 1, Threads.main());
-          if (shuffled.empty())
+          bool supportsShuffle = v->shuffleSquaresMethod[WHITE] != SHUFFLE_NONE
+                              || v->shuffleSquaresMethod[BLACK] != SHUFFLE_NONE;
+          string shuffled = supportsShuffle ? shuffle_position(v, seed ? seed : 1, Threads.main())
+                                            : v->startFen;
+          if (supportsShuffle && shuffled.empty())
               sync_cout << "info string error shuffle-position is not configured or invalid" << sync_endl;
           else
-              sync_cout << "info string startFen " << shuffled << sync_endl;
+              sync_cout << "info string variant " << variantName << " "
+                        << (supportsShuffle ? "shufflepos " : "startpos ") << shuffled << sync_endl;
       }
       else if (token == "ucinewgame" || token == "usinewgame" || token == "uccinewgame") Search::clear();
       else if (token == "isready")    sync_cout << "readyok" << sync_endl;

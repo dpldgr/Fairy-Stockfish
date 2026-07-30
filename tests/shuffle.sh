@@ -19,12 +19,15 @@ shuffle-position seed 12345
 shuffle-position seed 12345
 position startpos
 d fen
+setoption name UCI_Variant value chess
+shuffle-position seed 12345
 quit
 EOF
 )
 
-expected="info string startFen bbrnnkqr/pppppppp/8/8/8/8/PPPPPPPP/BBRNNKQR w HChc - 0 1"
+expected="info string variant shufflechess shufflepos bbrnnkqr/pppppppp/8/8/8/8/PPPPPPPP/BBRNNKQR w HChc - 0 1"
 test "$(printf '%s\n' "$output" | grep -Fxc "$expected")" -eq 2
+printf '%s\n' "$output" | grep -Fqx "info string variant chess startpos rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 printf '%s\n' "$output" | grep -Fq "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"
 
 echo "shuffle-position testing OK"
