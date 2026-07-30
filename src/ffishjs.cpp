@@ -494,6 +494,16 @@ namespace ffish {
     return v->startFen;
   }
 
+  std::string shuffle_position(std::string uciVariant) {
+    const Variant* v = get_variant(uciVariant);
+    return Stockfish::shuffle_position(v, random_shuffle_seed(), Threads.main());
+  }
+
+  std::string shuffle_position(std::string uciVariant, double seed) {
+    const Variant* v = get_variant(uciVariant);
+    return Stockfish::shuffle_position(v, uint64_t(seed) ? uint64_t(seed) : 1, Threads.main());
+  }
+
   int validate_fen(std::string fen, std::string uciVariant, bool chess960) {
     const Variant* v = get_variant(uciVariant);
     return FEN::validate_fen(fen, v, chess960);
@@ -759,6 +769,8 @@ EMSCRIPTEN_BINDINGS(ffish_js) {
   function("loadVariantConfig", &ffish::load_variant_config);
   function("capturesToHand", &ffish::captures_to_hand);
   function("startingFen", &ffish::starting_fen);
+  function("shufflePosition", select_overload<std::string(std::string)>(&ffish::shuffle_position));
+  function("shufflePosition", select_overload<std::string(std::string, double)>(&ffish::shuffle_position));
   function("validateFen", select_overload<int(std::string)>(&ffish::validate_fen));
   function("validateFen", select_overload<int(std::string, std::string)>(&ffish::validate_fen));
   function("validateFen", select_overload<int(std::string, std::string, bool)>(&ffish::validate_fen));

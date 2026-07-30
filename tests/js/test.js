@@ -192,6 +192,17 @@ describe('board.is960()', function () {
   });
 });
 
+describe('ffish.shufflePosition()', function () {
+  it('generates deterministic shuffled starting positions', function () {
+    ffish.loadVariantConfig(`[shufflechess:chess]
+chess960 = true
+shuffleSquaresFenTemplate = bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w KQkq - 0 1
+shuffleSquaresMethod = bb*rkr mirror`);
+    chai.expect(ffish.shufflePosition('shufflechess', 12345)).to.equal(
+      'bbrnnkqr/pppppppp/8/8/8/8/PPPPPPPP/BBRNNKQR w HChc - 0 1');
+  });
+});
+
 describe('board.fen()', function () {
   it("it returns the current position in fen format", () => {
     let board = new ffish.Board();
