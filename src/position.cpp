@@ -17,11 +17,13 @@
 */
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstddef> // For offsetof()
 #include <cstring> // For std::memset, std::memcmp
 #include <iomanip>
 #include <sstream>
+#include <vector>
 
 #include "bitboard.h"
 #include "misc.h"
@@ -35,6 +37,14 @@
 using std::string;
 
 namespace Stockfish {
+
+namespace {
+template<typename T>
+void random_permute(std::vector<T>& values, PRNG& rng) {
+  for (size_t i = values.size(); i > 1; --i)
+      std::swap(values[i - 1], values[rng.rand<uint64_t>() % i]);
+}
+}
 
 namespace Zobrist {
 
@@ -792,6 +802,157 @@ Position& Position::set(const string& code, Color c, StateInfo* si) {
   string fenStr =  sides[0] + "///////" + sides[1] + " w - - 0 10";
 
   return set(variants.find("fairy")->second, fenStr, false, si, nullptr);
+}
+
+
+std::string Position::shuffle_start(uint64_t seed) {
+
+  if (!seed || var->shuffleSquaresFenTemplate.empty())
+      return "";
+
+  PRNG rng(seed);
+  CastlingRights originalRights = CastlingRights(st->castlingRights);
+
+  auto squares = [&](Bitboard mask) {
+      std::vector<Square> result;
+      mask &= pieces();
+      while (mask)
+          result.push_back(pop_lsb(mask));
+      return result;
+  };
+
+  auto place = [&](const std::vector<Square>& destinations, const std::vector<Piece>& entries) {
+      for (Square s : destinations)
+          remove_piece(s);
+      for (size_t i = 0; i < destinations.size(); ++i)
+          put_piece(entries[i], destinations[i]);
+  };
+
+  auto independent = [&](Color c, ShuffleSquaresMethod method) -> bool {
+      std::vector<Square> destinations = squares(var->shuffleSquares[c]);
+      std::vector<Piece> entries;
+      for (Square s : destinations)
+          entries.push_back(piece_on(s));
+
+      if (method == SHUFFLE_PERMUTE)
+          random_permute(entries, rng);
+      else if (method == SHUFFLE_BB || method == SHUFFLE_BB_RKR)
+      {
+          size_t reserved = method == SHUFFLE_BB_RKR ? 3 : 0;
+          if (entries.size() < 2 + reserved)
+              return false;
+
+          std::vector<Square> dark, light;
+          for (Square s : destinations)
+              ((file_of(s) + rank_of(s)) & 1 ? dark : light).push_back(s);
+          if (dark.empty() || light.empty())
+              return false;
+
+          Square first = dark[rng.rand<uint64_t>() % dark.size()];
+          Square second = light[rng.rand<uint64_t>() % light.size()];
+          if (rng.rand<uint64_t>() & 1)
+              std::swap(first, second);
+
+          std::vector<Square> remaining;
+          for (Square s : destinations)
+              if (s != first && s != second)
+                  remaining.push_back(s);
+          random_permute(remaining, rng);
+
+          std::vector<Square> result(entries.size());
+          result[0] = first;
+          result[1] = second;
+          if (reserved)
+          {
+              std::vector<Square> trio(remaining.end() - 3, remaining.end());
+              std::sort(trio.begin(), trio.end(), [](Square a, Square b) { return file_of(a) < file_of(b); });
+              for (size_t i = 0; i < entries.size() - 5; ++i)
+                  result[i + 2] = remaining[i];
+              for (size_t i = 0; i < 3; ++i)
+                  result[entries.size() - 3 + i] = trio[i];
+          }
+          else
+              for (size_t i = 0; i < remaining.size(); ++i)
+                  result[i + 2] = remaining[i];
+
+          // result maps template entries to destinations; invert it for place().
+          std::vector<Piece> placed(entries.size());
+          for (size_t i = 0; i < entries.size(); ++i)
+              placed[std::find(destinations.begin(), destinations.end(), result[i]) - destinations.begin()] = entries[i];
+          entries = std::move(placed);
+      }
+      else
+          return method == SHUFFLE_NONE;
+
+      place(destinations, entries);
+      return true;
+  };
+
+  ShuffleSquaresMethod white = var->shuffleSquaresMethod[WHITE];
+  ShuffleSquaresMethod black = var->shuffleSquaresMethod[BLACK];
+  if (white != SHUFFLE_NONE && !independent(WHITE, white))
+      return "";
+
+  if (black == SHUFFLE_MIRROR || black == SHUFFLE_ROTATE)
+  {
+      std::vector<Square> whiteSquares = squares(var->shuffleSquares[WHITE]);
+      std::vector<Square> blackSquares = squares(var->shuffleSquares[BLACK]);
+      if (whiteSquares.size() != blackSquares.size())
+          return "";
+      std::vector<Piece> entries(blackSquares.size(), NO_PIECE);
+      for (Square s : whiteSquares)
+      {
+          File f = black == SHUFFLE_ROTATE ? File(var->maxFile - file_of(s)) : file_of(s);
+          Square target = make_square(f, Rank(var->maxRank - rank_of(s)));
+          auto it = std::find(blackSquares.begin(), blackSquares.end(), target);
+          if (it == blackSquares.end())
+              return "";
+          entries[it - blackSquares.begin()] = make_piece(BLACK, type_of(piece_on(s)));
+      }
+      place(blackSquares, entries);
+  }
+  else if (black != SHUFFLE_NONE && !independent(BLACK, black))
+      return "";
+
+  set_state(st);
+  std::string shuffled = fen();
+  if (castling_enabled())
+  {
+      std::vector<std::string> fields;
+      std::stringstream ss(shuffled);
+      std::string field;
+      while (ss >> field)
+          fields.push_back(field);
+      if (fields.size() >= 3)
+      {
+          std::string rights;
+          if (originalRights & WHITE_OO)  rights += 'K';
+          if (originalRights & WHITE_OOO) rights += 'Q';
+          if (originalRights & BLACK_OO)  rights += 'k';
+          if (originalRights & BLACK_OOO) rights += 'q';
+          fields[2] = rights.empty() ? "-" : rights;
+          shuffled.clear();
+          for (const std::string& value : fields)
+              shuffled += (shuffled.empty() ? "" : " ") + value;
+          set(var, shuffled, true, st, thisThread);
+      }
+  }
+  return fen();
+}
+
+std::string shuffle_position(const Variant* v, uint64_t seed, Thread* th) {
+  if (!v || !seed || v->shuffleSquaresFenTemplate.empty())
+      return "";
+  Position pos;
+  StateInfo state;
+  pos.set(v, v->shuffleSquaresFenTemplate, v->chess960, &state, th);
+  return pos.shuffle_start(seed);
+}
+
+uint64_t random_shuffle_seed() {
+  static std::atomic<uint64_t> sequence{0};
+  uint64_t seed = uint64_t(now()) ^ (++sequence * 0x9E3779B97F4A7C15ULL);
+  return seed ? seed : 1;
 }
 
 

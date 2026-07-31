@@ -51,6 +51,15 @@ struct DoubleMoveSpec {
   bool outwardOnly = false;
 };
 
+enum ShuffleSquaresMethod {
+  SHUFFLE_NONE,
+  SHUFFLE_MIRROR,
+  SHUFFLE_ROTATE,
+  SHUFFLE_PERMUTE,
+  SHUFFLE_BB_RKR,
+  SHUFFLE_BB
+};
+
 struct Variant {
   std::string variantTemplate = "fairy";
   std::string pieceToCharTable = "-";
@@ -68,6 +77,9 @@ struct Variant {
   std::vector<std::string> pieceToSymbol;
   std::vector<std::string> pieceToSymbolSynonyms;
   std::string startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  std::string shuffleSquaresFenTemplate = "";
+  Bitboard shuffleSquares[COLOR_NB] = {};
+  ShuffleSquaresMethod shuffleSquaresMethod[COLOR_NB] = {SHUFFLE_NONE, SHUFFLE_NONE};
   Bitboard mobilityRegion[COLOR_NB][PIECE_TYPE_NB] = {};
   Bitboard promotionRegion[COLOR_NB] = {Rank8BB, Rank1BB};
   PieceType mainPromotionPawnType[COLOR_NB] = {PAWN, PAWN};

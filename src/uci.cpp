@@ -460,6 +460,46 @@ void UCI::loop(int argc, char* argv[]) {
               banmoves.push_back(UCI::to_move(pos, token));
       else if (token == "go")         go(pos, is, states, banmoves);
       else if (token == "position")   position(pos, is, states), banmoves.clear();
+      else if (token == "api")
+      {
+          string apiCommand;
+          is >> apiCommand;
+          if (apiCommand != "shuffle-position")
+          {
+              sync_cout << "info string api " << apiCommand << " status unsupported" << sync_endl;
+              continue;
+          }
+
+          string subcommand;
+          if (is >> subcommand && subcommand == "status")
+          {
+              sync_cout << "info string api shuffle-position status supported" << sync_endl;
+              continue;
+          }
+
+          string variantName = Options["UCI_Variant"];
+          const Variant* v = variants.find(variantName)->second;
+          uint64_t seed = random_shuffle_seed();
+          if (!subcommand.empty())
+          {
+              if (subcommand == "seed")
+                  is >> seed;
+              else
+              {
+                  std::stringstream ss(subcommand);
+                  ss >> seed;
+              }
+          }
+          bool supportsShuffle = v->shuffleSquaresMethod[WHITE] != SHUFFLE_NONE
+                              || v->shuffleSquaresMethod[BLACK] != SHUFFLE_NONE;
+          string shuffled = supportsShuffle ? shuffle_position(v, seed ? seed : 1, Threads.main())
+                                            : v->startFen;
+          if (supportsShuffle && shuffled.empty())
+              sync_cout << "info string error shuffle-position is not configured or invalid" << sync_endl;
+          else
+              sync_cout << "info string variant " << variantName << " "
+                        << (supportsShuffle ? "shufflepos " : "startpos ") << shuffled << sync_endl;
+      }
       else if (token == "ucinewgame" || token == "usinewgame" || token == "uccinewgame") Search::clear();
       else if (token == "isready")    sync_cout << "readyok" << sync_endl;
 
@@ -580,11 +620,15 @@ std::string UCI::square(const Position& pos, Square s) {
 
 string UCI::dropped_piece(const Position& pos, Move m) {
   assert(type_of(m) == DROP);
+  string symbol;
   if (dropped_piece_type(m) == pos.promoted_piece_type(in_hand_piece_type(m)))
       // Dropping as promoted piece
-      return "+" + pos.piece_symbol(make_piece(BLACK, in_hand_piece_type(m)));
+      symbol = "+" + pos.piece_symbol(make_piece(BLACK, in_hand_piece_type(m)));
   else
-      return pos.piece_symbol(make_piece(BLACK, dropped_piece_type(m)));
+      symbol = pos.piece_symbol(make_piece(BLACK, dropped_piece_type(m)));
+
+  std::transform(symbol.begin(), symbol.end(), symbol.begin(), [](unsigned char c) { return std::toupper(c); });
+  return symbol;
 }
 
 
