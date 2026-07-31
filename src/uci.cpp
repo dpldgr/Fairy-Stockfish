@@ -460,19 +460,33 @@ void UCI::loop(int argc, char* argv[]) {
               banmoves.push_back(UCI::to_move(pos, token));
       else if (token == "go")         go(pos, is, states, banmoves);
       else if (token == "position")   position(pos, is, states), banmoves.clear();
-      else if (token == "shuffle-position")
+      else if (token == "api")
       {
+          string apiCommand;
+          is >> apiCommand;
+          if (apiCommand != "shuffle-position")
+          {
+              sync_cout << "info string api " << apiCommand << " status unsupported" << sync_endl;
+              continue;
+          }
+
+          string subcommand;
+          if (is >> subcommand && subcommand == "status")
+          {
+              sync_cout << "info string api shuffle-position status supported" << sync_endl;
+              continue;
+          }
+
           string variantName = Options["UCI_Variant"];
           const Variant* v = variants.find(variantName)->second;
           uint64_t seed = random_shuffle_seed();
-          string seedToken;
-          if (is >> seedToken)
+          if (!subcommand.empty())
           {
-              if (seedToken == "seed")
+              if (subcommand == "seed")
                   is >> seed;
               else
               {
-                  std::stringstream ss(seedToken);
+                  std::stringstream ss(subcommand);
                   ss >> seed;
               }
           }
