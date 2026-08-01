@@ -29,6 +29,7 @@
 #include "position.h"
 #include "search.h"
 #include "thread.h"
+#include "tds.hpp"
 #include "timeman.h"
 #include "tt.h"
 #include "uci.h"
@@ -178,6 +179,8 @@ namespace {
 
   void setoption(istringstream& is) {
 
+    TDS::wait();
+
     string token, name, value;
 
     is >> token; // Consume "name" token
@@ -209,11 +212,26 @@ namespace {
 
   void go(Position& pos, istringstream& is, StateListPtr& states, const std::vector<Move>& banmoves = {}) {
 
+    TDS::wait();
     Search::LimitsType limits;
     string token;
     bool ponderMode = false;
 
     limits.startTime = now(); // As early as possible!
+
+    // TDS is deliberately a separate fixed-depth minimax path. Do not map it
+    // onto Search::Limits: ordinary search semantics must remain unchanged.
+    if (is >> token && token == "tds-minimax")
+    {
+        int depth = 0;
+        if (!(is >> depth) || depth < 1)
+            sync_cout << "info string usage: go tds-minimax <depth>" << sync_endl;
+        else
+            TDS::start(pos, depth);
+        return;
+    }
+    is.clear();
+    is.seekg(0);
 
     limits.banmoves = banmoves;
     bool isUsi = CurrentProtocol == USI;
@@ -414,7 +432,11 @@ void UCI::loop(int argc, char* argv[]) {
 
       if (    token == "quit"
           ||  token == "stop")
+      {
           Threads.stop = true;
+          if (token == "quit")
+              TDS::wait();
+      }
 
       // The GUI sends 'ponderhit' to tell us the user has played the expected move.
       // So 'ponderhit' will be sent if we were told to ponder on the same move the
