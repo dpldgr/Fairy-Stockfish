@@ -11,6 +11,8 @@
 #include "tds.hpp"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <memory>
@@ -39,6 +41,7 @@ struct Parent {
 };
 
 struct Node {
+    std::mutex mutex;
     Key key;
     int depth;
     std::vector<Move> path;
@@ -49,7 +52,7 @@ struct Node {
     size_t pending = 0;
     bool queued = false;
     bool expanded = false;
-    bool complete = false;
+    std::atomic_bool complete{false};
 };
 
 struct NodeKey {
@@ -79,7 +82,7 @@ public:
         root->key = pos.key();
         root->depth = depth;
         root->queued = true;
-        table.emplace(NodeKey{root->key, depth}, std::move(rootNode));
+        table[shard(root->key)].emplace(NodeKey{root->key, depth}, std::move(rootNode));
         ready.push_back(root);
 
         const size_t workerCount = std::max<size_t>(1, Threads.size());
@@ -115,10 +118,16 @@ public:
 
 private:
     void worker(size_t workerId) {
+        StateInfo rootState;
+        Position pos;
+        pos.set(variant, fen, chess960, &rootState, Threads[workerId]);
+        std::vector<StateInfo> states(depth);
+        std::vector<Move> currentPath;
+
         while (true) {
             Node* node;
             {
-                std::unique_lock<std::mutex> lock(mutex);
+                std::unique_lock<std::mutex> lock(queueMutex);
                 cv.wait(lock, [&] { return Threads.stop || root->complete || !ready.empty() || active == 0; });
                 if (Threads.stop || root->complete || (ready.empty() && active == 0))
                     return;
@@ -129,29 +138,39 @@ private:
                 ++active;
             }
 
-            expand(node, workerId);
+            // Ready nodes tend to share much of their path. Keep a position per
+            // worker and move it to the requested node instead of reparsing the
+            // root FEN and replaying the complete path for every node.
+            size_t common = 0;
+            while (   common < currentPath.size()
+                   && common < node->path.size()
+                   && currentPath[common] == node->path[common])
+                ++common;
+            while (currentPath.size() > common) {
+                pos.undo_move(currentPath.back());
+                currentPath.pop_back();
+            }
+            while (currentPath.size() < node->path.size()) {
+                const size_t ply = currentPath.size();
+                pos.do_move(node->path[ply], states[ply]);
+                currentPath.push_back(node->path[ply]);
+            }
+
+            expand(node, pos);
 
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                std::lock_guard<std::mutex> lock(queueMutex);
                 --active;
                 cv.notify_all();
             }
         }
     }
 
-    void expand(Node* node, size_t workerId) {
-        StateInfo rootState;
-        Position pos;
-        pos.set(variant, fen, chess960, &rootState, Threads[workerId]);
-        std::vector<StateInfo> states(node->path.size());
-        for (size_t i = 0; i < node->path.size(); ++i)
-            pos.do_move(node->path[i], states[i]);
-
+    void expand(Node* node, Position& pos) {
         Value terminal;
         const bool gameEnd = pos.is_game_end(terminal, int(node->path.size()));
         if (gameEnd || node->depth == 0) {
             Value value = gameEnd ? terminal : Eval::evaluate(pos);
-            std::lock_guard<std::mutex> lock(mutex);
             ++nodes;
             finish(node, value);
             return;
@@ -165,7 +184,6 @@ private:
             pos.undo_move(move);
         }
 
-        std::lock_guard<std::mutex> lock(mutex);
         ++nodes;
         node->expanded = true;
         if (successors.empty()) {
@@ -173,52 +191,91 @@ private:
             return;
         }
 
-        node->pending = successors.size();
+        std::vector<std::pair<Move, Node*>> children;
+        children.reserve(successors.size());
         for (const auto& successor : successors) {
             const NodeKey key{successor.second, node->depth - 1};
-            auto it = table.find(key);
             Node* child;
-            if (it == table.end()) {
-                auto inserted = std::make_unique<Node>();
-                child = inserted.get();
-                child->key = key.key;
-                child->depth = key.depth;
-                child->path = node->path;
-                child->path.push_back(successor.first);
-                table.emplace(key, std::move(inserted));
-            } else
-                child = it->second.get();
+            const size_t index = shard(key.key);
+            {
+                std::lock_guard<std::mutex> tableLock(tableMutexes[index]);
+                auto& bucket = table[index];
+                auto it = bucket.find(key);
+                if (it == bucket.end()) {
+                    auto inserted = std::make_unique<Node>();
+                    child = inserted.get();
+                    child->key = key.key;
+                    child->depth = key.depth;
+                    child->path = node->path;
+                    child->path.push_back(successor.first);
+                    bucket.emplace(key, std::move(inserted));
+                } else
+                    child = it->second.get();
+            }
+            children.emplace_back(successor.first, child);
+        }
 
-            node->children.emplace_back(successor.first, child);
-            if (child->complete)
-                child_finished(node, successor.first, child->value);
-            else {
-                child->parents.push_back({node, successor.first});
-                if (!child->queued) {
-                    child->queued = true;
-                    ready.push_back(child);
+        {
+            std::lock_guard<std::mutex> nodeLock(node->mutex);
+            node->pending = children.size();
+            node->children = children;
+        }
+
+        for (const auto& childEdge : children) {
+            Node* child = childEdge.second;
+            bool complete;
+            Value value = VALUE_NONE;
+            bool enqueue = false;
+            {
+                std::lock_guard<std::mutex> childLock(child->mutex);
+                complete = child->complete;
+                if (complete)
+                    value = child->value;
+                else {
+                    child->parents.push_back({node, childEdge.first});
+                    if (!child->queued) {
+                        child->queued = true;
+                        enqueue = true;
+                    }
                 }
             }
+            if (complete)
+                child_finished(node, childEdge.first, value);
+            else if (enqueue) {
+                std::lock_guard<std::mutex> queueLock(queueMutex);
+                ready.push_back(child);
+                cv.notify_one();
+            }
         }
-        cv.notify_all();
     }
 
     void child_finished(Node* parent, Move move, Value childValue) {
         const Value score = -childValue;
-        if (parent->best == MOVE_NONE || score > parent->value) {
-            parent->value = score;
-            parent->best = move;
+        bool complete;
+        Value value;
+        {
+            std::lock_guard<std::mutex> parentLock(parent->mutex);
+            if (parent->best == MOVE_NONE || score > parent->value) {
+                parent->value = score;
+                parent->best = move;
+            }
+            complete = --parent->pending == 0;
+            value = parent->value;
         }
-        if (--parent->pending == 0)
-            finish(parent, parent->value);
+        if (complete)
+            finish(parent, value);
     }
 
     void finish(Node* node, Value value) {
-        if (node->complete)
-            return;
-        node->value = value;
-        node->complete = true;
-        const auto parents = std::move(node->parents);
+        std::vector<Parent> parents;
+        {
+            std::lock_guard<std::mutex> nodeLock(node->mutex);
+            if (node->complete)
+                return;
+            node->value = value;
+            node->complete = true;
+            parents = std::move(node->parents);
+        }
         for (const Parent& parent : parents)
             child_finished(parent.node, parent.move, value);
         cv.notify_all();
@@ -241,12 +298,16 @@ private:
     bool chess960;
     int depth;
     Node* root = nullptr;
-    std::mutex mutex;
+    static constexpr size_t ShardCount = 64;
+    static size_t shard(Key key) { return size_t(key) & (ShardCount - 1); }
+
+    std::mutex queueMutex;
     std::condition_variable cv;
     std::deque<Node*> ready;
-    std::unordered_map<NodeKey, std::unique_ptr<Node>, NodeKeyHash> table;
+    std::array<std::mutex, ShardCount> tableMutexes;
+    std::array<std::unordered_map<NodeKey, std::unique_ptr<Node>, NodeKeyHash>, ShardCount> table;
     size_t active = 0;
-    uint64_t nodes = 0;
+    std::atomic<uint64_t> nodes{0};
 };
 
 std::mutex controllerMutex;
