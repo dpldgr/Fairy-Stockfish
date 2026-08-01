@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "evaluate.h"
+#include "misc.h"
 #include "movegen.h"
 #include "position.h"
 #include "thread.h"
@@ -68,6 +69,7 @@ public:
     Search(const Position& pos, int d) : variant(pos.variant()), fen(pos.fen()), chess960(pos.is_chess960()), depth(d) {}
 
     void run() {
+        const TimePoint startTime = now();
         StateInfo st;
         Position pos;
         pos.set(variant, fen, chess960, &st, Threads.main());
@@ -88,9 +90,12 @@ public:
             worker.join();
 
         if (root->complete && root->best != MOVE_NONE) {
+            const TimePoint elapsed = std::max<TimePoint>(1, now() - startTime);
+            const uint64_t nps = nodes * 1000 / elapsed;
             auto pv = principal_variation();
             sync_cout << "info depth " << depth << " score cp " << int(root->value)
-                      << " nodes " << nodes << " tdsworkers " << workerCount << " pv";
+                      << " nodes " << nodes << " nps " << nps << " time " << elapsed
+                      << " tdsworkers " << workerCount << " pv";
             Position out;
             StateInfo outState;
             out.set(variant, fen, chess960, &outState, Threads.main());
