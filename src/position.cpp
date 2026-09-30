@@ -1490,6 +1490,9 @@ bool Position::legal(Move m) const {
   if (prohibited_capture(m))
       return false;
 
+  if (var->hasTradingRules && !trading_rule_legal(m))
+      return false;
+
   // mutuallyImmuneTypes (diplomacy in Atomar)-- In no-check Atomic, kings can be beside each other, but in Atomar, this prevents them from actually taking.
   // Generalized to allow a custom set of pieces that can't capture a piece of the same type.
   if (capture(m) &&
@@ -1585,6 +1588,105 @@ bool Position::legal(Move m) const {
 
   // A non-king move is legal if the king is not under attack after the move.
   return !(attackers_to(square<KING>(us), occupied, ~us, janggiCannons) & ~SquareBB[to]);
+}
+
+
+/// Position::trading_rule_legal() applies configurable restrictions to each
+/// captured piece. In a multi-capture move the intermediate victim is evaluated
+/// normally, while an eligible intermediate victim classifies the final capture
+/// as a multi-capture.
+
+bool Position::trading_rule_legal(Move m) const {
+
+  if (!capture(m))
+      return true;
+
+  PieceType attacker = type_of(moved_piece(m));
+  uint16_t rowIndex = var->tradingRuleRowIndex[attacker];
+  if (!rowIndex)
+      return true;
+
+  Square from = from_sq(m);
+  Square to = to_sq(m);
+  const TradingRuleRow& row = var->tradingRuleRows[rowIndex - 1];
+
+  auto capture_allowed = [&](Square victimSquare, TradingCategory category) {
+      Piece victim = piece_on(victimSquare);
+      if (!victim || color_of(victim) == sideToMove)
+          return true;
+
+      TradingRestriction restriction = row.restriction(category, type_of(victim));
+      return restriction == TRADING_UNRESTRICTED
+          || (restriction == TRADING_IF_RECAPTURABLE
+              && !geometrically_recapturable_after(m, victimSquare));
+  };
+
+  bool multiMove = type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE;
+  if (!multiMove)
+  {
+      Square victimSquare = type_of(m) == EN_PASSANT ? capture_square(to) : to;
+      TradingCategory category = attacks_bb<KING>(from) & victimSquare
+                               ? TRADING_ADJACENT : TRADING_DISTANT;
+      return capture_allowed(victimSquare, category);
+  }
+
+  Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
+             : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
+  Piece viaVictim = piece_on(via);
+  bool capturesVia = viaVictim && color_of(viaVictim) != sideToMove;
+
+  if (capturesVia)
+  {
+      TradingCategory viaCategory = attacks_bb<KING>(from) & via
+                                  ? TRADING_ADJACENT : TRADING_DISTANT;
+      if (!capture_allowed(via, viaCategory))
+          return false;
+  }
+
+  if (to == from || empty(to) || color_of(piece_on(to)) == sideToMove)
+      return true;
+
+  if (capturesVia)
+  {
+      if (!capture_allowed(to, TRADING_MULTI_CAPTURE))
+          return false;
+
+      // An excepted connector does not waive the ordinary geometric restriction,
+      // but the move remains a multi-capture and is subject to mc restrictions too.
+      if (!(row.multiCaptureExceptions & type_of(viaVictim)))
+          return true;
+  }
+
+  TradingCategory category = attacks_bb<KING>(from) & to
+                           ? TRADING_ADJACENT : TRADING_DISTANT;
+  return capture_allowed(to, category);
+}
+
+
+/// Position::geometrically_recapturable_after() tests whether the moving piece
+/// is attacked on its destination in the resulting occupancy. Keeping this
+/// policy separate allows variants to select legal recaptures in the future.
+
+bool Position::geometrically_recapturable_after(Move m, Square victimSquare) const {
+
+  Square from = from_sq(m);
+  Square to = to_sq(m);
+  Bitboard capturedSquares = victimSquare;
+  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
+  {
+      Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
+                 : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
+      if (!empty(via) && color_of(piece_on(via)) != sideToMove)
+          capturedSquares |= via;
+      if (to != from && !empty(to) && color_of(piece_on(to)) != sideToMove)
+          capturedSquares |= to;
+  }
+
+  Bitboard occupied = (pieces() ^ from) & ~capturedSquares;
+  occupied |= to;
+  Bitboard recapturers = attackers_to(to, occupied, ~sideToMove)
+                       & pieces(~sideToMove) & ~capturedSquares;
+  return bool(recapturers);
 }
 
 
