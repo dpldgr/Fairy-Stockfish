@@ -1202,7 +1202,8 @@ inline bool is_custom(PieceType pt) {
 }
 
 inline bool is_ok(Move m) {
-  return from_sq(m) != to_sq(m) || type_of(m) == PROMOTION || type_of(m) == SPECIAL; // Catch MOVE_NULL and MOVE_NONE
+  return from_sq(m) != to_sq(m) || type_of(m) == PROMOTION || type_of(m) == SPECIAL
+      || type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE; // Catch MOVE_NULL and MOVE_NONE
 }
 
 inline int dist(Direction d) {

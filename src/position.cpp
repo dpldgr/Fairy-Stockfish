@@ -1591,9 +1591,10 @@ bool Position::legal(Move m) const {
 }
 
 
-/// Position::trading_rule_legal() applies configurable restrictions to ordinary
-/// adjacent and distant captures. Multi-capture restrictions are parsed and
-/// stored, but are intentionally left for the multi-capture implementation.
+/// Position::trading_rule_legal() applies configurable restrictions to each
+/// captured piece. In a multi-capture move the intermediate victim is evaluated
+/// normally, while an eligible intermediate victim classifies the final capture
+/// as a multi-capture.
 
 bool Position::trading_rule_legal(Move m) const {
 
@@ -1605,27 +1606,52 @@ bool Position::trading_rule_legal(Move m) const {
   if (!rowIndex)
       return true;
 
-  // Multi-capture rules need capture-leg classification and are implemented in
-  // the next phase. Do not apply adjacent/distant rules to those moves yet.
-  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
-      return true;
-
   Square from = from_sq(m);
-  Square victimSquare = type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m);
-  Piece victim = piece_on(victimSquare);
-  if (!victim || color_of(victim) == sideToMove)
+  Square to = to_sq(m);
+  const TradingRuleRow& row = var->tradingRuleRows[rowIndex - 1];
+
+  auto capture_allowed = [&](Square victimSquare, TradingCategory category) {
+      Piece victim = piece_on(victimSquare);
+      if (!victim || color_of(victim) == sideToMove)
+          return true;
+
+      TradingRestriction restriction = row.restriction(category, type_of(victim));
+      return restriction == TRADING_UNRESTRICTED
+          || (restriction == TRADING_IF_RECAPTURABLE
+              && !geometrically_recapturable_after(m, victimSquare));
+  };
+
+  bool multiMove = type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE;
+  if (!multiMove)
+  {
+      Square victimSquare = type_of(m) == EN_PASSANT ? capture_square(to) : to;
+      TradingCategory category = attacks_bb<KING>(from) & victimSquare
+                               ? TRADING_ADJACENT : TRADING_DISTANT;
+      return capture_allowed(victimSquare, category);
+  }
+
+  Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
+             : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
+  Piece viaVictim = piece_on(via);
+  bool capturesVia = viaVictim && color_of(viaVictim) != sideToMove;
+
+  if (capturesVia)
+  {
+      TradingCategory viaCategory = attacks_bb<KING>(from) & via
+                                  ? TRADING_ADJACENT : TRADING_DISTANT;
+      if (!capture_allowed(via, viaCategory))
+          return false;
+  }
+
+  if (to == from || empty(to) || color_of(piece_on(to)) == sideToMove)
       return true;
 
-  TradingCategory category = attacks_bb<KING>(from) & victimSquare
-                           ? TRADING_ADJACENT : TRADING_DISTANT;
-  TradingRestriction restriction =
-      var->tradingRuleRows[rowIndex - 1].restriction(category, type_of(victim));
-  if (restriction == TRADING_UNRESTRICTED)
-      return true;
-  if (restriction == TRADING_ALWAYS)
-      return false;
-
-  return !geometrically_recapturable_after(m, victimSquare);
+  bool qualifyingMultiCapture = capturesVia
+                             && !(row.multiCaptureExceptions & type_of(viaVictim));
+  TradingCategory toCategory = qualifyingMultiCapture ? TRADING_MULTI_CAPTURE
+                             : attacks_bb<KING>(from) & to ? TRADING_ADJACENT
+                                                          : TRADING_DISTANT;
+  return capture_allowed(to, toCategory);
 }
 
 
@@ -1637,9 +1663,21 @@ bool Position::geometrically_recapturable_after(Move m, Square victimSquare) con
 
   Square from = from_sq(m);
   Square to = to_sq(m);
-  Bitboard occupied = (pieces() ^ from ^ victimSquare) | to;
+  Bitboard capturedSquares = victimSquare;
+  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
+  {
+      Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
+                 : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
+      if (!empty(via) && color_of(piece_on(via)) != sideToMove)
+          capturedSquares |= via;
+      if (to != from && !empty(to) && color_of(piece_on(to)) != sideToMove)
+          capturedSquares |= to;
+  }
+
+  Bitboard occupied = (pieces() ^ from) & ~capturedSquares;
+  occupied |= to;
   Bitboard recapturers = attackers_to(to, occupied, ~sideToMove)
-                       & pieces(~sideToMove) & ~square_bb(victimSquare);
+                       & pieces(~sideToMove) & ~capturedSquares;
   return bool(recapturers);
 }
 
