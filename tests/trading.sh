@@ -72,6 +72,9 @@ check_perft lion-anti-trade "7k/2r5/8/8/8/8/8/L1l4K w - - 0 1" 26
 check_perft lion-anti-trade "7k/2r5/8/8/8/8/8/Lpl4K w - - 0 1" 27
 check_perft lion-anti-trade "7k/8/8/8/8/8/8/L1l4K w - - 0 1" 29
 
+# Lions moved out from behind their pawns retain their two-leg quiet moves.
+check_perft lion-anti-trade "rnb1kbnr/pppppppp/3l4/8/8/3L4/PPPPPPPP/RNB1KBNR w KQkq - 2 2" 68
+
 # Excepted intermediate pieces do not qualify, and mc restrictions are enforced.
 check_perft lion-exception "7k/2r5/8/8/8/8/8/Lpl4K w - - 0 1" 26
 check_perft lion-no-multi "7k/2r5/8/8/8/8/8/Lpl4K w - - 0 1" 28
