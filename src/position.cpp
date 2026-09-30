@@ -1490,6 +1490,9 @@ bool Position::legal(Move m) const {
   if (prohibited_capture(m))
       return false;
 
+  if (var->hasTradingRules && !trading_rule_legal(m))
+      return false;
+
   // mutuallyImmuneTypes (diplomacy in Atomar)-- In no-check Atomic, kings can be beside each other, but in Atomar, this prevents them from actually taking.
   // Generalized to allow a custom set of pieces that can't capture a piece of the same type.
   if (capture(m) &&
@@ -1585,6 +1588,59 @@ bool Position::legal(Move m) const {
 
   // A non-king move is legal if the king is not under attack after the move.
   return !(attackers_to(square<KING>(us), occupied, ~us, janggiCannons) & ~SquareBB[to]);
+}
+
+
+/// Position::trading_rule_legal() applies configurable restrictions to ordinary
+/// adjacent and distant captures. Multi-capture restrictions are parsed and
+/// stored, but are intentionally left for the multi-capture implementation.
+
+bool Position::trading_rule_legal(Move m) const {
+
+  if (!capture(m))
+      return true;
+
+  PieceType attacker = type_of(moved_piece(m));
+  uint16_t rowIndex = var->tradingRuleRowIndex[attacker];
+  if (!rowIndex)
+      return true;
+
+  // Multi-capture rules need capture-leg classification and are implemented in
+  // the next phase. Do not apply adjacent/distant rules to those moves yet.
+  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
+      return true;
+
+  Square from = from_sq(m);
+  Square victimSquare = type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m);
+  Piece victim = piece_on(victimSquare);
+  if (!victim || color_of(victim) == sideToMove)
+      return true;
+
+  TradingCategory category = attacks_bb<KING>(from) & victimSquare
+                           ? TRADING_ADJACENT : TRADING_DISTANT;
+  TradingRestriction restriction =
+      var->tradingRuleRows[rowIndex - 1].restriction(category, type_of(victim));
+  if (restriction == TRADING_UNRESTRICTED)
+      return true;
+  if (restriction == TRADING_ALWAYS)
+      return false;
+
+  return !geometrically_recapturable_after(m, victimSquare);
+}
+
+
+/// Position::geometrically_recapturable_after() tests whether the moving piece
+/// is attacked on its destination in the resulting occupancy. Keeping this
+/// policy separate allows variants to select legal recaptures in the future.
+
+bool Position::geometrically_recapturable_after(Move m, Square victimSquare) const {
+
+  Square from = from_sq(m);
+  Square to = to_sq(m);
+  Bitboard occupied = (pieces() ^ from ^ victimSquare) | to;
+  Bitboard recapturers = attackers_to(to, occupied, ~sideToMove)
+                       & pieces(~sideToMove) & ~square_bb(victimSquare);
+  return bool(recapturers);
 }
 
 
