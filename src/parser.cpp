@@ -422,12 +422,39 @@ namespace {
         std::string symbol;
         while (std::getline(ss, symbol, ','))
         {
+            size_t first = symbol.find_first_not_of(" \t\r\n");
+            size_t last = symbol.find_last_not_of(" \t\r\n");
+            if (first == std::string::npos)
+                return false;
+            symbol = symbol.substr(first, last - first + 1);
             PieceType pt = piece_type_by_symbol(v, symbol);
             if (pt == NO_PIECE_TYPE)
                 return false;
             pieces |= pt;
         }
         return !value.empty();
+    }
+
+    std::string trim(const std::string& value) {
+        size_t first = value.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos)
+            return "";
+        size_t last = value.find_last_not_of(" \t\r\n");
+        return value.substr(first, last - first + 1);
+    }
+
+    bool parse_trading_restriction(const std::string& value, TradingCategory& category, TradingRestriction& restriction) {
+        std::string token = trim(value);
+        bool conditional = !token.empty() && token.back() == '!';
+        if (conditional)
+            token.pop_back();
+
+        category = token == "adj"  ? TRADING_ADJACENT
+                 : token == "dist" ? TRADING_DISTANT
+                 : token == "mc"   ? TRADING_MULTI_CAPTURE
+                                     : TRADING_CATEGORY_NB;
+        restriction = conditional ? TRADING_IF_RECAPTURABLE : TRADING_ALWAYS;
+        return category != TRADING_CATEGORY_NB;
     }
 
     PieceType next_free_custom_piece(const Variant* v, const Config& config, PieceType preferred = NO_PIECE_TYPE) {
@@ -848,6 +875,129 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_prohibited_captures("prohibitedCaptures", BLACK);
     parse_prohibited_captures("prohibitedCapturesWhite", WHITE);
     parse_prohibited_captures("prohibitedCapturesBlack", BLACK);
+    const auto& it_trading_rules = config.find("tradingRule");
+    if (it_trading_rules != config.end())
+    {
+        const std::string& value = it_trading_rules->second;
+        size_t pos = 0;
+        bool valid = true;
+        bool found = false;
+        while (pos < value.size())
+        {
+            while (pos < value.size() && std::isspace(static_cast<unsigned char>(value[pos])))
+                ++pos;
+            if (pos == value.size())
+                break;
+
+            size_t open = value.find('(', pos);
+            size_t close = open == std::string::npos ? std::string::npos : value.find(')', open + 1);
+            if (open == std::string::npos || close == std::string::npos)
+            {
+                valid = false;
+                break;
+            }
+
+            std::string attackerSymbol = trim(value.substr(pos, open - pos));
+            std::string body = value.substr(open + 1, close - open - 1);
+            size_t comma = body.find(',');
+            PieceType attacker = piece_type_by_symbol(v, attackerSymbol);
+            if (attacker == NO_PIECE_TYPE || comma == std::string::npos)
+            {
+                valid = false;
+                break;
+            }
+
+            PieceSet victims = NO_PIECE_SET;
+            if (!parse_piece_symbol_list(v, trim(body.substr(comma + 1)), victims))
+            {
+                valid = false;
+                break;
+            }
+
+            uint16_t& rowIndex = v->tradingRuleRowIndex[attacker];
+            if (!rowIndex)
+            {
+                v->tradingRuleRows.emplace_back();
+                rowIndex = uint16_t(v->tradingRuleRows.size());
+            }
+            TradingRuleRow& row = v->tradingRuleRows[rowIndex - 1];
+
+            std::stringstream restrictions(body.substr(0, comma));
+            std::string restrictionToken;
+            bool foundRestriction = false;
+            while (std::getline(restrictions, restrictionToken, '+'))
+            {
+                TradingCategory category;
+                TradingRestriction restriction;
+                if (!parse_trading_restriction(restrictionToken, category, restriction))
+                {
+                    valid = false;
+                    break;
+                }
+                foundRestriction = true;
+                PieceSet conflicts = (row.conditional[category] | row.always[category]) & victims;
+                if (conflicts)
+                {
+                    valid = false;
+                    break;
+                }
+                (restriction == TRADING_ALWAYS ? row.always[category] : row.conditional[category]) |= victims;
+            }
+            if (!valid || !foundRestriction)
+                break;
+
+            v->hasTradingRules = true;
+            found = true;
+            pos = close + 1;
+        }
+        if (DoCheck && (!valid || !found))
+            std::cerr << "tradingRule - Invalid or conflicting rule: " << value << std::endl;
+    }
+    const auto& it_trading_exceptions = config.find("tradingRuleMultiCaptureExceptions");
+    if (it_trading_exceptions != config.end())
+    {
+        const std::string& value = it_trading_exceptions->second;
+        size_t pos = 0;
+        bool valid = true;
+        bool found = false;
+        while (pos < value.size())
+        {
+            while (pos < value.size() && std::isspace(static_cast<unsigned char>(value[pos])))
+                ++pos;
+            if (pos == value.size())
+                break;
+
+            size_t open = value.find('(', pos);
+            size_t close = open == std::string::npos ? std::string::npos : value.find(')', open + 1);
+            if (open == std::string::npos || close == std::string::npos)
+            {
+                valid = false;
+                break;
+            }
+
+            std::string attackerSymbol = trim(value.substr(pos, open - pos));
+            PieceType attacker = piece_type_by_symbol(v, attackerSymbol);
+            PieceSet exceptions = NO_PIECE_SET;
+            if (   attacker == NO_PIECE_TYPE
+                || !parse_piece_symbol_list(v, value.substr(open + 1, close - open - 1), exceptions))
+            {
+                valid = false;
+                break;
+            }
+
+            uint16_t rowIndex = v->tradingRuleRowIndex[attacker];
+            if (!rowIndex || (v->tradingRuleRows[rowIndex - 1].multiCaptureExceptions & exceptions))
+            {
+                valid = false;
+                break;
+            }
+            v->tradingRuleRows[rowIndex - 1].multiCaptureExceptions |= exceptions;
+            found = true;
+            pos = close + 1;
+        }
+        if (DoCheck && (!valid || !found))
+            std::cerr << "tradingRuleMultiCaptureExceptions - Invalid or duplicate rule: " << value << std::endl;
+    }
     parse_attribute("blastOnCapture", v->blastOnCapture);
     parse_attribute("blastImmuneTypes", v->blastImmuneTypes, v->pieceToChar);
     parse_attribute("mutuallyImmuneTypes", v->mutuallyImmuneTypes, v->pieceToChar);
