@@ -38,6 +38,9 @@ customPiece1 = l:KNAD
 lionMovePieces = l:FFFFFFFFFFFFFFFF
 tradingRule = l(mc, l)
 
+[lion-no-multi-exception:lion-no-multi]
+tradingRuleMultiCaptureExceptions = l(p)
+
 [lion-multi-protected:chess]
 customPiece1 = l:KNAD
 lionMovePieces = l:FFFFFFFFFFFFFFFF
@@ -78,6 +81,7 @@ check_perft lion-anti-trade "rnb1kbnr/pppppppp/3l4/8/8/3L4/PPPPPPPP/RNB1KBNR w K
 # Excepted intermediate pieces do not qualify, and mc restrictions are enforced.
 check_perft lion-exception "7k/2r5/8/8/8/8/8/Lpl4K w - - 0 1" 26
 check_perft lion-no-multi "7k/2r5/8/8/8/8/8/Lpl4K w - - 0 1" 28
+check_perft lion-no-multi-exception "7k/2r5/8/8/8/8/8/Lpl4K w - - 0 1" 28
 check_perft lion-multi-protected "7k/2r5/8/8/8/8/8/Lpl4K w - - 0 1" 28
 check_perft lion-multi-protected "7k/8/8/8/8/8/8/Lpl4K w - - 0 1" 29
 

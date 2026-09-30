@@ -1646,12 +1646,20 @@ bool Position::trading_rule_legal(Move m) const {
   if (to == from || empty(to) || color_of(piece_on(to)) == sideToMove)
       return true;
 
-  bool qualifyingMultiCapture = capturesVia
-                             && !(row.multiCaptureExceptions & type_of(viaVictim));
-  TradingCategory toCategory = qualifyingMultiCapture ? TRADING_MULTI_CAPTURE
-                             : attacks_bb<KING>(from) & to ? TRADING_ADJACENT
-                                                          : TRADING_DISTANT;
-  return capture_allowed(to, toCategory);
+  if (capturesVia)
+  {
+      if (!capture_allowed(to, TRADING_MULTI_CAPTURE))
+          return false;
+
+      // An excepted connector does not waive the ordinary geometric restriction,
+      // but the move remains a multi-capture and is subject to mc restrictions too.
+      if (!(row.multiCaptureExceptions & type_of(viaVictim)))
+          return true;
+  }
+
+  TradingCategory category = attacks_bb<KING>(from) & to
+                           ? TRADING_ADJACENT : TRADING_DISTANT;
+  return capture_allowed(to, category);
 }
 
 
