@@ -51,6 +51,33 @@ struct DoubleMoveSpec {
   bool outwardOnly = false;
 };
 
+enum TradingCategory {
+  TRADING_NONE,
+  TRADING_ANY,
+  TRADING_ADJACENT,
+  TRADING_DISTANT,
+  TRADING_ADJACENT_2_CAPTURE,
+  TRADING_DISTANT_2_CAPTURE,
+  TRADING_CATEGORY_NB
+};
+
+enum TradingRestriction {
+  TRADING_UNRESTRICTED,
+  TRADING_IF_RECAPTURABLE,
+  TRADING_ALWAYS
+};
+
+struct TradingRule {
+  TradingCategory category = TRADING_NONE;
+  TradingRestriction restriction = TRADING_UNRESTRICTED;
+  PieceSet targets = NO_PIECE_SET;
+  PieceSet restrictors = NO_PIECE_SET;
+};
+
+struct TradingRuleRow {
+  std::vector<TradingRule> rules = {};
+};
+
 enum ShuffleSquaresMethod {
   SHUFFLE_NONE,
   SHUFFLE_MIRROR,
@@ -99,6 +126,9 @@ struct Variant {
   PieceSet petrifyOnCaptureTypes = NO_PIECE_SET;
   bool petrifyBlastPieces = false;
   PieceSet prohibitedCaptures[COLOR_NB][PIECE_TYPE_NB] = {};
+  bool hasTradingRules = false;
+  uint16_t tradingRuleRowIndex[PIECE_TYPE_NB] = {}; // Stored index plus one; zero means no rule
+  std::vector<TradingRuleRow> tradingRuleRows = {};
   uint64_t lionMoveMask[PIECE_TYPE_NB] = {};
   uint64_t lionEffectivePathMask[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB] = {};
   std::vector<HookMoveSpec> hookMoveSpecs[PIECE_TYPE_NB] = {};

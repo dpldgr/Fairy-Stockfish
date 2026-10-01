@@ -1490,6 +1490,9 @@ bool Position::legal(Move m) const {
   if (prohibited_capture(m))
       return false;
 
+  if (var->hasTradingRules && !trading_rule_legal(m))
+      return false;
+
   // mutuallyImmuneTypes (diplomacy in Atomar)-- In no-check Atomic, kings can be beside each other, but in Atomar, this prevents them from actually taking.
   // Generalized to allow a custom set of pieces that can't capture a piece of the same type.
   if (capture(m) &&
@@ -1585,6 +1588,134 @@ bool Position::legal(Move m) const {
 
   // A non-king move is legal if the king is not under attack after the move.
   return !(attackers_to(square<KING>(us), occupied, ~us, janggiCannons) & ~SquareBB[to]);
+}
+
+
+/// Position::trading_rule_legal() classifies the complete move against each
+/// configured target set and rejects it when a matching rule restricts it.
+
+bool Position::trading_rule_legal(Move m) const {
+
+  if (!capture(m))
+      return true;
+
+  PieceType attacker = type_of(moved_piece(m));
+  uint16_t rowIndex = var->tradingRuleRowIndex[attacker];
+  if (!rowIndex)
+      return true;
+
+  Square from = from_sq(m);
+  Square to = to_sq(m);
+  const TradingRuleRow& row = var->tradingRuleRows[rowIndex - 1];
+
+  struct TradingMoveFacts {
+      PieceType firstCapture = NO_PIECE_TYPE;
+      PieceType secondCapture = NO_PIECE_TYPE;
+      bool doubleMove = false;
+      bool finalAdjacent = false;
+
+      PieceSet captured_types() const {
+          PieceSet captured = NO_PIECE_SET;
+          if (firstCapture != NO_PIECE_TYPE)
+              captured |= firstCapture;
+          if (secondCapture != NO_PIECE_TYPE)
+              captured |= secondCapture;
+          return captured;
+      }
+  };
+
+  TradingMoveFacts facts;
+  facts.doubleMove = type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE;
+  facts.finalAdjacent = bool(attacks_bb<KING>(from) & to);
+
+  if (facts.doubleMove)
+  {
+      Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
+                 : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
+      if (!empty(via) && color_of(piece_on(via)) != sideToMove)
+          facts.firstCapture = type_of(piece_on(via));
+      if (to != from && !empty(to) && color_of(piece_on(to)) != sideToMove)
+          facts.secondCapture = type_of(piece_on(to));
+  }
+  else
+  {
+      Square victimSquare = type_of(m) == EN_PASSANT ? capture_square(to) : to;
+      if (!empty(victimSquare) && color_of(piece_on(victimSquare)) != sideToMove)
+          facts.firstCapture = type_of(piece_on(victimSquare));
+  }
+
+  if (!(facts.captured_types()))
+      return true;
+
+  auto category_for = [&](PieceSet targets) {
+      bool firstTarget = facts.firstCapture != NO_PIECE_TYPE && (targets & facts.firstCapture);
+      bool secondTarget = facts.secondCapture != NO_PIECE_TYPE && (targets & facts.secondCapture);
+
+      if (!facts.doubleMove)
+          return firstTarget ? facts.finalAdjacent ? TRADING_ADJACENT : TRADING_DISTANT
+                             : TRADING_NONE;
+
+      if (secondTarget)
+          return facts.firstCapture == NO_PIECE_TYPE
+               ? facts.finalAdjacent ? TRADING_ADJACENT : TRADING_DISTANT
+               : facts.finalAdjacent ? TRADING_ADJACENT_2_CAPTURE : TRADING_DISTANT_2_CAPTURE;
+
+      return firstTarget ? TRADING_ADJACENT : TRADING_NONE;
+  };
+
+  bool recapturable = false;
+  bool recapturableKnown = false;
+  for (const TradingRule& rule : row.rules)
+  {
+      TradingCategory category = category_for(rule.targets);
+      if (category == TRADING_NONE
+          || (rule.category != TRADING_ANY && rule.category != category)
+          || (rule.restrictors && !(rule.restrictors & facts.firstCapture)))
+          continue;
+
+      if (rule.restriction == TRADING_IF_RECAPTURABLE)
+      {
+          if (!recapturableKnown)
+          {
+              recapturable = geometrically_recapturable_after(m);
+              recapturableKnown = true;
+          }
+          if (!recapturable)
+              continue;
+      }
+      return false;
+  }
+
+  return true;
+}
+
+
+/// Position::geometrically_recapturable_after() tests whether the moving piece
+/// is attacked on its destination in the resulting occupancy. Keeping this
+/// policy separate allows variants to select legal recaptures in the future.
+
+bool Position::geometrically_recapturable_after(Move m) const {
+
+  Square from = from_sq(m);
+  Square to = to_sq(m);
+  Bitboard capturedSquares = 0;
+  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
+  {
+      Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
+                 : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
+      if (!empty(via) && color_of(piece_on(via)) != sideToMove)
+          capturedSquares |= via;
+      if (to != from && !empty(to) && color_of(piece_on(to)) != sideToMove)
+          capturedSquares |= to;
+  }
+  else
+      capturedSquares |= type_of(m) == EN_PASSANT ? capture_square(to) : to;
+
+  Bitboard occupied = (pieces() ^ from) & ~capturedSquares;
+  occupied |= to;
+  Bitboard recapturers = attackers_to(to, occupied, ~sideToMove)
+                       & pieces(~sideToMove) & ~capturedSquares;
+  return bool(recapturers);
 }
 
 
