@@ -1039,6 +1039,20 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     const auto& it_trading_exceptions = config.find("tradingRuleMultiCaptureExceptions");
     if (DoCheck && it_trading_exceptions != config.end())
         std::cerr << "tradingRuleMultiCaptureExceptions - Unsupported; use tradingRule restrictors" << std::endl;
+    const auto& it_trading_counterstrike = config.find("tradingRuleCounterstrike");
+    if (it_trading_counterstrike != config.end())
+    {
+        PieceSet targets = NO_PIECE_SET;
+        if (parse_braced_piece_set(v, it_trading_counterstrike->second, targets))
+        {
+            v->hasTradingCounterstrike = true;
+            v->hasTradingRules = true;
+            v->tradingCounterstrikeTargets = targets;
+        }
+        else if (DoCheck)
+            std::cerr << "tradingRuleCounterstrike - Invalid target set: "
+                      << it_trading_counterstrike->second << std::endl;
+    }
     parse_attribute("blastOnCapture", v->blastOnCapture);
     parse_attribute("blastImmuneTypes", v->blastImmuneTypes, v->pieceToChar);
     parse_attribute("mutuallyImmuneTypes", v->mutuallyImmuneTypes, v->pieceToChar);

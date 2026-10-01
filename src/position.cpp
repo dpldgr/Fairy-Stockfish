@@ -1601,16 +1601,20 @@ bool Position::trading_rule_legal(Move m) const {
 
   PieceType attacker = type_of(moved_piece(m));
   uint16_t rowIndex = var->tradingRuleRowIndex[attacker];
-  if (!rowIndex)
+  bool counterstrike = var->hasTradingCounterstrike && st->tradingCounterstrike
+                    && !(var->tradingCounterstrikeTargets & st->tradingCounterstrikeAttacker)
+                    && !(var->tradingCounterstrikeTargets & attacker);
+  if (!rowIndex && !counterstrike)
       return true;
 
   Square from = from_sq(m);
   Square to = to_sq(m);
-  const TradingRuleRow& row = var->tradingRuleRows[rowIndex - 1];
 
   struct TradingMoveFacts {
       PieceType firstCapture = NO_PIECE_TYPE;
       PieceType secondCapture = NO_PIECE_TYPE;
+      Square firstCaptureSquare = SQ_NONE;
+      Square secondCaptureSquare = SQ_NONE;
       bool doubleMove = false;
       bool finalAdjacent = false;
 
@@ -1621,6 +1625,15 @@ bool Position::trading_rule_legal(Move m) const {
           if (secondCapture != NO_PIECE_TYPE)
               captured |= secondCapture;
           return captured;
+      }
+
+      Bitboard capture_squares(PieceSet targets) const {
+          Bitboard squares = 0;
+          if (firstCapture != NO_PIECE_TYPE && (targets & firstCapture))
+              squares |= firstCaptureSquare;
+          if (secondCapture != NO_PIECE_TYPE && (targets & secondCapture))
+              squares |= secondCaptureSquare;
+          return squares;
       }
   };
 
@@ -1633,15 +1646,24 @@ bool Position::trading_rule_legal(Move m) const {
       Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
                  : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
       if (!empty(via) && color_of(piece_on(via)) != sideToMove)
+      {
           facts.firstCapture = type_of(piece_on(via));
+          facts.firstCaptureSquare = via;
+      }
       if (to != from && !empty(to) && color_of(piece_on(to)) != sideToMove)
+      {
           facts.secondCapture = type_of(piece_on(to));
+          facts.secondCaptureSquare = to;
+      }
   }
   else
   {
       Square victimSquare = type_of(m) == EN_PASSANT ? capture_square(to) : to;
       if (!empty(victimSquare) && color_of(piece_on(victimSquare)) != sideToMove)
+      {
           facts.firstCapture = type_of(piece_on(victimSquare));
+          facts.firstCaptureSquare = victimSquare;
+      }
   }
 
   if (!(facts.captured_types()))
@@ -1665,7 +1687,8 @@ bool Position::trading_rule_legal(Move m) const {
 
   bool recapturable = false;
   bool recapturableKnown = false;
-  for (const TradingRule& rule : row.rules)
+  if (rowIndex)
+  for (const TradingRule& rule : var->tradingRuleRows[rowIndex - 1].rules)
   {
       TradingCategory category = category_for(rule.targets);
       if (category == TRADING_NONE
@@ -1684,6 +1707,18 @@ bool Position::trading_rule_legal(Move m) const {
               continue;
       }
       return false;
+  }
+
+  if (counterstrike)
+  {
+      Bitboard targetCaptures = facts.capture_squares(var->tradingCounterstrikeTargets);
+      if (targetCaptures & ~st->tradingCounterstrikeSquares)
+      {
+          if (!recapturableKnown)
+              recapturable = geometrically_recapturable_after(m);
+          if (recapturable)
+              return false;
+      }
   }
 
   return true;
@@ -2423,6 +2458,24 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   // Set capture piece
   st->capturedPiece = captured;
 
+  // Record the one-ply counter-strike event. The attacker is the type before
+  // promotion, and all configured target capture squares belong to this move.
+  st->tradingCounterstrike = false;
+  st->tradingCounterstrikeAttacker = NO_PIECE_TYPE;
+  st->tradingCounterstrikeSquares = 0;
+  if (var->hasTradingCounterstrike)
+  {
+      if (captured && (var->tradingCounterstrikeTargets & type_of(captured)))
+          st->tradingCounterstrikeSquares |= type_of(m) == EN_PASSANT ? st->captureSquare : to;
+      if (lionCaptured && (var->tradingCounterstrikeTargets & type_of(lionCaptured)))
+          st->tradingCounterstrikeSquares |= lionCapsq;
+      if (st->tradingCounterstrikeSquares)
+      {
+          st->tradingCounterstrike = true;
+          st->tradingCounterstrikeAttacker = type_of(pc);
+      }
+  }
+
   // Add gating piece
   if (is_gating(m))
   {
@@ -2810,6 +2863,9 @@ void Position::do_null_move(StateInfo& newSt) {
   st = &newSt;
 
   st->dirtyPiece.dirty_num = 0;
+  st->tradingCounterstrike = false;
+  st->tradingCounterstrikeAttacker = NO_PIECE_TYPE;
+  st->tradingCounterstrikeSquares = 0;
   st->dirtyPiece.piece[0] = NO_PIECE; // Avoid checks in UpdateAccumulator()
   st->accumulator.computed[WHITE] = false;
   st->accumulator.computed[BLACK] = false;

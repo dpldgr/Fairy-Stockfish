@@ -74,6 +74,9 @@ struct StateInfo {
   Square     lionCaptureSquare;
   Piece      lionUnpromotedCapturedPiece;
   bool       lionCapturedPromoted;
+  bool       tradingCounterstrike;
+  PieceType  tradingCounterstrikeAttacker;
+  Bitboard   tradingCounterstrikeSquares;
   Piece      promotionPawn;
   Bitboard   nonSlidingRiders;
   Bitboard   flippedPieces;
