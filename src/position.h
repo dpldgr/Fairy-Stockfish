@@ -74,6 +74,9 @@ struct StateInfo {
   Square     lionCaptureSquare;
   Piece      lionUnpromotedCapturedPiece;
   bool       lionCapturedPromoted;
+  bool       tradingCounterstrike;
+  PieceType  tradingCounterstrikeAttacker;
+  Bitboard   tradingCounterstrikeSquares;
   Piece      promotionPawn;
   Bitboard   nonSlidingRiders;
   Bitboard   flippedPieces;
@@ -294,6 +297,8 @@ public:
   bool virtual_drop(Move m) const;
   bool capture(Move m) const;
   bool prohibited_capture(Move m) const;
+  bool trading_rule_legal(Move m) const;
+  bool geometrically_recapturable_after(Move m) const;
   bool capture_or_promotion(Move m) const;
   Square capture_square(Square to) const;
   uint64_t lion_move_mask(Color c, PieceType pt, Square from) const;
