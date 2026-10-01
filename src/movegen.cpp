@@ -538,17 +538,16 @@ namespace {
         uint64_t lionMask = pos.lion_move_mask(Us, Pt, from);
         if (lionMask && Type != QUIET_CHECKS)
         {
-            uint32_t localFriendly = uint32_t(pext(pos.pieces(Us) - from, LionLocalMask[from]));
             while (lionMask)
             {
                 int path = pop_lsb64(lionMask);
-                if (localFriendly & LionPathLocalMask[from][path])
-                    continue;
-
                 Square via = LionVia[from][path];
                 Square to = LionTo[from][path];
 
                 Bitboard pathSquares = square_bb(via) | to;
+                if (pathSquares & (pos.pieces(Us) - from))
+                    continue;
+
                 PieceSet prohibited = pos.prohibited_capture_types(Us, Pt);
                 if (   prohibited
                     && (  (!pos.empty(via) && color_of(pos.piece_on(via)) == ~Us && (prohibited & type_of(pos.piece_on(via))))
