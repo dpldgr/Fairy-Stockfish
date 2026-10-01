@@ -20,6 +20,8 @@ trading_rules=$(mktemp)
 cat > "$trading_rules" << 'EOF'
 [queen-anti-trade:chess]
 tradingRule = q:[dist!,{q}]
+tradingRuleCounterstrike = {q}
+tradingRuleAllowCheckers = {q}
 
 [cub-anti-trade:chess]
 customPiece1 = c:KNAD
@@ -106,6 +108,13 @@ check_perft queen-anti-trade "7k/q6r/Q7/8/8/8/8/K7 w - - 0 1" 8
 # A distant queen capture remains legal when the capturing queen is not attacked.
 check_perft queen-anti-trade "7k/q7/8/8/8/8/Q7/K7 w - - 0 1" 7
 
+# A checking Queen is removed from the direct clause's effective target set.
+check_move queen-anti-trade "r6k/q6Q/8/8/8/8/8/K7 w - - 0 1" "" h7a7 present
+
+# Checking Queens are likewise removed when establishing a counter-strike event.
+check_move queen-anti-trade "3r3k/1q6/3Q4/N1B5/8/8/8/7K w - - 0 1" a5b7 d8d6 present
+check_move queen-anti-trade "3r3k/1q6/3Q4/N1B5/8/8/7K/8 w - - 0 1" a5b7 d8d6 absent
+
 # A Cub may capture another Cub only when it is adjacent.
 check_perft cub-anti-trade "7k/8/8/8/8/8/8/C1c4K w - - 0 1" 10
 check_perft cub-anti-trade "7k/8/8/8/8/8/8/Cc5K w - - 0 1" 11
@@ -176,9 +185,13 @@ tradingRule = q:[dist!,{q,r}] q:[dist,{q}]
 
 [invalid-trading-counterstrike:chess]
 tradingRuleCounterstrike = {missing}
+
+[invalid-trading-allow-checkers:chess]
+tradingRuleAllowCheckers = {missing}
 EOF
 output=$(./stockfish check "$invalid_rules" 2>&1)
 test "$(printf '%s\n' "$output" | rg -c "tradingRule - Invalid or conflicting rule")" -eq 3
 printf '%s\n' "$output" | rg -q "tradingRuleCounterstrike - Invalid target set"
+printf '%s\n' "$output" | rg -q "tradingRuleAllowCheckers - Invalid target set"
 
 echo "trading rule testing OK"

@@ -129,6 +129,7 @@ struct Variant {
   bool hasTradingRules = false;
   bool hasTradingCounterstrike = false;
   PieceSet tradingCounterstrikeTargets = NO_PIECE_SET;
+  PieceSet tradingRuleAllowCheckers = NO_PIECE_SET;
   uint16_t tradingRuleRowIndex[PIECE_TYPE_NB] = {}; // Stored index plus one; zero means no rule
   std::vector<TradingRuleRow> tradingRuleRows = {};
   uint64_t lionMoveMask[PIECE_TYPE_NB] = {};

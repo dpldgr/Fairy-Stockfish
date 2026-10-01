@@ -1627,11 +1627,13 @@ bool Position::trading_rule_legal(Move m) const {
           return captured;
       }
 
-      Bitboard capture_squares(PieceSet targets) const {
+      Bitboard capture_squares(PieceSet targets, PieceSet allowCheckers, Bitboard checkingPieces) const {
           Bitboard squares = 0;
-          if (firstCapture != NO_PIECE_TYPE && (targets & firstCapture))
+          if (firstCapture != NO_PIECE_TYPE && (targets & firstCapture)
+              && !((allowCheckers & firstCapture) && (checkingPieces & firstCaptureSquare)))
               squares |= firstCaptureSquare;
-          if (secondCapture != NO_PIECE_TYPE && (targets & secondCapture))
+          if (secondCapture != NO_PIECE_TYPE && (targets & secondCapture)
+              && !((allowCheckers & secondCapture) && (checkingPieces & secondCaptureSquare)))
               squares |= secondCaptureSquare;
           return squares;
       }
@@ -1669,9 +1671,14 @@ bool Position::trading_rule_legal(Move m) const {
   if (!(facts.captured_types()))
       return true;
 
+  Bitboard checkingPieces = checkers();
   auto category_for = [&](PieceSet targets) {
-      bool firstTarget = facts.firstCapture != NO_PIECE_TYPE && (targets & facts.firstCapture);
-      bool secondTarget = facts.secondCapture != NO_PIECE_TYPE && (targets & facts.secondCapture);
+      bool firstTarget = facts.firstCapture != NO_PIECE_TYPE && (targets & facts.firstCapture)
+                      && !((var->tradingRuleAllowCheckers & facts.firstCapture)
+                           && (checkingPieces & facts.firstCaptureSquare));
+      bool secondTarget = facts.secondCapture != NO_PIECE_TYPE && (targets & facts.secondCapture)
+                       && !((var->tradingRuleAllowCheckers & facts.secondCapture)
+                            && (checkingPieces & facts.secondCaptureSquare));
 
       if (!facts.doubleMove)
           return firstTarget ? facts.finalAdjacent ? TRADING_ADJACENT : TRADING_DISTANT
@@ -1711,7 +1718,8 @@ bool Position::trading_rule_legal(Move m) const {
 
   if (counterstrike)
   {
-      Bitboard targetCaptures = facts.capture_squares(var->tradingCounterstrikeTargets);
+      Bitboard targetCaptures = facts.capture_squares(var->tradingCounterstrikeTargets,
+                                                      var->tradingRuleAllowCheckers, checkingPieces);
       if (targetCaptures & ~st->tradingCounterstrikeSquares)
       {
           if (!recapturableKnown)
@@ -2465,9 +2473,15 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   st->tradingCounterstrikeSquares = 0;
   if (var->hasTradingCounterstrike)
   {
-      if (captured && (var->tradingCounterstrikeTargets & type_of(captured)))
-          st->tradingCounterstrikeSquares |= type_of(m) == EN_PASSANT ? st->captureSquare : to;
-      if (lionCaptured && (var->tradingCounterstrikeTargets & type_of(lionCaptured)))
+      Bitboard previousCheckers = st->previous->checkersBB;
+      Square capturedSquare = type_of(m) == EN_PASSANT ? st->captureSquare : to;
+      if (captured && (var->tradingCounterstrikeTargets & type_of(captured))
+          && !((var->tradingRuleAllowCheckers & type_of(captured))
+               && (previousCheckers & capturedSquare)))
+          st->tradingCounterstrikeSquares |= capturedSquare;
+      if (lionCaptured && (var->tradingCounterstrikeTargets & type_of(lionCaptured))
+          && !((var->tradingRuleAllowCheckers & type_of(lionCaptured))
+               && (previousCheckers & lionCapsq)))
           st->tradingCounterstrikeSquares |= lionCapsq;
       if (st->tradingCounterstrikeSquares)
       {

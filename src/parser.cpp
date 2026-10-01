@@ -1053,6 +1053,16 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             std::cerr << "tradingRuleCounterstrike - Invalid target set: "
                       << it_trading_counterstrike->second << std::endl;
     }
+    const auto& it_trading_allow_checkers = config.find("tradingRuleAllowCheckers");
+    if (it_trading_allow_checkers != config.end())
+    {
+        PieceSet targets = NO_PIECE_SET;
+        if (parse_braced_piece_set(v, it_trading_allow_checkers->second, targets))
+            v->tradingRuleAllowCheckers = targets;
+        else if (DoCheck)
+            std::cerr << "tradingRuleAllowCheckers - Invalid target set: "
+                      << it_trading_allow_checkers->second << std::endl;
+    }
     parse_attribute("blastOnCapture", v->blastOnCapture);
     parse_attribute("blastImmuneTypes", v->blastImmuneTypes, v->pieceToChar);
     parse_attribute("mutuallyImmuneTypes", v->mutuallyImmuneTypes, v->pieceToChar);
