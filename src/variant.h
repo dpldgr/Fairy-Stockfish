@@ -52,9 +52,12 @@ struct DoubleMoveSpec {
 };
 
 enum TradingCategory {
+  TRADING_NONE,
+  TRADING_ANY,
   TRADING_ADJACENT,
   TRADING_DISTANT,
-  TRADING_MULTI_CAPTURE,
+  TRADING_ADJACENT_2_CAPTURE,
+  TRADING_DISTANT_2_CAPTURE,
   TRADING_CATEGORY_NB
 };
 
@@ -64,16 +67,15 @@ enum TradingRestriction {
   TRADING_ALWAYS
 };
 
-struct TradingRuleRow {
-  PieceSet conditional[TRADING_CATEGORY_NB] = {};
-  PieceSet always[TRADING_CATEGORY_NB] = {};
-  PieceSet multiCaptureExceptions = NO_PIECE_SET;
+struct TradingRule {
+  TradingCategory category = TRADING_NONE;
+  TradingRestriction restriction = TRADING_UNRESTRICTED;
+  PieceSet targets = NO_PIECE_SET;
+  PieceSet restrictors = NO_PIECE_SET;
+};
 
-  TradingRestriction restriction(TradingCategory category, PieceType victim) const {
-    return (always[category] & victim) ? TRADING_ALWAYS
-         : (conditional[category] & victim) ? TRADING_IF_RECAPTURABLE
-                                            : TRADING_UNRESTRICTED;
-  }
+struct TradingRuleRow {
+  std::vector<TradingRule> rules = {};
 };
 
 enum ShuffleSquaresMethod {
