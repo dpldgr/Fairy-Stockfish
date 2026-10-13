@@ -74,6 +74,9 @@ struct StateInfo {
   Square     lionCaptureSquare;
   Piece      lionUnpromotedCapturedPiece;
   bool       lionCapturedPromoted;
+  bool       tradingCounterstrike;
+  PieceType  tradingCounterstrikeAttacker;
+  Bitboard   tradingCounterstrikeSquares;
   Piece      promotionPawn;
   Bitboard   nonSlidingRiders;
   Bitboard   flippedPieces;
@@ -294,6 +297,8 @@ public:
   bool virtual_drop(Move m) const;
   bool capture(Move m) const;
   bool prohibited_capture(Move m) const;
+  bool trading_rule_legal(Move m) const;
+  bool geometrically_recapturable_after(Move m) const;
   bool capture_or_promotion(Move m) const;
   Square capture_square(Square to) const;
   uint64_t lion_move_mask(Color c, PieceType pt, Square from) const;
@@ -1631,6 +1636,7 @@ inline void Position::remove_piece(Square s) {
 inline void Position::move_piece(Square from, Square to) {
 
   Piece pc = board[from];
+  Piece unpromotedPc = unpromotedBoard[from];
   Bitboard fromTo = square_bb(from) ^ to; // from == to needs to cancel out
   byTypeBB[ALL_PIECES] ^= fromTo;
   byTypeBB[type_of(pc)] ^= fromTo;
@@ -1640,8 +1646,9 @@ inline void Position::move_piece(Square from, Square to) {
   psq += PSQT::psq[pc][to] - PSQT::psq[pc][from];
   if (is_promoted(from))
       promotedPieces ^= fromTo;
-  unpromotedBoard[to] = unpromotedBoard[from];
-  unpromotedBoard[from] = NO_PIECE;
+  unpromotedBoard[to] = unpromotedPc;
+  if (from != to)
+      unpromotedBoard[from] = NO_PIECE;
 }
 
 inline void Position::do_move(Move m, StateInfo& newSt) {

@@ -422,12 +422,72 @@ namespace {
         std::string symbol;
         while (std::getline(ss, symbol, ','))
         {
+            size_t first = symbol.find_first_not_of(" \t\r\n");
+            size_t last = symbol.find_last_not_of(" \t\r\n");
+            if (first == std::string::npos)
+                return false;
+            symbol = symbol.substr(first, last - first + 1);
             PieceType pt = piece_type_by_symbol(v, symbol);
             if (pt == NO_PIECE_TYPE)
                 return false;
             pieces |= pt;
         }
         return !value.empty();
+    }
+
+    std::string trim(const std::string& value) {
+        size_t first = value.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos)
+            return "";
+        size_t last = value.find_last_not_of(" \t\r\n");
+        return value.substr(first, last - first + 1);
+    }
+
+    bool parse_trading_restriction(const std::string& value, TradingCategory& category, TradingRestriction& restriction) {
+        std::string token = trim(value);
+        bool conditional = !token.empty() && token.back() == '!';
+        if (conditional)
+            token.pop_back();
+
+        category = token == "any"     ? TRADING_ANY
+                 : token == "adj"     ? TRADING_ADJACENT
+                 : token == "dist"    ? TRADING_DISTANT
+                 : token == "adj2c"   ? TRADING_ADJACENT_2_CAPTURE
+                 : token == "dist2c" ? TRADING_DISTANT_2_CAPTURE
+                                       : TRADING_CATEGORY_NB;
+        restriction = conditional ? TRADING_IF_RECAPTURABLE : TRADING_ALWAYS;
+        return category != TRADING_CATEGORY_NB;
+    }
+
+    bool parse_braced_piece_set(const Variant* v, const std::string& value, PieceSet& pieces) {
+        std::string token = trim(value);
+        return token.size() >= 3 && token.front() == '{' && token.back() == '}'
+            && parse_piece_symbol_list(v, token.substr(1, token.size() - 2), pieces);
+    }
+
+    bool split_trading_fields(const std::string& value, std::vector<std::string>& fields) {
+        size_t start = 0;
+        int depth = 0;
+        for (size_t i = 0; i < value.size(); ++i)
+        {
+            if (value[i] == '{')
+                ++depth;
+            else if (value[i] == '}')
+            {
+                if (depth == 0)
+                    return false;
+                --depth;
+            }
+            else if (value[i] == ',' && depth == 0)
+            {
+                fields.push_back(trim(value.substr(start, i - start)));
+                start = i + 1;
+            }
+        }
+        if (depth)
+            return false;
+        fields.push_back(trim(value.substr(start)));
+        return true;
     }
 
     PieceType next_free_custom_piece(const Variant* v, const Config& config, PieceType preferred = NO_PIECE_TYPE) {
@@ -848,6 +908,161 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_prohibited_captures("prohibitedCaptures", BLACK);
     parse_prohibited_captures("prohibitedCapturesWhite", WHITE);
     parse_prohibited_captures("prohibitedCapturesBlack", BLACK);
+    const auto& it_trading_rules = config.find("tradingRule");
+    if (it_trading_rules != config.end())
+    {
+        const std::string& value = it_trading_rules->second;
+        size_t pos = 0;
+        bool valid = true;
+        bool found = false;
+        while (pos < value.size())
+        {
+            while (pos < value.size() && std::isspace(static_cast<unsigned char>(value[pos])))
+                ++pos;
+            if (pos == value.size())
+                break;
+
+            size_t colon = value.find(':', pos);
+            size_t open = colon == std::string::npos ? std::string::npos : value.find('[', colon + 1);
+            if (colon == std::string::npos || open == std::string::npos
+                || !trim(value.substr(colon + 1, open - colon - 1)).empty())
+            {
+                valid = false;
+                break;
+            }
+
+            int depth = 1;
+            size_t close = open + 1;
+            for (; close < value.size() && depth; ++close)
+            {
+                if (value[close] == '[')
+                    ++depth;
+                else if (value[close] == ']')
+                    --depth;
+            }
+            if (depth)
+            {
+                valid = false;
+                break;
+            }
+            --close;
+
+            std::string attackerSymbol = trim(value.substr(pos, colon - pos));
+            PieceType attacker = piece_type_by_symbol(v, attackerSymbol);
+            std::vector<std::string> fields;
+            if (   attacker == NO_PIECE_TYPE
+                || !split_trading_fields(value.substr(open + 1, close - open - 1), fields)
+                || fields.size() < 2 || fields.size() > 3)
+            {
+                valid = false;
+                break;
+            }
+
+            TradingRule rule;
+            if (   !parse_trading_restriction(fields[0], rule.category, rule.restriction)
+                || !parse_braced_piece_set(v, fields[1], rule.targets)
+                || (fields.size() == 3 && !parse_braced_piece_set(v, fields[2], rule.restrictors))
+                || (rule.restrictors
+                    && rule.category != TRADING_ADJACENT_2_CAPTURE
+                    && rule.category != TRADING_DISTANT_2_CAPTURE))
+            {
+                valid = false;
+                break;
+            }
+
+            uint16_t& rowIndex = v->tradingRuleRowIndex[attacker];
+            if (!rowIndex)
+            {
+                v->tradingRuleRows.emplace_back();
+                rowIndex = uint16_t(v->tradingRuleRows.size());
+            }
+            TradingRuleRow& row = v->tradingRuleRows[rowIndex - 1];
+
+            bool conflict = false;
+            for (const TradingRule& existing : row.rules)
+            {
+                bool categoriesOverlap = existing.category == rule.category
+                                      || existing.category == TRADING_ANY
+                                      || rule.category == TRADING_ANY;
+                bool targetsOverlap = existing.targets & rule.targets;
+                bool restrictorsOverlap = !existing.restrictors || !rule.restrictors
+                                        || (existing.restrictors & rule.restrictors);
+                bool sameScope = existing.category == rule.category
+                              && existing.targets == rule.targets
+                              && existing.restrictors == rule.restrictors;
+                if (sameScope && existing.restriction == rule.restriction)
+                {
+                    conflict = true;
+                    break;
+                }
+
+                bool scopeSetsMatch = existing.targets == rule.targets
+                                   && existing.restrictors == rule.restrictors;
+                if (categoriesOverlap && targetsOverlap && restrictorsOverlap && !scopeSetsMatch)
+                {
+                    conflict = true;
+                    break;
+                }
+
+                bool existingSubsumes = existing.targets == rule.targets
+                                     && existing.restrictors == rule.restrictors
+                                     && (existing.category == TRADING_ANY || existing.category == rule.category)
+                                     && (existing.restriction == TRADING_ALWAYS
+                                         || existing.restriction == rule.restriction);
+                bool ruleSubsumes = existing.targets == rule.targets
+                                 && existing.restrictors == rule.restrictors
+                                 && (rule.category == TRADING_ANY || rule.category == existing.category)
+                                 && (rule.restriction == TRADING_ALWAYS
+                                     || rule.restriction == existing.restriction);
+                if (DoCheck && (existingSubsumes || ruleSubsumes))
+                    std::cerr << "tradingRule - Warning: subsumed clause for attacker: " << attackerSymbol << std::endl;
+            }
+            if (conflict)
+            {
+                valid = false;
+                break;
+            }
+
+            row.rules.push_back(rule);
+            if (rule.category == TRADING_ANY && rule.restriction == TRADING_ALWAYS)
+            {
+                v->prohibitedCaptures[WHITE][attacker] |= rule.targets;
+                v->prohibitedCaptures[BLACK][attacker] |= rule.targets;
+            }
+            v->hasTradingRules = true;
+            found = true;
+            pos = close + 1;
+        }
+        if (DoCheck && (!valid || !found))
+            std::cerr << "tradingRule - Invalid or conflicting rule: " << value << std::endl;
+    }
+    const auto& it_trading_exceptions = config.find("tradingRuleMultiCaptureExceptions");
+    if (DoCheck && it_trading_exceptions != config.end())
+        std::cerr << "tradingRuleMultiCaptureExceptions - Unsupported; use tradingRule restrictors" << std::endl;
+    const auto& it_trading_counterstrike = config.find("tradingRuleCounterstrike");
+    if (it_trading_counterstrike != config.end())
+    {
+        PieceSet targets = NO_PIECE_SET;
+        if (parse_braced_piece_set(v, it_trading_counterstrike->second, targets))
+        {
+            v->hasTradingCounterstrike = true;
+            v->hasTradingRules = true;
+            v->tradingCounterstrikeTargets = targets;
+        }
+        else if (DoCheck)
+            std::cerr << "tradingRuleCounterstrike - Invalid target set: "
+                      << it_trading_counterstrike->second << std::endl;
+    }
+    const auto& it_trading_allow_checkers = config.find("tradingRuleAllowCheckers");
+    if (it_trading_allow_checkers != config.end())
+    {
+        PieceSet targets = NO_PIECE_SET;
+        if (parse_braced_piece_set(v, it_trading_allow_checkers->second, targets))
+            v->tradingRuleAllowCheckers = targets;
+        else if (DoCheck)
+            std::cerr << "tradingRuleAllowCheckers - Invalid target set: "
+                      << it_trading_allow_checkers->second << std::endl;
+    }
     parse_attribute("blastOnCapture", v->blastOnCapture);
     parse_attribute("blastImmuneTypes", v->blastImmuneTypes, v->pieceToChar);
     parse_attribute("mutuallyImmuneTypes", v->mutuallyImmuneTypes, v->pieceToChar);
