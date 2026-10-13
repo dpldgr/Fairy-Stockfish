@@ -1636,6 +1636,7 @@ inline void Position::remove_piece(Square s) {
 inline void Position::move_piece(Square from, Square to) {
 
   Piece pc = board[from];
+  Piece unpromotedPc = unpromotedBoard[from];
   Bitboard fromTo = square_bb(from) ^ to; // from == to needs to cancel out
   byTypeBB[ALL_PIECES] ^= fromTo;
   byTypeBB[type_of(pc)] ^= fromTo;
@@ -1645,8 +1646,9 @@ inline void Position::move_piece(Square from, Square to) {
   psq += PSQT::psq[pc][to] - PSQT::psq[pc][from];
   if (is_promoted(from))
       promotedPieces ^= fromTo;
-  unpromotedBoard[to] = unpromotedBoard[from];
-  unpromotedBoard[from] = NO_PIECE;
+  unpromotedBoard[to] = unpromotedPc;
+  if (from != to)
+      unpromotedBoard[from] = NO_PIECE;
 }
 
 inline void Position::do_move(Move m, StateInfo& newSt) {

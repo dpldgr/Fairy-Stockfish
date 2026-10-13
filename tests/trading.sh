@@ -68,6 +68,7 @@ tradingRuleCounterstrike = {l}
 [lion-counterstrike-promotion:chess]
 customPiece1 = c:N
 customPiece2 = l:KNAD
+lionMovePieces = l:FFFFFFFFFFFFFFFF
 promotedPieceType = c:l
 promotionRegionWhite = *6
 tradingRuleCounterstrike = {l}
@@ -97,6 +98,17 @@ check_move()
   else
     ! printf '%s\n' "$output" | rg -q "^$move:"
   fi
+}
+
+check_fen_after_move()
+{
+  variant=$1
+  position=$2
+  moves=$3
+  expected=$4
+  output=$(printf 'setoption name UCI_Variant value %s\nposition fen %s moves %s\nd\nquit\n' \
+           "$variant" "$position" "$moves" | ./stockfish load "$trading_rules" 2>/dev/null)
+  printf '%s\n' "$output" | rg -Fq "Fen: $expected"
 }
 
 # A distant queen capture is forbidden when the capturing queen is attacked.
@@ -154,6 +166,11 @@ check_move lion-counterstrike "3r3k/8/1l1L4/2B5/L7/8/8/7K w - - 0 1" a4b6 d8d6 p
 # on the same square, but a recapturable Lion on another square may not be captured.
 check_move lion-counterstrike-promotion "1r5k/8/1l6/2B5/C7/8/8/7K w - - 0 1" a4b6+ b8b6 present
 check_move lion-counterstrike-promotion "3r3k/8/1l1L4/2B5/C7/8/8/7K w - - 0 1" a4b6+ d8d6 absent
+
+# An igui capture returning to the origin preserves a promoted Lion's provenance.
+check_fen_after_move lion-counterstrike-promotion \
+  "7k/8/8/4p3/3+C4/8/8/K7 w - - 0 1" d4e5d4 \
+  "7k/8/8/8/3+C4/8/8/K7 b - - 0 1"
 
 # Conflicting duplicate rules are diagnosed by variant validation.
 invalid_rules=$(mktemp)
