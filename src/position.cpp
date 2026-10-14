@@ -1705,12 +1705,23 @@ bool Position::trading_rule_legal(Move m) const {
 
       if (rule.restriction == TRADING_IF_RECAPTURABLE)
       {
+          // Under the JCSA whole-move interpretation, an ineligible connector
+          // captured on the first leg still protects the target for this rule.
+          bool connectorProtectsTarget = false;
+          if (   var->tradingRuleJcsaConnector
+              && rule.restrictors
+              && facts.firstCaptureSquare != SQ_NONE
+              && facts.secondCaptureSquare != SQ_NONE)
+              connectorProtectsTarget = bool(attackers_to(facts.secondCaptureSquare,
+                                                          pieces(), ~sideToMove)
+                                             & facts.firstCaptureSquare);
+
           if (!recapturableKnown)
           {
               recapturable = geometrically_recapturable_after(m);
               recapturableKnown = true;
           }
-          if (!recapturable)
+          if (!recapturable && !connectorProtectsTarget)
               continue;
       }
       return false;

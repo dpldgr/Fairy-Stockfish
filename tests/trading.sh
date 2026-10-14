@@ -41,6 +41,15 @@ customPiece1 = l:KNAD
 lionMovePieces = l:FFFFFFFFFFFFFFFF
 tradingRule = l:[dist!,{l}] l:[dist2c!,{l},{p}]
 
+[lion-connector-default:chess]
+customPiece1 = l:KNAD
+customPiece2 = g:W
+lionMovePieces = l:FFFFFFFFFFFFFFFF
+tradingRule = l:[dist2c!,{l},{g}]
+
+[lion-connector-jcsa:lion-connector-default]
+tradingRuleJcsaConnector = true
+
 [lion-no-dist2c:chess]
 customPiece1 = l:KNAD
 lionMovePieces = l:FFFFFFFFFFFFFFFF
@@ -147,6 +156,12 @@ check_perft lion-ineligible "7k/2r5/8/8/8/8/8/Lnl4K w - - 0 1" 27
 check_perft lion-no-dist2c "7k/2r5/8/8/8/8/8/Lpl4K w - - 0 1" 28
 check_perft lion-dist2c-protected "7k/2r5/8/8/8/8/8/Lpl4K w - - 0 1" 28
 check_perft lion-dist2c-protected "7k/8/8/8/8/8/8/Lpl4K w - - 0 1" 29
+
+# JCSA treats an ineligible connector as continuing to protect the second target
+# for the whole move. The generic post-move recapture rule remains unchanged.
+check_move lion-connector-default "7k/8/8/8/8/8/8/Lgl4K w - - 0 1" "" a1b1c1 present
+check_move lion-connector-jcsa "7k/8/8/8/8/8/8/Lgl4K w - - 0 1" "" a1b1c1 absent
+check_move lion-connector-jcsa "7k/8/8/8/8/8/2l5/Lg5K w - - 0 1" "" a1b1c2 present
 
 # An adjacent second target is adj2c rather than dist2c.
 check_perft lion-no-adj2c "7k/8/8/8/8/8/1p6/Ll5K w - - 0 1" 28

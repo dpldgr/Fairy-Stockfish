@@ -1039,6 +1039,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     const auto& it_trading_exceptions = config.find("tradingRuleMultiCaptureExceptions");
     if (DoCheck && it_trading_exceptions != config.end())
         std::cerr << "tradingRuleMultiCaptureExceptions - Unsupported; use tradingRule restrictors" << std::endl;
+    parse_attribute("tradingRuleJcsaConnector", v->tradingRuleJcsaConnector);
     const auto& it_trading_counterstrike = config.find("tradingRuleCounterstrike");
     if (it_trading_counterstrike != config.end())
     {

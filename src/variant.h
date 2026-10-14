@@ -128,6 +128,7 @@ struct Variant {
   PieceSet prohibitedCaptures[COLOR_NB][PIECE_TYPE_NB] = {};
   bool hasTradingRules = false;
   bool hasTradingCounterstrike = false;
+  bool tradingRuleJcsaConnector = false;
   PieceSet tradingCounterstrikeTargets = NO_PIECE_SET;
   PieceSet tradingRuleAllowCheckers = NO_PIECE_SET;
   uint16_t tradingRuleRowIndex[PIECE_TYPE_NB] = {}; // Stored index plus one; zero means no rule
