@@ -138,8 +138,10 @@ public:
   const std::string& piece_to_char_synonyms() const;
   const std::string& piece_symbol(Piece pc) const;
   const std::string& piece_symbol_synonym(Piece pc) const;
-  Bitboard promotion_zone(Color c) const;
-  Square promotion_square(Color c, Square s) const;
+  Bitboard promotion_zone(Color c, PieceType pt) const;
+  Square promotion_square(Color c, Square s, PieceType pt) const;
+  Bitboard promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory = false) const;
+  Bitboard promotion_last_squares(Color c, PieceType pt) const;
   PieceType main_promotion_pawn_type(Color c) const;
   PieceSet promotion_piece_types(Color c) const;
   bool sittuyin_promotion() const;
@@ -401,6 +403,8 @@ private:
   const Variant* var;
   bool tsumeMode;
   bool chess960;
+  mutable Bitboard promotionWallGeometry;
+  mutable Bitboard promotionWallImmobility[COLOR_NB][PIECE_TYPE_NB];
   int pieceCountInHand[COLOR_NB][PIECE_TYPE_NB];
   int virtualPieces;
   Bitboard promotedPieces;
@@ -482,15 +486,43 @@ inline const std::string& Position::piece_symbol_synonym(Piece pc) const {
   return var->pieceToSymbolSynonyms[pc];
 }
 
-inline Bitboard Position::promotion_zone(Color c) const {
+inline Bitboard Position::promotion_zone(Color c, PieceType pt) const {
   assert(var != nullptr);
-  return var->promotionRegion[c];
+  return var->promotionAreas[c][pt];
 }
 
-inline Square Position::promotion_square(Color c, Square s) const {
+inline Square Position::promotion_square(Color c, Square s, PieceType pt) const {
   assert(var != nullptr);
-  Bitboard b = promotion_zone(c) & forward_file_bb(c, s) & board_bb();
+  Bitboard b = promotion_zone(c, pt) & forward_file_bb(c, s) & board_bb();
   return !b ? SQ_NONE : c == WHITE ? lsb(b) : msb(b);
+}
+
+inline Bitboard Position::promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory) const {
+    const auto& rule = var->promotionRules[mapped][c][pt];
+    Bitboard zone = mandatory ? rule.mandatoryRegion : rule.optionalRegion;
+    uint16_t cases = mandatory ? rule.mandatoryCases : rule.optionalCases;
+    if (!cases || !targets)
+        return 0;
+    Bitboard quiet = 0, captures = 0;
+    if (zone & from)
+    {
+        if (cases & PROMO_IIQ) quiet |= zone;
+        if (cases & PROMO_IIC) captures |= zone;
+        if (cases & PROMO_IOQ) quiet |= ~zone;
+        if (cases & PROMO_IOC) captures |= ~zone;
+    }
+    else
+    {
+        if (cases & PROMO_OIQ) quiet |= zone;
+        if (cases & PROMO_OIC) captures |= zone;
+    }
+    if ((cases & PROMO_LAST) && (targets & zone))
+    {
+        Bitboard last = promotion_last_squares(c, pt) & zone;
+        if (cases & PROMO_LASTQ) quiet |= last;
+        if (cases & PROMO_LASTC) captures |= last;
+    }
+    return targets & ((quiet & ~pieces()) | (captures & pieces(~c)));
 }
 
 inline PieceType Position::main_promotion_pawn_type(Color c) const {
@@ -759,7 +791,7 @@ inline Bitboard Position::drop_region(Color c, PieceType pt) const {
   if (pt == PAWN)
   {
       if (!var->promotionZonePawnDrops)
-          b &= ~promotion_zone(c);
+          b &= ~promotion_zone(c, pt);
       if (!first_rank_pawn_drops())
           b &= ~rank_bb(relative_rank(c, RANK_1, max_rank()));
   }

@@ -443,6 +443,66 @@ namespace {
         return value.substr(first, last - first + 1);
     }
 
+    bool parse_promotion_policy(const std::string& value, PromotionPolicySetting (&result)[2]) {
+        static const std::map<std::string, uint16_t> cases = {
+            {"oiq", PROMO_OIQ}, {"oic", PROMO_OIC}, {"iiq", PROMO_IIQ},
+            {"iic", PROMO_IIC}, {"ioq", PROMO_IOQ}, {"ioc", PROMO_IOC},
+            {"lastq", PROMO_LASTQ}, {"lastc", PROMO_LASTC},
+            {"oi", PROMO_OI}, {"ii", PROMO_II}, {"io", PROMO_IO},
+            {"all", PROMO_ALL}, {"last", PROMO_LAST}
+        };
+        size_t cursor = 0;
+        bool any = false;
+        while (cursor < value.size())
+        {
+            while (cursor < value.size() && std::isspace(static_cast<unsigned char>(value[cursor])))
+                ++cursor;
+            if (cursor == value.size())
+                break;
+            size_t colon = value.find(':', cursor);
+            if (colon == std::string::npos)
+                return false;
+            std::string name = trim(value.substr(cursor, colon - cursor));
+            int section = name == "optional" ? 0 : name == "mandatory" ? 1 : -1;
+            if (section < 0 || result[section].specified)
+                return false;
+            cursor = colon + 1;
+            while (cursor < value.size() && std::isspace(static_cast<unsigned char>(value[cursor])))
+                ++cursor;
+            if (cursor == value.size() || value[cursor] != '{')
+                return false;
+            size_t end = value.find('}', ++cursor);
+            if (end == std::string::npos)
+                return false;
+            auto& setting = result[section];
+            setting.specified = true;
+            std::string contents = trim(value.substr(cursor, end - cursor));
+            if (!contents.empty())
+            {
+                if (contents.back() == ',')
+                    return false;
+                std::stringstream tokens(contents);
+                std::string token;
+                while (std::getline(tokens, token, ','))
+                {
+                    token = trim(token);
+                    if (token == "inherit")
+                        setting.inherit = true;
+                    else
+                    {
+                        auto entry = cases.find(token);
+                        if (entry == cases.end() || (section && (entry->second & PROMO_LAST)))
+                            return false;
+                        setting.cases |= entry->second;
+                    }
+                }
+            }
+            any = true;
+            cursor = end + 1;
+        }
+        return any;
+    }
+
     bool parse_trading_restriction(const std::string& value, TradingCategory& category, TradingRestriction& restriction) {
         std::string token = trim(value);
         bool conditional = !token.empty() && token.back() == '!';
@@ -555,11 +615,37 @@ template <bool DoCheck>
 Variant* VariantParser<DoCheck>::parse() {
     Variant* v = new Variant();
     v->reset_pieces();
+    for (const auto& entry : config)
+        if (entry.first.find("promotionRegionOptional") == 0
+            || entry.first.find("promotionRegionMandatory") == 0
+            || entry.first.find("promotionPolicy") == 0)
+            v->legacyPromotionDefaults = false;
     return parse(v);
 }
 
 template <bool DoCheck>
 Variant* VariantParser<DoCheck>::parse(Variant* v) {
+    v->nativePromotionRequirement[WHITE] = v->nativePromotionRequirement[BLACK] = -1;
+    // A legacy child may change the meaning of a built-in shared region.
+    // Discard only built-in defaults; user-specified new overrides survive.
+    bool legacyPromotionOverride = false;
+    for (const auto& entry : config)
+        if (entry.first == "promotionRank" || entry.first == "promotionRegionWhite"
+            || entry.first == "promotionRegionBlack" || entry.first == "mandatoryPawnPromotion"
+            || entry.first == "mandatoryPiecePromotion" || entry.first == "piecePromotionOnCapture")
+            legacyPromotionOverride = true;
+    if (legacyPromotionOverride)
+    {
+        v->legacyPromotionDefaults = true;
+        for (Color c : {WHITE, BLACK})
+            for (int pt = NO_PIECE_TYPE; pt < PIECE_TYPE_NB; ++pt)
+            {
+                if (v->optionalPromotionRegions[c][pt].builtIn)
+                    v->optionalPromotionRegions[c][pt] = {};
+                if (v->mandatoryPromotionRegions[c][pt].builtIn)
+                    v->mandatoryPromotionRegions[c][pt] = {};
+            }
+    }
     bool maxRankOverridden = config.find("maxRank") != config.end();
     parse_attribute("maxRank", v->maxRank);
     parse_attribute("maxFile", v->maxFile);
@@ -830,6 +916,52 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("mandatoryPawnPromotion", v->mandatoryPawnPromotion);
     parse_attribute("mandatoryPiecePromotion", v->mandatoryPiecePromotion);
     parse_attribute("pieceDemotion", v->pieceDemotion);
+    // Parse all levels before resolving: line order must not affect inheritance.
+    for (int colour = WHITE; colour <= COLOR_NB; ++colour)
+    {
+        std::string color = colour == WHITE ? "White" : colour == BLACK ? "Black" : "";
+        for (int index = NO_PIECE_TYPE; index < PIECE_TYPE_NB; ++index)
+        {
+            if (colour == COLOR_NB && index != NO_PIECE_TYPE)
+                continue;
+            PieceType pt = PieceType(index);
+            std::string piece = index == NO_PIECE_TYPE ? "" : piece_name(pt);
+            if (!piece.empty())
+                piece[0] = toupper(piece[0]);
+            if (colour != COLOR_NB)
+                for (int section : {0, 1})
+                {
+                    std::string key = std::string("promotionRegion") + (section ? "Mandatory" : "Optional") + color + piece;
+                    auto entry = config.find(key);
+                    if (entry != config.end())
+                    {
+                        Bitboard region;
+                        if (set(entry->second, region))
+                        {
+                            auto& settings = section ? v->mandatoryPromotionRegions : v->optionalPromotionRegions;
+                            settings[colour][index] = {region, true};
+                        }
+                        else
+                            std::cerr << key << " - Invalid promotion region: " << entry->second << std::endl;
+                    }
+                }
+            std::string key = "promotionPolicy" + color + piece;
+            auto entry = config.find(key);
+            if (entry != config.end())
+            {
+                PromotionPolicySetting parsed[2] = {};
+                if (parse_promotion_policy(entry->second, parsed))
+                {
+                    for (int section : {0, 1})
+                        if (parsed[section].specified)
+                            v->promotionPolicies[colour][index][section] = parsed[section];
+                }
+                else
+                    std::cerr << key << " - Invalid promotion policy: " << entry->second << std::endl;
+            }
+        }
+    }
+
     const auto& it_double_pieces = config.find("doubleMovePieces");
     if (it_double_pieces != config.end())
     {

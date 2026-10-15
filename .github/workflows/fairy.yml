@@ -70,6 +70,11 @@ jobs:
         run: |
           ../tests/protocol.sh
 
+      - name: Test promotion rules
+        run: |
+          bash ../tests/promotion.sh
+          python3 ../tests/promotion_rules.py
+
       - name: Test variants.ini
         run: |
           ! ./stockfish check variants.ini 2>&1 >/dev/null | grep -v "Parsing variant"

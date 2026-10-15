@@ -257,11 +257,15 @@ namespace {
         for (PieceSet promotions = pos.promotion_piece_types(c); promotions;)
         {
             PieceType pt = pop_msb(promotions);
-            if (!pos.promotion_limit(pt) || pos.promotion_limit(pt) > pos.count(c, pt))
+            if ((!pos.promotion_limit(pt) || pos.promotion_limit(pt) > pos.count(c, pt))
+                && (pos.promotion_targets(c, PAWN, to - D, square_bb(to), false)
+                    | pos.promotion_targets(c, PAWN, to - D, square_bb(to), false, true)))
                 moveList = make_move_and_gating<PROMOTION>(pos, moveList, pos.side_to_move(), to - D, to, pt);
         }
         PieceType pt = pos.promoted_piece_type(PAWN);
-        if (pt && !(pos.piece_promotion_on_capture() && pos.empty(to)))
+        if (pt && (!pos.promotion_limit(pt) || pos.promotion_limit(pt) > pos.count(c, pt))
+            && (pos.promotion_targets(c, PAWN, to - D, square_bb(to), true)
+                | pos.promotion_targets(c, PAWN, to - D, square_bb(to), true, true)))
             moveList = make_move_and_gating<PIECE_PROMOTION>(pos, moveList, pos.side_to_move(), to - D, to);
     }
 
@@ -306,8 +310,7 @@ namespace {
     constexpr Direction UpRight  = (Us == WHITE ? NORTH_EAST : SOUTH_WEST);
     constexpr Direction UpLeft   = (Us == WHITE ? NORTH_WEST : SOUTH_EAST);
 
-    const Bitboard promotionZone = pos.promotion_zone(Us);
-    const Bitboard standardPromotionZone = pos.sittuyin_promotion() ? Bitboard(0) : promotionZone;
+    const Bitboard promotionZone = pos.promotion_zone(Us, PAWN);
     const Bitboard doubleStepRegion = pos.double_step_region(Us);
     const Bitboard tripleStepRegion = pos.triple_step_region(Us);
 
@@ -324,21 +327,33 @@ namespace {
     Bitboard brc = shift<UpRight>(pawns) & capturable & target;
     Bitboard blc = shift<UpLeft >(pawns) & capturable & target;
 
-    Bitboard b1p = b1 & standardPromotionZone;
-    Bitboard b2p = b2 & standardPromotionZone;
-    Bitboard b3p = b3 & standardPromotionZone;
-    Bitboard brcp = brc & standardPromotionZone;
-    Bitboard blcp = blc & standardPromotionZone;
-
-    // Restrict regions based on rules and move generation type
-    if (pos.mandatory_pawn_promotion())
-    {
-        b1 &= ~standardPromotionZone;
-        b2 &= ~standardPromotionZone;
-        b3 &= ~standardPromotionZone;
-        brc &= ~standardPromotionZone;
-        blc &= ~standardPromotionZone;
-    }
+    // Resolve each source independently; non-rank regions and last triggers
+    // cannot be represented by a single destination rank filter.
+    auto promotions = [&](Bitboard destinations, Direction direction, bool mandatory) {
+        Bitboard result = 0;
+        if (pos.sittuyin_promotion())
+            return result;
+        destinations &= pos.variant()->promotionCandidates[Us][PAWN];
+        while (destinations)
+        {
+            Square to = pop_lsb(destinations);
+            Square from = to - direction;
+            result |= pos.promotion_targets(Us, PAWN, from, square_bb(to), false, mandatory);
+            if (pos.promoted_piece_type(PAWN))
+                result |= pos.promotion_targets(Us, PAWN, from, square_bb(to), true, mandatory);
+        }
+        return result;
+    };
+    Bitboard b1p = promotions(b1, Up, false) | promotions(b1, Up, true);
+    Bitboard b2p = promotions(b2, Up + Up, false) | promotions(b2, Up + Up, true);
+    Bitboard b3p = promotions(b3, Up + Up + Up, false) | promotions(b3, Up + Up + Up, true);
+    Bitboard brcp = promotions(brc, UpRight, false) | promotions(brc, UpRight, true);
+    Bitboard blcp = promotions(blc, UpLeft, false) | promotions(blc, UpLeft, true);
+    b1 &= ~promotions(b1, Up, true);
+    b2 &= ~promotions(b2, Up + Up, true);
+    b3 &= ~promotions(b3, Up + Up + Up, true);
+    brc &= ~promotions(brc, UpRight, true);
+    blc &= ~promotions(blc, UpLeft, true);
 
     if (Type == QUIET_CHECKS && pos.count<KING>(Them))
     {
@@ -467,35 +482,27 @@ namespace {
         Bitboard b = (  (attacks & pos.pieces())
                        | (quiets & ~pos.pieces()));
         Bitboard b1 = b & target;
-        Bitboard promotion_zone = pos.promotion_zone(Us);
         PieceType promPt = pos.is_promoted(from) ? NO_PIECE_TYPE : pos.promoted_piece_type(Pt);
-        Bitboard b2 = promPt && (!pos.promotion_limit(promPt) || pos.promotion_limit(promPt) > pos.count(Us, promPt)) ? b1 : Bitboard(0);
-        Bitboard b3 = pos.piece_demotion() && pos.is_promoted(from) ? b1 : Bitboard(0);
-        Bitboard pawnPromotions = (pos.promotion_pawn_types(Us) & Pt) ? (b & (Type == EVASIONS ? target : ~pos.pieces(Us)) & promotion_zone) : Bitboard(0);
+        PieceType rulePt = pos.is_promoted(from) && pos.unpromoted_piece_on(from)
+                         ? type_of(pos.unpromoted_piece_on(from)) : Pt;
+        Bitboard mappedTargets = 0;
+        if (promPt || (pos.piece_demotion() && pos.is_promoted(from)))
+            mappedTargets = pos.promotion_targets(Us, rulePt, from, b1, true)
+                          | pos.promotion_targets(Us, rulePt, from, b1, true, true);
+        Bitboard b2 = promPt && (!pos.promotion_limit(promPt) || pos.promotion_limit(promPt) > pos.count(Us, promPt))
+                    ? mappedTargets : Bitboard(0);
+        Bitboard b3 = pos.piece_demotion() && pos.is_promoted(from) ? mappedTargets : Bitboard(0);
+        Bitboard pawnPromotions = (pos.promotion_pawn_types(Us) & Pt)
+                               ? pos.promotion_targets(Us, Pt, from, b & (Type == EVASIONS ? target : ~pos.pieces(Us)), false)
+                                 | pos.promotion_targets(Us, Pt, from, b & (Type == EVASIONS ? target : ~pos.pieces(Us)), false, true)
+                               : Bitboard(0);
         Bitboard epSquares = (pos.en_passant_types(Us) & Pt) ? (attacks & ~quiets & pos.ep_squares() & ~pos.pieces()) : Bitboard(0);
 
-        // target squares considering pawn promotions
-        if (pawnPromotions && pos.mandatory_pawn_promotion())
-            b1 &= ~pawnPromotions;
-
-        // Restrict target squares considering promotion zone
-        if (b2 | b3)
-        {
-            if (pos.mandatory_piece_promotion())
-                b1 &= (promotion_zone & from ? Bitboard(0) : ~promotion_zone) | (pos.piece_promotion_on_capture() ? ~pos.pieces() : Bitboard(0));
-            // Exclude quiet promotions/demotions
-            if (pos.piece_promotion_on_capture())
-            {
-                b2 &= pos.pieces();
-                b3 &= pos.pieces();
-            }
-            // Consider promotions/demotions into promotion zone
-            if (!(promotion_zone & from))
-            {
-                b2 &= promotion_zone;
-                b3 &= promotion_zone;
-            }
-        }
+        if (pos.promotion_pawn_types(Us) & Pt)
+            b1 &= ~pos.promotion_targets(Us, Pt, from, b1, false, true);
+        // Availability of the target must not permit declining mandatory promotion.
+        if (promPt || (pos.piece_demotion() && pos.is_promoted(from)))
+            b1 &= ~pos.promotion_targets(Us, rulePt, from, b1, true, true);
 
         if (Type == QUIET_CHECKS)
         {

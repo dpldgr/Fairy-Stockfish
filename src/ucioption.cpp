@@ -55,6 +55,7 @@ std::set<string> standard_variants = {
 void init_variant(const Variant* v) {
     pieceMap.init(v);
     Bitboards::init_pieces();
+    v->init_promotion_masks();
 }
 
 /// 'On change' actions, triggered by an option's value change
@@ -147,7 +148,7 @@ void on_variant_change(const Option &o) {
                     suffix += std::string(v->dropNoDoubledCount, 'f');
                 else if (pt == BISHOP && v->dropOppositeColoredBishop)
                     suffix += "s";
-                suffix += "@" + std::to_string(pt == PAWN && !v->promotionZonePawnDrops && v->promotionRegion[WHITE] ? rank_of(lsb(v->promotionRegion[WHITE])) : v->maxRank + 1);
+                suffix += "@" + std::to_string(pt == PAWN && !v->promotionZonePawnDrops && v->promotionAreas[WHITE][pt] ? rank_of(lsb(v->promotionAreas[WHITE][pt])) : v->maxRank + 1);
             }
             sync_cout << "piece " << v->pieceToChar[pt] << "& " << pieceMap.find(pt == KING ? v->kingType : pt)->second->betza << suffix << sync_endl;
             PieceType promType = v->promotedPieceType[pt];

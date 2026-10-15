@@ -35,6 +35,39 @@
 
 namespace Stockfish {
 
+enum PromotionCase : uint16_t {
+  PROMO_OIQ = 1 << 0, PROMO_OIC = 1 << 1,
+  PROMO_IIQ = 1 << 2, PROMO_IIC = 1 << 3,
+  PROMO_IOQ = 1 << 4, PROMO_IOC = 1 << 5,
+  PROMO_LASTQ = 1 << 6, PROMO_LASTC = 1 << 7,
+  PROMO_OI = PROMO_OIQ | PROMO_OIC,
+  PROMO_II = PROMO_IIQ | PROMO_IIC,
+  PROMO_IO = PROMO_IOQ | PROMO_IOC,
+  PROMO_ALL = PROMO_OI | PROMO_II | PROMO_IO,
+  PROMO_LAST = PROMO_LASTQ | PROMO_LASTC
+};
+
+enum PromotionRequirement { PROMOTION_OPTIONAL, PROMOTION_MANDATORY };
+
+struct PromotionRegionSetting {
+  Bitboard region = 0;
+  bool specified = false;
+  bool builtIn = false;
+};
+
+struct PromotionPolicySetting {
+  uint16_t cases = 0;
+  bool specified = false;
+  bool inherit = false;
+};
+
+struct PromotionRule {
+  Bitboard optionalRegion = 0;
+  Bitboard mandatoryRegion = 0;
+  uint16_t optionalCases = 0;
+  uint16_t mandatoryCases = 0;
+};
+
 /// Variant struct stores information needed to determine the rules of a variant.
 
 struct HookMoveSpec {
@@ -247,6 +280,22 @@ struct Variant {
   std::vector<Direction> connectDirections;
   PieceSet connectPieceTypesTrimmed = ~NO_PIECE_SET;
 
+  // Unresolved settings: type zero is global; colour COLOR_NB is the root.
+  PromotionRegionSetting optionalPromotionRegions[COLOR_NB][PIECE_TYPE_NB] = {};
+  PromotionRegionSetting mandatoryPromotionRegions[COLOR_NB][PIECE_TYPE_NB] = {};
+  PromotionPolicySetting promotionPolicies[COLOR_NB + 1][PIECE_TYPE_NB][2] = {};
+  bool legacyPromotionDefaults = true;
+  // Built-ins declare their region requirement explicitly; INI compatibility
+  // resolves the old pawn/piece flags instead.
+  int nativePromotionRequirement[COLOR_NB] = {-1, -1};
+  // Flattened rules for choice and fixed-mapping promotion respectively.
+  PromotionRule promotionRules[2][COLOR_NB][PIECE_TYPE_NB] = {};
+  Bitboard promotionAreas[COLOR_NB][PIECE_TYPE_NB] = {};
+  Bitboard promotionCandidates[COLOR_NB][PIECE_TYPE_NB] = {};
+  PieceSet lastPromotionTypes[COLOR_NB] = {};
+  mutable Bitboard promotionImmobility[COLOR_NB][PIECE_TYPE_NB] = {};
+  bool conventionalPawnPromotion[COLOR_NB] = {};
+
   Variant() {
       pieceToSymbol.resize(PIECE_NB);
       pieceToSymbolSynonyms.resize(PIECE_NB);
@@ -331,6 +380,32 @@ struct Variant {
   }
 
   Variant* conclude();
+  void resolve_promotion_rules();
+  void init_promotion_masks() const;
+  Bitboard promotion_immobility_mask(Color c, PieceType pt, Bitboard walls) const;
+  void set_optional_promotion_region(Color c, Bitboard region, PieceType pt = NO_PIECE_TYPE) {
+      optionalPromotionRegions[c][pt] = {region, true, true};
+      if (pt == NO_PIECE_TYPE)
+          promotionRegion[c] = region; // Projection for inherited legacy INI options.
+  }
+  void set_mandatory_promotion_region(Color c, Bitboard region, PieceType pt = NO_PIECE_TYPE) {
+      mandatoryPromotionRegions[c][pt] = {region, true, true};
+      if (pt == NO_PIECE_TYPE)
+          promotionRegion[c] = region;
+  }
+  // Replace a built-in's inherited shared region, keeping the intended kind
+  // explicit at the definition. Independent per-piece overrides remain intact.
+  void set_promotion_region(Color c, Bitboard region, PromotionRequirement requirement) {
+      nativePromotionRequirement[c] = requirement;
+      if (optionalPromotionRegions[c][NO_PIECE_TYPE].builtIn)
+          optionalPromotionRegions[c][NO_PIECE_TYPE] = {};
+      if (mandatoryPromotionRegions[c][NO_PIECE_TYPE].builtIn)
+          mandatoryPromotionRegions[c][NO_PIECE_TYPE] = {};
+      if (requirement == PROMOTION_OPTIONAL)
+          set_optional_promotion_region(c, region);
+      else
+          set_mandatory_promotion_region(c, region);
+  }
 };
 
 class VariantMap : public std::map<std::string, const Variant*> {
