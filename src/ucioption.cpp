@@ -139,21 +139,26 @@ void on_variant_change(const Option &o) {
             // Castling
             if (pt == KING && v->castling)
                  suffix += "O" + std::to_string((v->castlingKingsideFile - v->castlingQueensideFile) / 2);
-            // Drop region
-            if (v->pieceDrops)
-            {
-                if (pt == PAWN && !v->firstRankPawnDrops)
-                    suffix += "j";
-                else if (pt == v->dropNoDoubled)
-                    suffix += std::string(v->dropNoDoubledCount, 'f');
-                else if (pt == BISHOP && v->dropOppositeColoredBishop)
-                    suffix += "s";
-                suffix += "@" + std::to_string(pt == PAWN && !v->promotionZonePawnDrops && v->promotionAreas[WHITE][pt] ? rank_of(lsb(v->promotionAreas[WHITE][pt])) : v->maxRank + 1);
-            }
+            auto dropSuffix = [&](PieceType type) {
+                string drops;
+                if (v->pieceDrops)
+                {
+                    if (type == PAWN && !v->firstRankPawnDrops)
+                        drops += "j";
+                    else if (type == v->dropNoDoubled)
+                        drops += std::string(v->dropNoDoubledCount, 'f');
+                    else if (type == BISHOP && v->dropOppositeColoredBishop)
+                        drops += "s";
+                    drops += "@" + std::to_string(v->xboardDropRanks[type]);
+                }
+                return drops;
+            };
+            suffix += dropSuffix(pt);
             sync_cout << "piece " << v->pieceToChar[pt] << "& " << pieceMap.find(pt == KING ? v->kingType : pt)->second->betza << suffix << sync_endl;
             PieceType promType = v->promotedPieceType[pt];
             if (promType)
-                sync_cout << "piece +" << v->pieceToChar[pt] << "& " << pieceMap.find(promType)->second->betza << sync_endl;
+                sync_cout << "piece +" << v->pieceToChar[pt] << "& " << pieceMap.find(promType)->second->betza
+                          << (v->dropPromoted ? dropSuffix(promType) : "") << sync_endl;
         }
     }
     else

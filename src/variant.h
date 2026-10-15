@@ -68,6 +68,11 @@ struct PromotionRule {
   uint16_t mandatoryCases = 0;
 };
 
+struct DropRegionSetting {
+  Bitboard region = 0;
+  bool specified = false;
+};
+
 /// Variant struct stores information needed to determine the rules of a variant.
 
 struct HookMoveSpec {
@@ -296,6 +301,10 @@ struct Variant {
   PieceSet lastPromotionTypes[COLOR_NB] = {};
   mutable Bitboard promotionImmobility[COLOR_NB][PIECE_TYPE_NB] = {};
   bool conventionalPawnPromotion[COLOR_NB] = {};
+  DropRegionSetting dropRegionOverrides[COLOR_NB][PIECE_TYPE_NB] = {};
+  Bitboard dropRegions[COLOR_NB][PIECE_TYPE_NB] = {};
+  int xboardDropRanks[PIECE_TYPE_NB] = {};
+  bool xboardDropRegionsCompatible = true;
 
   Variant() {
       pieceToSymbol.resize(PIECE_NB);
@@ -382,6 +391,13 @@ struct Variant {
 
   Variant* conclude();
   void resolve_promotion_rules();
+  void resolve_drop_regions();
+  void set_drop_region(Color c, Bitboard region, PieceType pt = NO_PIECE_TYPE) {
+      if (pt == NO_PIECE_TYPE)
+          dropRegion[c] = region;
+      else
+          dropRegionOverrides[c][pt] = {region, true};
+  }
   void init_promotion_masks() const;
   Bitboard promotion_immobility_mask(Color c, PieceType pt, Bitboard walls) const;
   void set_optional_promotion_region(Color c, Bitboard region, PieceType pt = NO_PIECE_TYPE) {

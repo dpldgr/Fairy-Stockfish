@@ -189,7 +189,6 @@ public:
   bool first_rank_pawn_drops() const;
   bool can_drop(Color c, PieceType pt) const;
   EnclosingRule enclosing_drop() const;
-  Bitboard drop_region(Color c) const;
   Bitboard drop_region(Color c, PieceType pt) const;
   bool sittuyin_rook_drop() const;
   bool drop_opposite_colored_bishop() const;
@@ -779,13 +778,8 @@ inline EnclosingRule Position::enclosing_drop() const {
   return var->enclosingDrop;
 }
 
-inline Bitboard Position::drop_region(Color c) const {
-  assert(var != nullptr);
-  return var->dropRegion[c];
-}
-
 inline Bitboard Position::drop_region(Color c, PieceType pt) const {
-  Bitboard b = drop_region(c) & board_bb(c, pt);
+  Bitboard b = var->dropRegions[c][pt] & board_bb(c, pt);
 
   // Pawns on back ranks
   if (pt == PAWN)

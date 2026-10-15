@@ -997,8 +997,8 @@ namespace {
             v->mustDrop = true;
             v->pieceDrops = true;
             v->capturesToHand = false;
-            v->dropRegion[WHITE] = "*1"_bb;
-            v->dropRegion[BLACK] = "*8"_bb;
+            v->set_drop_region(WHITE, "*1"_bb);
+            v->set_drop_region(BLACK, "*8"_bb);
             v->dropOppositeColoredBishop = true;
             v->castlingDroppedPiece = true;
             v->nnueAlias = "nn-";
@@ -1021,8 +1021,8 @@ namespace {
             v->mustDrop = true;
             v->pieceDrops = true;
             v->capturesToHand = false;
-            v->dropRegion[WHITE] = "*1 *2 *3"_bb;
-            v->dropRegion[BLACK] = "*8 *7 *6"_bb;
+            v->set_drop_region(WHITE, "*1 *2 *3"_bb);
+            v->set_drop_region(BLACK, "*8 *7 *6"_bb);
             v->sittuyinRookDrop = true;
             v->sittuyinPromotion = true;
             v->set_promotion_region(WHITE, "a8 b7 c6 d5 e5 f6 g7 h8"_bb, PROMOTION_OPTIONAL);
@@ -1088,8 +1088,8 @@ namespace {
             v->startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Dd] w KQkq - 0 1";
             v->pieceDrops = true;
             v->capturesToHand = false;
-            v->dropRegion[WHITE] = "*1"_bb;
-            v->dropRegion[BLACK] = "*8"_bb;
+            v->set_drop_region(WHITE, "*1"_bb);
+            v->set_drop_region(BLACK, "*8"_bb);
             v->promotionPieceTypes[WHITE] = piece_set(ARCHBISHOP) | QUEEN | ROOK | BISHOP | KNIGHT;
             v->promotionPieceTypes[BLACK] = piece_set(ARCHBISHOP) | QUEEN | ROOK | BISHOP | KNIGHT;
         }
@@ -2359,8 +2359,8 @@ namespace {
             v->twoBoards = true;
             v->pieceDrops = true;
             v->dropChecks = false;
-            v->dropRegion[WHITE] = v->mobilityRegion[WHITE][ELEPHANT];
-            v->dropRegion[BLACK] = v->mobilityRegion[BLACK][ELEPHANT];
+            v->set_drop_region(WHITE, v->mobilityRegion[WHITE][ELEPHANT]);
+            v->set_drop_region(BLACK, v->mobilityRegion[BLACK][ELEPHANT]);
             v->mobilityRegion[WHITE][FERS] = "d1 f1 e2 d3 f3"_bb;
             v->mobilityRegion[BLACK][FERS] = "d8 f8 e9 d10 f10"_bb;
             v->mobilityRegion[WHITE][ELEPHANT] = "c1 g1 a3 e3 i3 c5 g5"_bb;
@@ -2822,8 +2822,71 @@ void Variant::resolve_promotion_rules() {
     }
 }
 
+void Variant::resolve_drop_regions() {
+    Bitboard board = board_size_bb(maxFile, maxRank);
+    for (Color c : {WHITE, BLACK})
+        for (PieceType pt = PAWN; pt < PIECE_TYPE_NB; ++pt)
+            dropRegions[c][pt] = dropRegionOverrides[c][pt].specified
+                              ? dropRegionOverrides[c][pt].region : dropRegion[c];
+
+    xboardDropRegionsCompatible = true;
+    std::fill(std::begin(xboardDropRanks), std::end(xboardDropRanks), maxRank + 1);
+    if ((!pieceDrops && !seirawanGating) || enclosingDrop == ANYSIDE)
+        return;
+
+    PieceSet dropTypes = pieceTypes;
+    if (dropPromoted)
+        for (PieceSet ps = pieceTypes; ps;)
+            if (PieceType promoted = promotedPieceType[pop_lsb(ps)])
+                dropTypes |= promoted;
+    for (PieceSet ps = dropTypes; ps;)
+    {
+        PieceType pt = pop_lsb(ps);
+        // The existing XBoard gating description has no per-type gate mask.
+        if (seirawanGating && ((dropRegions[WHITE][pt] & board) != board
+                           || (dropRegions[BLACK][pt] & board) != board))
+            xboardDropRegionsCompatible = false;
+
+        auto restricted = [&](Color c, Bitboard region) {
+            region &= board;
+            if (mobilityRegion[c][pt])
+                region &= mobilityRegion[c][pt];
+            if (pt == PAWN)
+            {
+                if (!promotionZonePawnDrops)
+                    region &= ~promotionAreas[c][pt];
+                if (!firstRankPawnDrops)
+                    region &= ~rank_bb(relative_rank(c, RANK_1, maxRank));
+            }
+            if (pt == ROOK && sittuyinRookDrop)
+                region &= rank_bb(relative_rank(c, RANK_1, maxRank));
+            return region;
+        };
+        Bitboard regions[COLOR_NB] = {restricted(WHITE, dropRegions[WHITE][pt]),
+                                     restricted(BLACK, dropRegions[BLACK][pt])};
+        // XBoard's @n describes n home-side ranks, mirrored for Black. Keep
+        // representable overrides, but omit asymmetric and irregular regions.
+        xboardDropRanks[pt] = -1;
+        Bitboard ranks[COLOR_NB] = {};
+        for (int n = 1; n <= maxRank + 1; ++n)
+        {
+            for (Color c : {WHITE, BLACK})
+                ranks[c] |= rank_bb(relative_rank(c, Rank(n - 1), maxRank));
+            if (restricted(WHITE, ranks[WHITE]) == regions[WHITE]
+                && restricted(BLACK, ranks[BLACK]) == regions[BLACK])
+            {
+                xboardDropRanks[pt] = n;
+                break;
+            }
+        }
+        if (xboardDropRanks[pt] < 0)
+            xboardDropRegionsCompatible = false;
+    }
+}
+
 Variant* Variant::conclude() {
     resolve_promotion_rules();
+    resolve_drop_regions();
     // Enforce consistency to allow runtime optimizations
     if (!doubleStep)
         doubleStepRegion[WHITE] = doubleStepRegion[BLACK] = 0;
