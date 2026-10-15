@@ -173,7 +173,7 @@ void StateMachine::process_command(std::string token, std::istringstream& is) {
   {
       std::string vars = "chess";
       for (std::string v : variants.get_keys())
-          if (v != "chess")
+          if (v != "chess" && variants.find(v)->second->xboardDropRegionsCompatible)
               vars += "," + v;
       sync_cout << "feature setboard=1 usermove=1 time=1 memory=1 smp=1 colors=0 draw=0 "
                 << "highlight=1 name=0 sigint=0 ping=1 myname=\""
@@ -236,7 +236,15 @@ void StateMachine::process_command(std::string token, std::istringstream& is) {
   {
       stop();
       if (is >> token)
+      {
+          auto variant = variants.find(token);
+          if (variant == variants.end() || !variant->second->xboardDropRegionsCompatible)
+          {
+              sync_cout << "Error (unsupported variant): " << token << sync_endl;
+              return;
+          }
           Options["UCI_Variant"] = token;
+      }
       setboard();
   }
   else if (token == "force" || token == "result")

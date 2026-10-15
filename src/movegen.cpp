@@ -278,18 +278,17 @@ namespace {
     // Do not generate virtual drops for perft and at root
     if (pos.can_drop(Us, pt) || (Type != NON_EVASIONS && pos.two_boards() && pos.allow_virtual_drop(Us, pt)))
     {
-        // Restrict to valid target
-        b &= pos.drop_region(Us, pt);
-
         // Add to move list
         if (pos.drop_promoted() && pos.promoted_piece_type(pt))
         {
-            Bitboard b2 = b;
+            Bitboard b2 = b & pos.drop_region(Us, pos.promoted_piece_type(pt));
             if (Type == QUIET_CHECKS)
                 b2 &= pos.check_squares(pos.promoted_piece_type(pt));
             while (b2)
                 *moveList++ = make_drop(pop_lsb(b2), pt, pos.promoted_piece_type(pt));
         }
+        // Regions and mobility restrictions belong to the form placed on board.
+        b &= pos.drop_region(Us, pt);
         if (Type == QUIET_CHECKS || !pos.can_drop(Us, pt))
             b &= pos.check_squares(pt);
         while (b)

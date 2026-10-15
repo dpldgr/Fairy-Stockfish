@@ -1245,6 +1245,15 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("enclosingDropStart", v->enclosingDropStart);
     parse_attribute("dropRegionWhite", v->dropRegion[WHITE]);
     parse_attribute("dropRegionBlack", v->dropRegion[BLACK]);
+    for (Color c : {WHITE, BLACK})
+        for (PieceType pt = PAWN; pt < PIECE_TYPE_NB; ++pt)
+        {
+            std::string name = piece_name(pt);
+            name[0] = toupper(name[0]);
+            Bitboard region;
+            if (parse_attribute(std::string("dropRegion") + (c == WHITE ? "White" : "Black") + name, region))
+                v->dropRegionOverrides[c][pt] = {region, true};
+        }
     parse_attribute("sittuyinRookDrop", v->sittuyinRookDrop);
     parse_attribute("dropOppositeColoredBishop", v->dropOppositeColoredBishop);
     parse_attribute("dropPromoted", v->dropPromoted);

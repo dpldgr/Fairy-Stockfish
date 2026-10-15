@@ -75,6 +75,11 @@ jobs:
           bash ../tests/promotion.sh
           python3 ../tests/promotion_rules.py
 
+      - name: Test drop regions
+        run: |
+          bash ../tests/drop.sh
+          python3 ../tests/drop_regions.py
+
       - name: Test variants.ini
         run: |
           ! ./stockfish check variants.ini 2>&1 >/dev/null | grep -v "Parsing variant"
