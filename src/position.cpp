@@ -1321,6 +1321,24 @@ Bitboard Position::checked_pseudo_royals(Color c) const {
 }
 
 
+Bitboard Position::promotion_last_squares(Color c, PieceType pt) const {
+    // A movable duck is temporary occupancy, not permanent board geometry.
+    if (!st->wallSquares || walling_rule() == DUCK)
+        return var->promotionImmobility[c][pt];
+    if (promotionWallGeometry != st->wallSquares)
+    {
+        promotionWallGeometry = st->wallSquares;
+        for (Color color : {WHITE, BLACK})
+            for (PieceSet ps = var->lastPromotionTypes[color]; ps;)
+            {
+                PieceType type = pop_lsb(ps);
+                promotionWallImmobility[color][type] = var->promotion_immobility_mask(color, type, st->wallSquares);
+            }
+    }
+    return promotionWallImmobility[c][pt];
+}
+
+
 /// Position::legal() tests whether a pseudo-legal move is legal
 
 bool Position::legal(Move m) const {
@@ -1829,11 +1847,18 @@ bool Position::pseudo_legal(const Move m) const {
       };
   }
 
-  // Handle the case where a mandatory piece promotion/demotion is not taken
-  if (    mandatory_piece_promotion()
-      && (is_promoted(from) ? piece_demotion() : promoted_piece_type(type_of(pc)) != NO_PIECE_TYPE)
-      && (promotion_zone(us) & (SquareBB[from] | to))
-      && (!piece_promotion_on_capture() || capture(m)))
+  // Ordinary moves must not decline a mandatory promotion, including when
+  // all promotion targets are unavailable.
+  PieceType pt = type_of(pc);
+  PieceType rulePt = is_promoted(from) && unpromoted_piece_on(from)
+                   ? type_of(unpromoted_piece_on(from)) : pt;
+  if ((pt == PAWN || (promotion_pawn_types(us) & pt))
+      && !sittuyin_promotion()
+      && promotion_targets(us, pt, from, square_bb(to), false, true))
+      return false;
+  if ((is_promoted(from) ? piece_demotion() : promoted_piece_type(pt) != NO_PIECE_TYPE)
+      && !sittuyin_promotion()
+      && promotion_targets(us, rulePt, from, square_bb(to), true, true))
       return false;
 
   // Is not a promotion, so promotion piece must be empty
@@ -1854,8 +1879,6 @@ bool Position::pseudo_legal(const Move m) const {
   {
       // We have already handled promotion moves, so destination
       // cannot be on the 8th/1st rank.
-      if (mandatory_pawn_promotion() && (promotion_zone(us) & to) && !sittuyin_promotion())
-          return false;
 
       if (   !(pawn_attacks_bb(us, from) & pieces(~us) & to)     // Not a capture
           && !((from + pawn_push(us) == to) && !(pieces() & to)) // Not a single push
@@ -2355,7 +2378,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       {
           Piece promotion = make_piece(us, type_of(m) == PROMOTION ? promotion_type(m) : promoted_piece_type(PAWN));
 
-          assert((promotion_zone(us) & to) || sittuyin_promotion());
+          assert((promotion_zone(us, PAWN) & (square_bb(from) | to)) || sittuyin_promotion());
           assert(type_of(promotion) >= KNIGHT && type_of(promotion) < KING);
 
           st->promotionPawn = piece_on(to);
@@ -2754,7 +2777,7 @@ void Position::undo_move(Move m) {
 
   if (type_of(m) == PROMOTION)
   {
-      assert((promotion_zone(us) & to) || sittuyin_promotion());
+      assert((promotion_zone(us, PAWN) & (square_bb(from) | to)) || sittuyin_promotion());
       assert(type_of(pc) == promotion_type(m));
       assert(type_of(pc) >= KNIGHT && type_of(pc) < KING);
       assert(type_of(st->promotionPawn) == main_promotion_pawn_type(us) || !captures_to_hand());

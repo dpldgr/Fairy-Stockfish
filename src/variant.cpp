@@ -179,8 +179,8 @@ namespace {
             v =  chess_variant_base<VariantFiles, VariantRanks>()->init();
             v->remove_piece(PAWN);
             v->add_piece(CUSTOM_PIECE_1, 'p', "mflFcflW");
-            v->promotionRegion[WHITE] = "a8 b8 c8 d8 a7 a6 a5"_bb;
-            v->promotionRegion[BLACK] = "e1 f1 g1 h1 h2 h3 h4"_bb;
+            v->set_promotion_region(WHITE, "a8 b8 c8 d8 a7 a6 a5"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "e1 f1 g1 h1 h2 h3 h4"_bb, PROMOTION_MANDATORY);
             v->mainPromotionPawnType[WHITE] = v->mainPromotionPawnType[BLACK] = CUSTOM_PIECE_1;
             v->promotionPawnTypes[WHITE] = v->promotionPawnTypes[BLACK] = piece_set(CUSTOM_PIECE_1);
             v->nMoveRuleTypes[WHITE] = v->nMoveRuleTypes[BLACK] = piece_set(CUSTOM_PIECE_1);
@@ -232,8 +232,8 @@ namespace {
             v->add_piece(KHON, 's');
             v->add_piece(MET, 'm');
             v->startFen = "rnsmksnr/8/pppppppp/8/8/PPPPPPPP/8/RNSKMSNR w - - 0 1";
-            v->promotionRegion[WHITE] = "*6 *7 *8"_bb;
-            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
+            v->set_promotion_region(WHITE, "*6 *7 *8"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*3 *2 *1"_bb, PROMOTION_MANDATORY);
             v->promotionPieceTypes[WHITE] = piece_set(MET);
             v->promotionPieceTypes[BLACK] = piece_set(MET);
             v->doubleStep = false;
@@ -1025,8 +1025,8 @@ namespace {
             v->dropRegion[BLACK] = "*8 *7 *6"_bb;
             v->sittuyinRookDrop = true;
             v->sittuyinPromotion = true;
-            v->promotionRegion[WHITE] = "a8 b7 c6 d5 e5 f6 g7 h8"_bb;
-            v->promotionRegion[BLACK] = "a1 b2 c3 d4 e4 f3 g2 h1"_bb;
+            v->set_promotion_region(WHITE, "a8 b7 c6 d5 e5 f6 g7 h8"_bb, PROMOTION_OPTIONAL);
+            v->set_promotion_region(BLACK, "a1 b2 c3 d4 e4 f3 g2 h1"_bb, PROMOTION_OPTIONAL);
             v->promotionLimit[FERS] = 1;
             v->immobilityIllegal = false;
             v->countingRule = ASEAN_COUNTING;
@@ -1133,8 +1133,8 @@ namespace {
             v->startFen = "rbsgk/4p/5/P4/KGSBR[-] w 0 1";
             v->pieceDrops = true;
             v->capturesToHand = true;
-            v->promotionRegion[WHITE] = "*5"_bb;
-            v->promotionRegion[BLACK] = "*1"_bb;
+            v->set_promotion_region(WHITE, "*5"_bb, PROMOTION_OPTIONAL);
+            v->set_promotion_region(BLACK, "*1"_bb, PROMOTION_OPTIONAL);
             v->doubleStep = false;
             v->castling = false;
             v->promotedPieceType[SHOGI_PAWN] = GOLD;
@@ -1180,8 +1180,8 @@ namespace {
             v->add_piece(LANCE, 'l');
             v->add_piece(SHOGI_KNIGHT, 'n');
             v->startFen = "p+nks+l/5/5/5/+LSK+NP[-] w 0 1";
-            v->promotionRegion[WHITE] = AllSquares;
-            v->promotionRegion[BLACK] = AllSquares;
+            v->set_promotion_region(WHITE, AllSquares, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, AllSquares, PROMOTION_MANDATORY);
             v->mandatoryPiecePromotion = true;
             v->pieceDemotion = true;
             v->dropPromoted = true;
@@ -1209,8 +1209,8 @@ namespace {
             v = kyotoshogi_variant<VariantFiles, VariantRanks>()->init();
             v->maxFile = FILE_D;
             v->startFen = "kb+r+l/p3/4/3P/+L+RBK[-] w 0 1";
-            v->promotionRegion[WHITE] = AllSquares;
-            v->promotionRegion[BLACK] = AllSquares;
+            v->set_promotion_region(WHITE, AllSquares, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, AllSquares, PROMOTION_MANDATORY);
             v->piecePromotionOnCapture = true;
             v->promotedPieceType[LANCE]        = SILVER;
             v->promotedPieceType[BISHOP]       = GOLD;
@@ -1242,8 +1242,8 @@ namespace {
             v->add_piece(WAZIR, 'g');
             v->add_piece(COMMONER, 'l');
             v->startFen = "gle/1c1/1C1/ELG[-] w 0 1";
-            v->promotionRegion[WHITE] = "*4"_bb;
-            v->promotionRegion[BLACK] = "*1"_bb;
+            v->set_promotion_region(WHITE, "*4"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*1"_bb, PROMOTION_MANDATORY);
             v->mandatoryPiecePromotion = true;
             v->immobilityIllegal = false;
             v->shogiPawnDropMateIllegal = false;
@@ -1272,8 +1272,8 @@ namespace {
             v->maxRank = RANK_6;
             v->maxFile = FILE_E;
             v->startFen = "sgkgs/5/1ppp1/1PPP1/5/SGKGS[-] w 0 1";
-            v->promotionRegion[WHITE] = "*5 *6"_bb;
-            v->promotionRegion[BLACK] = "*2 *1"_bb;
+            v->set_promotion_region(WHITE, "*5 *6"_bb, PROMOTION_OPTIONAL);
+            v->set_promotion_region(BLACK, "*2 *1"_bb, PROMOTION_OPTIONAL);
         }
         return v;
     }
@@ -1290,8 +1290,8 @@ namespace {
             v->maxFile = FILE_F;
             v->add_piece(SHOGI_KNIGHT, 'n');
             v->startFen = "rbnsgk/5p/6/6/P5/KGSNBR[-] w 0 1";
-            v->promotionRegion[WHITE] = "*5 *6"_bb;
-            v->promotionRegion[BLACK] = "*2 *1"_bb;
+            v->set_promotion_region(WHITE, "*5 *6"_bb, PROMOTION_OPTIONAL);
+            v->set_promotion_region(BLACK, "*2 *1"_bb, PROMOTION_OPTIONAL);
             v->promotedPieceType[SHOGI_KNIGHT] = GOLD;
         }
         return v;
@@ -1321,8 +1321,8 @@ namespace {
             v->startFen = "rpckcpl/3f3/sssssss/2s1S2/SSSSSSS/3F3/LPCKCPR[-] w 0 1";
             v->pieceDrops = true;
             v->capturesToHand = true;
-            v->promotionRegion[WHITE] = "*6 *7"_bb;
-            v->promotionRegion[BLACK] = "*2 *1"_bb;
+            v->set_promotion_region(WHITE, "*6 *7"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*2 *1"_bb, PROMOTION_MANDATORY);
             v->doubleStep = false;
             v->castling = false;
             v->promotedPieceType[SHOGI_PAWN]    = CUSTOM_PIECE_6; // swallow promotes to goose
@@ -1353,8 +1353,8 @@ namespace {
             v->maxFile = FILE_H;
             v->add_piece(CUSTOM_PIECE_1, 'n', "fNsW");
             v->startFen = "1nbgkgn1/1r4b1/pppppppp/8/8/PPPPPPPP/1B4R1/1NGKGBN1[-] w 0 1";
-            v->promotionRegion[WHITE] = "*6 *7 *8"_bb;
-            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
+            v->set_promotion_region(WHITE, "*6 *7 *8"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*3 *2 *1"_bb, PROMOTION_MANDATORY);
             v->promotedPieceType[CUSTOM_PIECE_1] = GOLD;
             v->mandatoryPiecePromotion = true;
         }
@@ -1373,8 +1373,8 @@ namespace {
             v->maxFile = FILE_F;
             v->remove_piece(BISHOP);
             v->startFen = "rnqknr/pppppp/6/6/PPPPPP/RNQKNR w - - 0 1";
-            v->promotionRegion[WHITE] = "*6"_bb;
-            v->promotionRegion[BLACK] = "*1"_bb;
+            v->set_promotion_region(WHITE, "*6"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*1"_bb, PROMOTION_MANDATORY);
             v->promotionPieceTypes[WHITE] = piece_set(QUEEN) | ROOK | KNIGHT;
             v->promotionPieceTypes[BLACK] = piece_set(QUEEN) | ROOK | KNIGHT;
             v->doubleStep = false;
@@ -1393,8 +1393,8 @@ namespace {
             v->maxRank = RANK_5;
             v->maxFile = FILE_E;
             v->startFen = "rnbqk/ppppp/5/PPPPP/RNBQK w - - 0 1";
-            v->promotionRegion[WHITE] = "*5"_bb;
-            v->promotionRegion[BLACK] = "*1"_bb;
+            v->set_promotion_region(WHITE, "*5"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*1"_bb, PROMOTION_MANDATORY);
             v->doubleStep = false;
             v->castling = false;
         }
@@ -1697,8 +1697,8 @@ namespace {
             v->add_piece(LANCE, 'l');
             v->add_piece(SHOGI_KNIGHT, 'n');
             v->startFen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL[-] w 0 1";
-            v->promotionRegion[WHITE] = "*7 *8 *9"_bb;
-            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
+            v->set_promotion_region(WHITE, "*7 *8 *9"_bb, PROMOTION_OPTIONAL);
+            v->set_promotion_region(BLACK, "*3 *2 *1"_bb, PROMOTION_OPTIONAL);
             v->promotedPieceType[LANCE]        = GOLD;
             v->promotedPieceType[SHOGI_KNIGHT] = GOLD;
         }
@@ -1763,8 +1763,8 @@ namespace {
             v->add_piece(CUSTOM_PIECE_4, 'g', "WfFbR"); // Yari gold
             v->add_piece(CUSTOM_PIECE_5, 's', "fKbR"); // Yari silver
             v->startFen = "rnnkbbr/7/ppppppp/7/7/7/PPPPPPP/7/RBBKNNR[-] w 0 1";
-            v->promotionRegion[WHITE] = "*7 *8 *9"_bb;
-            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
+            v->set_promotion_region(WHITE, "*7 *8 *9"_bb, PROMOTION_OPTIONAL);
+            v->set_promotion_region(BLACK, "*3 *2 *1"_bb, PROMOTION_OPTIONAL);
             v->promotedPieceType[SHOGI_PAWN] = CUSTOM_PIECE_5;
             v->promotedPieceType[CUSTOM_PIECE_1] = CUSTOM_PIECE_4;
             v->promotedPieceType[CUSTOM_PIECE_2] = CUSTOM_PIECE_4;
@@ -1797,8 +1797,8 @@ namespace {
             v->add_piece(KNIGHT, 'n');
             v->add_piece(QUEEN, 'q');
             v->startFen = "lnsgkqgsnl/1r6b1/pppppppppp/10/10/10/10/PPPPPPPPPP/1B6R1/LNSGQKGSNL[-] w 0 1";
-            v->promotionRegion[WHITE] = "*8 *9 *10"_bb;
-            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
+            v->set_promotion_region(WHITE, "*8 *9 *10"_bb, PROMOTION_OPTIONAL);
+            v->set_promotion_region(BLACK, "*3 *2 *1"_bb, PROMOTION_OPTIONAL);
             v->promotedPieceType[CUSTOM_PIECE_1] = GOLD;
             v->promotedPieceType[KNIGHT] = GOLD;
         }
@@ -1901,8 +1901,8 @@ namespace {
             v->pieceToCharTable = "PNBRQ..M.............Kpnbrq..m.............k";
             v->maxRank = RANK_9;
             v->maxFile = FILE_I;
-            v->promotionRegion[WHITE] = "*9"_bb;
-            v->promotionRegion[BLACK] = "*1"_bb;
+            v->set_promotion_region(WHITE, "*9"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*1"_bb, PROMOTION_MANDATORY);
             v->doubleStepRegion[WHITE] = "*2"_bb;
             v->doubleStepRegion[BLACK] = "*8"_bb;
             v->castlingKingsideFile = FILE_G;
@@ -1926,8 +1926,8 @@ namespace {
             v->pieceToCharTable = "PNBRQ...........CKpnbrq...........ck";
             v->maxRank = RANK_9;
             v->maxFile = FILE_I;
-            v->promotionRegion[WHITE] = "*9"_bb;
-            v->promotionRegion[BLACK] = "*1"_bb;
+            v->set_promotion_region(WHITE, "*9"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*1"_bb, PROMOTION_MANDATORY);
             v->doubleStepRegion[WHITE] = "*2"_bb;
             v->doubleStepRegion[BLACK] = "*8"_bb;
             v->castlingKingsideFile = FILE_G;
@@ -2071,8 +2071,8 @@ namespace {
             v->startFen = "r8r/1nbqkcabn1/pppppppppp/10/10/10/10/PPPPPPPPPP/1NBQKCABN1/R8R w - - 0 1";
             v->promotionPieceTypes[WHITE] = piece_set(ARCHBISHOP) | CHANCELLOR | QUEEN | ROOK | BISHOP | KNIGHT;
             v->promotionPieceTypes[BLACK] = piece_set(ARCHBISHOP) | CHANCELLOR | QUEEN | ROOK | BISHOP | KNIGHT;
-            v->promotionRegion[WHITE] = "*8 *9 *10"_bb;
-            v->promotionRegion[BLACK] = "*3 *2 *1"_bb;
+            v->set_promotion_region(WHITE, "*8 *9 *10"_bb, PROMOTION_OPTIONAL);
+            v->set_promotion_region(BLACK, "*3 *2 *1"_bb, PROMOTION_OPTIONAL);
             v->promotionLimit[ARCHBISHOP] = 1;
             v->promotionLimit[CHANCELLOR] = 1;
             v->promotionLimit[QUEEN] = 1;
@@ -2131,8 +2131,8 @@ namespace {
             v->add_piece(CUSTOM_PIECE_2, 'w', "CF"); // Wizard
             v->promotionPieceTypes[WHITE] = piece_set(ARCHBISHOP) | CHANCELLOR | QUEEN;
             v->promotionPieceTypes[BLACK] = piece_set(ARCHBISHOP) | CHANCELLOR | QUEEN;
-            v->promotionRegion[WHITE] = "*10"_bb;
-            v->promotionRegion[BLACK] = "*1"_bb;
+            v->set_promotion_region(WHITE, "*10"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*1"_bb, PROMOTION_MANDATORY);
             v->doubleStepRegion[WHITE] = "*3"_bb;
             v->doubleStepRegion[BLACK] = "*8"_bb;
             v->castling = false;
@@ -2157,8 +2157,8 @@ namespace {
             v->castlingKingsideFile = FILE_I;
             v->castlingQueensideFile = FILE_E;
             v->castlingRank = RANK_2;
-            v->promotionRegion[WHITE] = "*9 *10"_bb;
-            v->promotionRegion[BLACK] = "*2 *1"_bb;
+            v->set_promotion_region(WHITE, "*9 *10"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*2 *1"_bb, PROMOTION_MANDATORY);
             v->promotionPieceTypes[WHITE] = piece_set(CUSTOM_PIECE_2) | CUSTOM_PIECE_1 | QUEEN | ROOK | BISHOP | KNIGHT;
             v->promotionPieceTypes[BLACK] = piece_set(CUSTOM_PIECE_2) | CUSTOM_PIECE_1 | QUEEN | ROOK | BISHOP | KNIGHT;
             v->doubleStepRegion[WHITE] = "*3"_bb;
@@ -2177,8 +2177,8 @@ namespace {
             v->maxRank = RANK_10;
             v->maxFile = FILE_J;
             v->startFen = "****qk****/**rnbbnr**/*pppppppp*/*8*/10/10/*8*/*PPPPPPPP*/**RNBBNR**/****QK**** w - - 0 1";
-            v->promotionRegion[WHITE] = "a6 b8 c9 d9 e10 f10 g9 h9 i8 j6"_bb;
-            v->promotionRegion[BLACK] = "a5 b3 c2 d2 e1 f1 g2 h2 i3 j5"_bb;
+            v->set_promotion_region(WHITE, "a6 b8 c9 d9 e10 f10 g9 h9 i8 j6"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "a5 b3 c2 d2 e1 f1 g2 h2 i3 j5"_bb, PROMOTION_MANDATORY);
             v->doubleStepRegion[WHITE] = "*3"_bb;
             v->doubleStepRegion[BLACK] = "*8"_bb;
             v->castling = false;
@@ -2206,8 +2206,8 @@ namespace {
             v->promotionPieceTypes[WHITE] = piece_set(QUEEN) | CHANCELLOR | ARCHBISHOP | ROOK | BISHOP;
             v->promotionPieceTypes[BLACK] = piece_set(QUEEN) | CHANCELLOR | ARCHBISHOP | ROOK | BISHOP;
             v->promotedPieceType[PAWN] = CUSTOM_PIECE_3;
-            v->promotionRegion[WHITE] = "*10"_bb;
-            v->promotionRegion[BLACK] = "*1"_bb;
+            v->set_promotion_region(WHITE, "*10"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*1"_bb, PROMOTION_MANDATORY);
             v->doubleStepRegion[WHITE] = "*2 b3 c3 f3 g3"_bb;
             v->doubleStepRegion[BLACK] = "*9 b8 c8 f8 g8"_bb;
             v->enPassantTypes[WHITE] = v->enPassantTypes[BLACK] = piece_set(PAWN);
@@ -2233,8 +2233,8 @@ namespace {
             v->startFen = "c8c/ernbqkbnre/pppppppppp/10/10/10/10/PPPPPPPPPP/ERNBQKBNRE/C8C w KQkq - 0 1";
             v->promotionPieceTypes[WHITE] = piece_set(QUEEN) | ROOK | BISHOP | KNIGHT | CANNON | FERS_ALFIL ;
             v->promotionPieceTypes[BLACK] = piece_set(QUEEN) | ROOK | BISHOP | KNIGHT | CANNON | FERS_ALFIL ;
-            v->promotionRegion[WHITE] = "*10"_bb;
-            v->promotionRegion[BLACK] = "*1"_bb;
+            v->set_promotion_region(WHITE, "*10"_bb, PROMOTION_MANDATORY);
+            v->set_promotion_region(BLACK, "*1"_bb, PROMOTION_MANDATORY);
             v->castlingKingsideFile = FILE_H;
             v->castlingQueensideFile = FILE_D;
             v->castlingRookKingsideFile = FILE_I;
@@ -2636,7 +2636,194 @@ void VariantMap::init() {
 
 
 // Pre-calculate derived properties
+void Variant::init_promotion_masks() const {
+    for (Color c : {WHITE, BLACK})
+        for (PieceSet ps = lastPromotionTypes[c]; ps;)
+        {
+            PieceType pt = pop_lsb(ps);
+            promotionImmobility[c][pt] = promotion_immobility_mask(c, pt, Bitboard(0));
+        }
+}
+
+Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard walls) const {
+    Bitboard board = board_size_bb(maxFile, maxRank) & ~walls;
+    Bitboard area = mobilityRegion[c][pt] ? board & mobilityRegion[c][pt] : board;
+    auto potential = [&](PieceType type, Square from) {
+        Bitboard targets = walls ? moves_bb(c, type, from, walls) | attacks_bb(c, type, from, walls)
+                                : PseudoMoves[0][c][type][from] | PseudoAttacks[c][type][from];
+        // A hopper may acquire a screen on a future turn. Try every possible
+        // single screen; current pieces never restrict this geometric test.
+        const PieceInfo* info = pieceMap.find(type)->second;
+        if (walls && (!info->hopper[0][MODALITY_QUIET].empty() || !info->hopper[0][MODALITY_CAPTURE].empty()))
+            for (Bitboard screens = board & ~square_bb(from); screens;)
+            {
+                Bitboard occupied = walls | pop_lsb(screens);
+                targets |= moves_bb(c, type, from, occupied) | attacks_bb(c, type, from, occupied);
+            }
+        return targets & board;
+    };
+    Bitboard immobile = 0;
+    for (Bitboard squares = area; squares;)
+    {
+        Square from = pop_lsb(squares);
+        PieceType movePt = pt == KING ? kingType : pt;
+        Bitboard targets = potential(movePt, from);
+        if (doubleStepRegion[c] & from)
+            targets |= walls ? moves_bb<true>(c, movePt, from, walls)
+                             : PseudoMoves[1][c][movePt][from];
+        if (pt == SOLDIER && relative_rank(c, from, maxRank) < soldierPromotionRank)
+            targets &= file_bb(file_of(from));
+        if (diagonalLines & from)
+        {
+            PieceType diagonal = movePt == WAZIR ? FERS : movePt == SOLDIER ? PAWN : movePt == ROOK ? BISHOP : NO_PIECE_TYPE;
+            if (diagonal)
+                targets |= potential(diagonal, from) & diagonalLines;
+        }
+        // Multi-leg movement also counts as potential future movement.
+        for (const DoubleMoveSpec& spec : doubleMoveSpecs[pt])
+            for (Bitboard first = potential(spec.firstType, from) & area; first;)
+            {
+                Square via = pop_lsb(first);
+                Bitboard second = potential(spec.secondType, via) & area;
+                if (spec.outwardOnly)
+                    for (Bitboard b = second; b;)
+                    {
+                        Square to = pop_lsb(b);
+                        if ((file_of(via) - file_of(from)) * (file_of(to) - file_of(via))
+                            + (rank_of(via) - rank_of(from)) * (rank_of(to) - rank_of(via)) <= 0)
+                            second &= ~square_bb(to);
+                    }
+                targets |= second & ~square_bb(from);
+            }
+        uint64_t lion = lionEffectivePathMask[c][pt][from];
+        while (lion)
+        {
+            int path = __builtin_ctzll(lion);
+            lion &= lion - 1;
+            if ((area & LionVia[from][path]) && (area & LionTo[from][path]))
+                targets |= LionTo[from][path];
+        }
+        for (const HookMoveSpec& spec : hookMoveSpecs[pt])
+        {
+            uint64_t pairs = spec.directionPairMask;
+            constexpr int df[] = {0,1,1,1,0,-1,-1,-1};
+            constexpr int dr[] = {1,1,0,-1,-1,-1,0,1};
+            while (pairs)
+            {
+                int path = __builtin_ctzll(pairs);
+                pairs &= pairs - 1;
+                int d1 = (path / 8 + (c == BLACK ? 4 : 0)) % 8;
+                int d2 = (path % 8 + (c == BLACK ? 4 : 0)) % 8;
+                for (int n = 1; n <= (spec.firstRange ? spec.firstRange : SQUARE_NB); ++n)
+                {
+                    int f = file_of(from) + n * df[d1], r = rank_of(from) + n * dr[d1];
+                    if (f < 0 || f > maxFile || r < 0 || r > maxRank)
+                        break;
+                    Square via = make_square(File(f), Rank(r));
+                    if (!(area & via))
+                        break;
+                    for (int m = 1; m <= (spec.secondRange ? spec.secondRange : SQUARE_NB); ++m)
+                    {
+                        int tf = f + m * df[d2], tr = r + m * dr[d2];
+                        if (tf < 0 || tf > maxFile || tr < 0 || tr > maxRank)
+                            break;
+                        Square to = make_square(File(tf), Rank(tr));
+                        if (!(area & to))
+                            break;
+                        targets |= to;
+                    }
+                }
+            }
+        }
+        if (!(targets & area))
+            immobile |= from;
+    }
+    return immobile;
+}
+
+void Variant::resolve_promotion_rules() {
+    for (Color c : {WHITE, BLACK})
+    {
+        lastPromotionTypes[c] = NO_PIECE_SET;
+        for (int index = PAWN; index < PIECE_TYPE_NB; ++index)
+        {
+            PieceType pt = PieceType(index);
+            promotionAreas[c][pt] = 0;
+            promotionCandidates[c][pt] = 0;
+            for (int route : {0, 1})
+            {
+                PromotionRule rule;
+                if (legacyPromotionDefaults)
+                {
+                    bool pawn = route == 0 || pt == PAWN;
+                    bool mandatory = pawn ? mandatoryPawnPromotion : mandatoryPiecePromotion;
+                    if (nativePromotionRequirement[c] >= 0)
+                        mandatory = nativePromotionRequirement[c] == PROMOTION_MANDATORY;
+                    uint16_t cases = pawn ? PROMO_OI | PROMO_II : PROMO_ALL;
+                    if (route == 1 && piecePromotionOnCapture)
+                        cases &= PROMO_OIC | PROMO_IIC | PROMO_IOC;
+                    if (mandatory)
+                    {
+                        rule.mandatoryRegion = promotionRegion[c];
+                        rule.mandatoryCases = cases;
+                    }
+                    else
+                    {
+                        rule.optionalRegion = promotionRegion[c];
+                        rule.optionalCases = cases;
+                    }
+                }
+                for (int section : {0, 1})
+                {
+                    auto& settings = section ? mandatoryPromotionRegions : optionalPromotionRegions;
+                    Bitboard& region = section ? rule.mandatoryRegion : rule.optionalRegion;
+                    uint16_t& cases = section ? rule.mandatoryCases : rule.optionalCases;
+                    if (settings[c][NO_PIECE_TYPE].specified)
+                        region = settings[c][NO_PIECE_TYPE].region;
+                    if (settings[c][pt].specified)
+                        region = settings[c][pt].region;
+                    const PromotionPolicySetting* levels[] = {
+                        &promotionPolicies[COLOR_NB][NO_PIECE_TYPE][section],
+                        &promotionPolicies[c][NO_PIECE_TYPE][section],
+                        &promotionPolicies[c][pt][section]
+                    };
+                    for (int level = 0; level < 3; ++level)
+                    {
+                        const auto& setting = *levels[level];
+                        if (setting.specified)
+                            cases = setting.cases | (setting.inherit && level ? cases : 0);
+                    }
+                }
+                promotionRules[route][c][pt] = rule;
+                bool eligible = route == 0 ? (pt == PAWN || (promotionPawnTypes[c] & pt))
+                                           : promotedPieceType[pt] != NO_PIECE_TYPE;
+                if (eligible)
+                {
+                    promotionCandidates[c][pt] |= (rule.optionalCases | rule.mandatoryCases) & PROMO_IO
+                                               ? AllSquares
+                                               : (rule.optionalCases ? rule.optionalRegion : Bitboard(0))
+                                                 | (rule.mandatoryCases ? rule.mandatoryRegion : Bitboard(0));
+                    if (rule.optionalCases)
+                        promotionAreas[c][pt] |= rule.optionalRegion;
+                    if (rule.mandatoryCases)
+                        promotionAreas[c][pt] |= rule.mandatoryRegion;
+                    if (rule.optionalCases & PROMO_LAST)
+                        lastPromotionTypes[c] |= pt;
+                }
+            }
+        }
+        const auto& rule = promotionRules[0][c][PAWN];
+        conventionalPawnPromotion[c] = !rule.optionalCases
+                                   && rule.mandatoryRegion == (c == WHITE ? Rank8BB : Rank1BB)
+                                   && (rule.mandatoryCases & PROMO_OI) == PROMO_OI
+                                   && (promotionPieceTypes[c] & QUEEN)
+                                   && promotedPieceType[PAWN] == NO_PIECE_TYPE
+                                   && !sittuyinPromotion;
+    }
+}
+
 Variant* Variant::conclude() {
+    resolve_promotion_rules();
     // Enforce consistency to allow runtime optimizations
     if (!doubleStep)
         doubleStepRegion[WHITE] = doubleStepRegion[BLACK] = 0;

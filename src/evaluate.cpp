@@ -497,7 +497,7 @@ namespace {
         // Piece promotion bonus
         if (pos.promoted_piece_type(Pt) != NO_PIECE_TYPE)
         {
-            Bitboard zone = pos.promotion_zone(Us);
+            Bitboard zone = pos.promotion_zone(Us, Pt);
             if (zone & (b | s))
                 score += make_score(PieceValue[MG][pos.promoted_piece_type(Pt)] - PieceValue[MG][Pt],
                                     PieceValue[EG][pos.promoted_piece_type(Pt)] - PieceValue[EG][Pt]) / (zone & s && b ? 6 : 12);
@@ -738,7 +738,7 @@ namespace {
             if (pos.promoted_piece_type(pt))
             {
                 otherChecks = attacks_bb(Us, pos.promoted_piece_type(pt), ksq, pos.pieces()) & attackedBy[Them][pt]
-                                 & pos.promotion_zone(Them) & pos.board_bb();
+                                 & pos.promotion_zone(Them, pt) & pos.board_bb();
                 if (otherChecks & safe)
                     kingDanger += SafeCheck[FAIRY_PIECES][more_than_one(otherChecks & safe)];
                 else
@@ -1024,7 +1024,7 @@ namespace {
 
         assert(!(pos.pieces(Them, PAWN) & forward_file_bb(Us, s + Up)));
 
-        int r = std::max(RANK_8 - std::max(relative_rank(Us, pos.promotion_square(Us, s), pos.max_rank()) - relative_rank(Us, s, pos.max_rank()), 0), 0);
+        int r = std::max(RANK_8 - std::max(relative_rank(Us, pos.promotion_square(Us, s, PAWN), pos.max_rank()) - relative_rank(Us, s, pos.max_rank()), 0), 0);
 
         Score bonus = PassedRank[r];
 
@@ -1081,9 +1081,9 @@ namespace {
         while (b2)
         {
             Square s = pop_lsb(b2);
-            if (pos.promotion_square(Us, s) == SQ_NONE || (pos.pieces(Them, pt) & forward_file_bb(Us, s)))
+            if (pos.promotion_square(Us, s, pt) == SQ_NONE || (pos.pieces(Them, pt) & forward_file_bb(Us, s)))
                 continue;
-            int r = std::max(RANK_8 - std::max(relative_rank(Us, pos.promotion_square(Us, s), pos.max_rank()) - relative_rank(Us, s, pos.max_rank()), 0), 0);
+            int r = std::max(RANK_8 - std::max(relative_rank(Us, pos.promotion_square(Us, s, pt), pos.max_rank()) - relative_rank(Us, s, pos.max_rank()), 0), 0);
             score += PassedRank[r];
         }
     }
@@ -1107,11 +1107,11 @@ namespace {
         while (b)
         {
             Square s = pop_lsb(b);
-            if ((pos.pieces(Them, SHOGI_PAWN) & forward_file_bb(Us, s)) || pos.promotion_square(Us, s) == SQ_NONE)
+            if ((pos.pieces(Them, SHOGI_PAWN) & forward_file_bb(Us, s)) || pos.promotion_square(Us, s, SHOGI_PAWN) == SQ_NONE)
                 continue;
 
             Square blockSq = s + Up;
-            int d = 2 * std::max(relative_rank(Us, pos.promotion_square(Us, s), pos.max_rank()) - relative_rank(Us, s, pos.max_rank()), 1);
+            int d = 2 * std::max(relative_rank(Us, pos.promotion_square(Us, s, SHOGI_PAWN), pos.max_rank()) - relative_rank(Us, s, pos.max_rank()), 1);
             d += !!(attackedBy[Them][ALL_PIECES] & ~attackedBy2[Us] & blockSq);
             score += make_score(PieceValue[MG][pt], PieceValue[EG][pt]) / (d * d);
         }

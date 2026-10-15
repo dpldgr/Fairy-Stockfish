@@ -208,9 +208,10 @@ Value Endgame<KPK>::operator()(const Position& pos) const {
   Color us = strongSide == pos.side_to_move() ? WHITE : BLACK;
 
   // Non-standard promotion, evaluation unclear
-  if (   pos.promotion_zone(us) != rank_bb(relative_rank(us, RANK_8, pos.max_rank()))
+  if (   !pos.variant()->conventionalPawnPromotion[strongSide]
+      || pos.promotion_zone(strongSide, PAWN) != rank_bb(relative_rank(strongSide, RANK_8, pos.max_rank()))
       || RANK_MAX != RANK_8
-      || !(pos.promotion_piece_types(us) & QUEEN))
+      || !(pos.promotion_piece_types(strongSide) & QUEEN))
   {
       Value result = PawnValueEg + Value(rank_of(strongPawn));
       return strongSide == pos.side_to_move() ? result : -result;
@@ -432,7 +433,7 @@ Value Endgame<KFsPsK>::operator()(const Position& pos) const {
       Bitboard b = pos.pieces(strongSide, PAWN);
       while (b && (!dark || !light))
       {
-          Square s = pos.promotion_square(strongSide, pop_lsb(b));
+          Square s = pos.promotion_square(strongSide, pop_lsb(b), PAWN);
           if (s != SQ_NONE)
           {
               if (DarkSquares & s)
@@ -998,9 +999,10 @@ ScaleFactor Endgame<KPKP>::operator()(const Position& pos) const {
 
   // Probe the KPK bitbase with the weakest side's pawn removed. If it's a draw,
   // it's probably at least a draw even with the pawn.
-  if (   pos.promotion_zone(us) != rank_bb(relative_rank(us, RANK_8, pos.max_rank()))
+  if (   !pos.variant()->conventionalPawnPromotion[strongSide]
+      || pos.promotion_zone(strongSide, PAWN) != rank_bb(relative_rank(strongSide, RANK_8, pos.max_rank()))
       || RANK_MAX != RANK_8
-      || !(pos.promotion_piece_types(us) & QUEEN))
+      || !(pos.promotion_piece_types(strongSide) & QUEEN))
       return SCALE_FACTOR_NONE;
 
   return Bitbases::probe(strongKing, strongPawn, weakKing, us) ? SCALE_FACTOR_NONE : SCALE_FACTOR_DRAW;
