@@ -604,33 +604,12 @@ namespace {
         return true;
     }
 
-    PieceType next_free_custom_piece(const Variant* v, const Config& config, PieceType preferred = NO_PIECE_TYPE) {
-        if (is_custom(preferred) && !(v->pieceTypes & preferred))
-            return preferred;
-
+    PieceType next_free_custom_piece(const Variant* v, const Config& config) {
         const auto& entries = static_cast<const std::map<std::string, std::string>&>(config);
         for (PieceType pt = CUSTOM_PIECES; pt < CUSTOM_PIECES_END; ++pt)
             if (!(v->pieceTypes & pt) && entries.find(piece_name(pt)) == entries.end())
                 return pt;
 
-        // A native alias does not occupy its custom slot. Reuse such slots
-        // only as a fallback, preserving allocations in configurations that
-        // already fit. Parsing the alias later leaves this slot's moves intact.
-        for (PieceType pt = CUSTOM_PIECES; pt < CUSTOM_PIECES_END; ++pt)
-        {
-            auto entry = entries.find(piece_name(pt));
-            if ((v->pieceTypes & pt) || entry == entries.end())
-                continue;
-            std::string token, symbol, betza, reference;
-            std::stringstream(entry->second) >> token;
-            if (split_piece_definition(token, symbol, betza) && valid_piece_symbol(symbol)
-                && piece_reference(betza, reference))
-            {
-                PieceType native = piece_type_by_name(reference);
-                if (native != NO_PIECE_TYPE && !is_custom(native))
-                    return pt;
-            }
-        }
         return NO_PIECE_TYPE;
     }
 
@@ -734,115 +713,48 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             v->shuffleSquares[BLACK] |= make_square(f, v->maxRank);
         }
     }
-    struct InlinePromotion {
-        PieceType base;
-        std::string key, target, symbol;
-        PieceType resolved = NO_PIECE_TYPE;
-    };
-    std::vector<InlinePromotion> inlinePromotions;
-    // piece types
+    PieceSet definedBases = NO_PIECE_SET;
+    // Standard FSF options define exactly one explicit slot each.
     for (PieceType pt = PAWN; pt <= KING; ++pt)
     {
         if (pt == CUSTOM_PIECES_ROYAL)
-            // reserved custom royal/king slot
             continue;
-
-        // piece char
         std::string name = piece_name(pt);
-
         const auto& keyValue = config.find(name);
         if (keyValue != config.end() && !keyValue->second.empty())
         {
-            std::stringstream pieceDefinitions(keyValue->second);
-            std::string token, symbol, betza;
-            pieceDefinitions >> token;
-            bool validDefinition = split_piece_definition(token, symbol, betza);
-            PieceType basePt = pt;
-            bool baseUsesCurrentSlot = true;
-            if (validDefinition && valid_piece_symbol(symbol))
+            std::stringstream definition(keyValue->second.substr(0, keyValue->second.find('#')));
+            std::string token, symbol, betza, extra, reference;
+            definition >> token;
+            bool valid = split_piece_definition(token, symbol, betza) && valid_piece_symbol(symbol);
+            if (is_custom(pt) && (piece_reference(betza, reference) || definition >> extra))
             {
-                std::string reference;
-                if (piece_reference(betza, reference))
+                if (DoCheck)
+                    std::cerr << name << " - Single-slot definition required; use piece = for references or promotions" << std::endl;
+                v->remove_piece(pt);
+            }
+            else if (valid)
+            {
+                v->add_piece(pt, symbol, is_custom(pt) ? betza : "");
+                definedBases |= pt;
+                if (is_custom(pt))
                 {
-                    basePt = piece_type_by_name(reference);
-                    baseUsesCurrentSlot = false;
-                    if (basePt != NO_PIECE_TYPE)
-                        v->add_piece(basePt, symbol);
-                    else if (DoCheck)
-                        std::cerr << name << " - Invalid piece reference: " << betza << std::endl;
+                    set_custom_piece_betza(v, pt, betza);
+                    if (DoCheck && betza.empty())
+                        std::cerr << name << " - Missing Betza move notation" << std::endl;
                 }
-                else
-                    v->add_piece(pt, symbol);
+                else if (pt == KING)
+                {
+                    v->kingType = betza.empty() ? KING : CUSTOM_PIECES_ROYAL;
+                    if (!betza.empty())
+                        v->customPiece[CUSTOM_PIECES_ROYAL - CUSTOM_PIECES] = betza;
+                }
             }
             else
             {
                 if (DoCheck && keyValue->second.at(0) != '-')
-                    std::cerr << name << " - Invalid letter: " << keyValue->second.at(0) << std::endl;
+                    std::cerr << name << " - Invalid piece definition: " << keyValue->second << std::endl;
                 v->remove_piece(pt);
-            }
-            // betza
-            if (is_custom(pt))
-            {
-                std::string reference;
-                if (basePt != NO_PIECE_TYPE && (!betza.empty() || !baseUsesCurrentSlot))
-                {
-                    if (baseUsesCurrentSlot)
-                        set_custom_piece_betza(v, pt, betza);
-
-                    if (pieceDefinitions >> token)
-                    {
-                        std::string promotedSymbol, promotedBetza;
-                        if (   split_piece_definition(token, promotedSymbol, promotedBetza)
-                            && !promotedSymbol.empty()
-                            && !promotedBetza.empty())
-                        {
-                            bool shogiStylePromotion = promotedSymbol[0] == '+';
-                            if (shogiStylePromotion)
-                                promotedSymbol.erase(0, 1);
-
-                            if (   valid_piece_symbol(promotedSymbol)
-                                && (!shogiStylePromotion || Variant::white_symbol(promotedSymbol) == Variant::white_symbol(symbol)))
-                            {
-                                if (piece_reference(promotedBetza, reference))
-                                    inlinePromotions.push_back({basePt, name, reference,
-                                                                shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol});
-                                else
-                                {
-                                    PieceType promotedPt = next_free_custom_piece(v, config, baseUsesCurrentSlot ? NO_PIECE_TYPE : pt);
-                                    if (promotedPt != NO_PIECE_TYPE)
-                                    {
-                                        v->add_piece(promotedPt, shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol,
-                                                     promotedBetza);
-                                        set_custom_piece_betza(v, promotedPt, promotedBetza);
-                                        inlinePromotions.push_back({basePt, name, "", "", promotedPt});
-                                    }
-                                    else if (DoCheck)
-                                        std::cerr << name << " - No free custom piece slot for promoted piece" << std::endl;
-                                }
-                            }
-                            else if (DoCheck)
-                                std::cerr << name << " - Invalid promoted piece symbol: " << token << std::endl;
-                        }
-                        else if (DoCheck)
-                            std::cerr << name << " - Invalid promoted piece definition: " << token << std::endl;
-
-                        if (DoCheck && pieceDefinitions >> token)
-                            std::cerr << name << " - Multiple inline promotions are not supported: " << token << std::endl;
-                    }
-                }
-                else if (DoCheck)
-                    std::cerr << name << " - Missing Betza move notation" << std::endl;
-            }
-            else if (pt == KING)
-            {
-                if (!betza.empty())
-                {
-                    // custom royal piece
-                    v->customPiece[CUSTOM_PIECES_ROYAL - CUSTOM_PIECES] = betza;
-                    v->kingType = CUSTOM_PIECES_ROYAL;
-                }
-                else
-                    v->kingType = KING;
             }
         }
         // mobility region
@@ -854,29 +766,129 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             parse_attribute("mobilityRegion" + color + capitalizedPiece, v->mobilityRegion[c][pt]);
         }
     }
-    // Resolve against the complete set of definitions, including forward and
-    // inherited targets. Type names retain precedence over configured symbols.
-    for (auto& promotion : inlinePromotions)
+    struct PieceDefinition {
+        std::string symbol, betza, promotedSymbol, promotedBetza;
+        PieceType base = NO_PIECE_TYPE;
+    };
+    std::vector<PieceDefinition> pieces;
+    for (const std::string& value : config.pieceDefinitions)
     {
-        if (promotion.target.empty())
-            continue;
-        bool ambiguous = false;
-        promotion.resolved = piece_type_by_name(promotion.target);
-        if (promotion.resolved == NO_PIECE_TYPE)
-            promotion.resolved = piece_type_by_symbol(v, promotion.target, &ambiguous);
-        if (DoCheck && promotion.resolved == NO_PIECE_TYPE)
-            std::cerr << promotion.key << " - " << (ambiguous ? "Ambiguous" : "Unknown")
-                      << " promotion reference: <" << promotion.target << ">" << std::endl;
-    }
-    // Apply raw and referenced mappings together in their original order.
-    for (const auto& promotion : inlinePromotions)
-        if (promotion.resolved != NO_PIECE_TYPE)
+        PieceDefinition piece;
+        std::stringstream definition(value);
+        std::string token, extra;
+        bool valid = definition >> token
+                  && split_piece_definition(token, piece.symbol, piece.betza)
+                  && valid_piece_symbol(piece.symbol) && !piece.betza.empty();
+        if (valid && definition >> token)
         {
-            // Move generation, evaluation and indexing require an active type.
-            // Preserve the movement and symbol of an already-defined target.
-            if (!(v->pieceTypes & promotion.resolved))
-                v->add_piece(promotion.resolved, promotion.symbol);
-            v->promotedPieceType[promotion.base] = promotion.resolved;
+            valid = split_piece_definition(token, piece.promotedSymbol, piece.promotedBetza)
+                 && !piece.promotedSymbol.empty() && !piece.promotedBetza.empty();
+            if (valid)
+            {
+                bool shogiStyle = piece.promotedSymbol.front() == '+';
+                std::string symbol = shogiStyle ? piece.promotedSymbol.substr(1) : piece.promotedSymbol;
+                valid = valid_piece_symbol(symbol)
+                     && (!shogiStyle || Variant::white_symbol(symbol) == Variant::white_symbol(piece.symbol));
+            }
+        }
+        if (valid && !(definition >> extra))
+            pieces.push_back(piece);
+        else if (DoCheck)
+            std::cerr << "piece - Invalid definition: " << value << std::endl;
+    }
+    auto reference_type = [&](const std::string& reference) {
+        bool ambiguous = false;
+        PieceType pt = piece_type_by_name(reference);
+        if (pt == NO_PIECE_TYPE)
+            pt = piece_type_by_symbol(v, reference, &ambiguous);
+        if (is_custom(pt) && !(v->pieceTypes & pt))
+            pt = NO_PIECE_TYPE;
+        if (DoCheck && pt == NO_PIECE_TYPE)
+            std::cerr << "piece - " << (ambiguous ? "Ambiguous" : "Unknown")
+                      << " piece reference: <" << reference << ">" << std::endl;
+        return pt;
+    };
+    // Register every base before allocating promoted forms. Explicit slots and
+    // inherited pieces are already reserved; raw Betza definitions never merge.
+    for (auto& piece : pieces)
+    {
+        bool ambiguous = false;
+        PieceType existing = piece_type_by_symbol(v, piece.symbol, &ambiguous);
+        if (ambiguous || (existing != NO_PIECE_TYPE && (definedBases & existing)))
+        {
+            if (DoCheck)
+                std::cerr << "piece - Duplicate or ambiguous base symbol: " << piece.symbol << std::endl;
+            continue;
+        }
+        std::string reference;
+        bool referenced = piece_reference(piece.betza, reference);
+        PieceType base = referenced ? reference_type(reference)
+                       : is_custom(existing) ? existing : next_free_custom_piece(v, config);
+        if (base == NO_PIECE_TYPE)
+        {
+            if (DoCheck && !referenced)
+                std::cerr << "piece - No free custom piece slot for base: " << piece.symbol << std::endl;
+            continue;
+        }
+        if (definedBases & base)
+        {
+            if (DoCheck)
+                std::cerr << "piece - Duplicate base slot: <" << piece_name(base) << ">" << std::endl;
+            continue;
+        }
+        if (existing != NO_PIECE_TYPE && existing != base)
+            v->remove_piece(existing);
+        std::string betza = referenced ? (is_custom(base) ? v->customPiece[base - CUSTOM_PIECES] : "") : piece.betza;
+        v->add_piece(base, piece.symbol, betza);
+        if (!referenced)
+            set_custom_piece_betza(v, base, betza);
+        piece.base = base;
+        definedBases |= base;
+    }
+    // Define raw promoted forms first so references can also name them.
+    std::vector<PieceType> promotedTypes(pieces.size(), NO_PIECE_TYPE);
+    for (size_t i = 0; i < pieces.size(); ++i)
+    {
+        const auto& piece = pieces[i];
+        std::string reference;
+        if (piece.base == NO_PIECE_TYPE || piece.promotedBetza.empty()
+            || piece_reference(piece.promotedBetza, reference))
+            continue;
+        PieceType existing = piece_type_by_symbol(v, piece.promotedSymbol);
+        PieceType target = is_custom(existing) && !(definedBases & existing)
+                         ? existing : next_free_custom_piece(v, config);
+        if (target == NO_PIECE_TYPE)
+        {
+            if (DoCheck)
+                std::cerr << "piece - No free custom piece slot for promoted piece: " << piece.symbol << std::endl;
+            continue;
+        }
+        if (existing != NO_PIECE_TYPE && existing != target)
+        {
+            if (DoCheck)
+                std::cerr << "piece - Duplicate promoted piece symbol: " << piece.promotedSymbol << std::endl;
+            continue;
+        }
+        v->add_piece(target, piece.promotedSymbol, piece.promotedBetza);
+        set_custom_piece_betza(v, target, piece.promotedBetza);
+        promotedTypes[i] = target;
+        definedBases |= target;
+    }
+    // Resolve all references before activating implicit native targets, keeping
+    // symbol resolution independent of declaration order.
+    for (size_t i = 0; i < pieces.size(); ++i)
+    {
+        const auto& piece = pieces[i];
+        std::string reference;
+        if (piece.base != NO_PIECE_TYPE && piece_reference(piece.promotedBetza, reference))
+            promotedTypes[i] = reference_type(reference);
+    }
+    for (size_t i = 0; i < pieces.size(); ++i)
+        if (promotedTypes[i] != NO_PIECE_TYPE)
+        {
+            if (!(v->pieceTypes & promotedTypes[i]))
+                v->add_piece(promotedTypes[i], pieces[i].promotedSymbol);
+            v->promotedPieceType[pieces[i].base] = promotedTypes[i];
         }
     // piece values
     for (Phase phase : {MG, EG})
@@ -1018,50 +1030,75 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("mandatoryPawnPromotion", v->mandatoryPawnPromotion);
     parse_attribute("mandatoryPiecePromotion", v->mandatoryPiecePromotion);
     parse_attribute("pieceDemotion", v->pieceDemotion);
-    // Parse all levels before resolving: line order must not affect inheritance.
-    for (int colour = WHITE; colour <= COLOR_NB; ++colour)
-    {
-        std::string color = colour == WHITE ? "White" : colour == BLACK ? "Black" : "";
-        for (int index = NO_PIECE_TYPE; index < PIECE_TYPE_NB; ++index)
+    // Per-piece settings use explicit references, resolved after registration.
+    // Keep colour-wide defaults separate from piece-specific overrides.
+    auto promotion_options = [&](const std::string& prefix, auto apply) {
+        auto global = config.find(prefix);
+        if (global != config.end())
+            apply(NO_PIECE_TYPE, global->first, global->second);
+        PieceSet specified = NO_PIECE_SET;
+        for (const auto& entry : config)
         {
-            if (colour == COLOR_NB && index != NO_PIECE_TYPE)
+            std::string reference;
+            if (entry.first.find(prefix) != 0
+                || !piece_reference(entry.first.substr(prefix.size()), reference))
                 continue;
-            PieceType pt = PieceType(index);
-            std::string piece = index == NO_PIECE_TYPE ? "" : piece_name(pt);
-            if (!piece.empty())
-                piece[0] = toupper(piece[0]);
-            if (colour != COLOR_NB)
-                for (int section : {0, 1})
-                {
-                    std::string key = std::string("promotionRegion") + (section ? "Mandatory" : "Optional") + color + piece;
-                    auto entry = config.find(key);
-                    if (entry != config.end())
-                    {
-                        Bitboard region;
-                        if (set(entry->second, region))
-                        {
-                            auto& settings = section ? v->mandatoryPromotionRegions : v->optionalPromotionRegions;
-                            settings[colour][index] = {region, true};
-                        }
-                        else
-                            std::cerr << key << " - Invalid promotion region: " << entry->second << std::endl;
-                    }
-                }
-            std::string key = "promotionPolicy" + color + piece;
-            auto entry = config.find(key);
-            if (entry != config.end())
+            config.find(entry.first); // Mark a recognised option as consumed.
+            bool ambiguous = false;
+            PieceType pt = piece_type_by_name(reference);
+            if (pt == NO_PIECE_TYPE)
+                pt = piece_type_by_symbol(v, reference, &ambiguous);
+            if (pt == NO_PIECE_TYPE)
             {
-                PromotionPolicySetting parsed[2] = {};
-                if (parse_promotion_policy(entry->second, parsed))
-                {
-                    for (int section : {0, 1})
-                        if (parsed[section].specified)
-                            v->promotionPolicies[colour][index][section] = parsed[section];
-                }
-                else
-                    std::cerr << key << " - Invalid promotion policy: " << entry->second << std::endl;
+                if (DoCheck)
+                    std::cerr << entry.first << " - " << (ambiguous ? "Ambiguous" : "Unknown")
+                              << " piece reference: <" << reference << ">" << std::endl;
+            }
+            else if (specified & pt)
+            {
+                if (DoCheck)
+                    std::cerr << entry.first << " - Duplicate piece override: <" << reference << ">" << std::endl;
+            }
+            else
+            {
+                specified |= pt;
+                apply(pt, entry.first, entry.second);
             }
         }
+    };
+    auto policy = [&](int colour, PieceType pt, const std::string& key, const std::string& value) {
+        PromotionPolicySetting parsed[2] = {};
+        if (parse_promotion_policy(value, parsed))
+        {
+            for (int section : {0, 1})
+                if (parsed[section].specified)
+                    v->promotionPolicies[colour][pt][section] = parsed[section];
+        }
+        else
+            std::cerr << key << " - Invalid promotion policy: " << value << std::endl;
+    };
+    const auto globalPolicy = config.find("promotionPolicy");
+    if (globalPolicy != config.end())
+        policy(COLOR_NB, NO_PIECE_TYPE, globalPolicy->first, globalPolicy->second);
+    for (Color colour : {WHITE, BLACK})
+    {
+        std::string color = colour == WHITE ? "White" : "Black";
+        for (int section : {0, 1})
+            promotion_options(std::string("promotionRegion") + (section ? "Mandatory" : "Optional") + color,
+                [&](PieceType pt, const std::string& key, const std::string& value) {
+                    Bitboard region;
+                    if (set(value, region))
+                    {
+                        auto& settings = section ? v->mandatoryPromotionRegions : v->optionalPromotionRegions;
+                        settings[colour][pt] = {region, true};
+                    }
+                    else
+                        std::cerr << key << " - Invalid promotion region: " << value << std::endl;
+                });
+        promotion_options("promotionPolicy" + color,
+            [&](PieceType pt, const std::string& key, const std::string& value) {
+                policy(colour, pt, key, value);
+            });
     }
 
     const auto& it_double_pieces = config.find("doubleMovePieces");
