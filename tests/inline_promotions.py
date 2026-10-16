@@ -43,6 +43,36 @@ customPiece2 = si:<silver> +si:<gold>'''),
         ['customPiece1 = aa:fW +aa:WfF']
         + [f'customPiece{i} = d{chr(ord("a") + i - 2)}:K' for i in range(2, 25)]
         + ['customPiece25 = sp:<shogiPawn> +sp:<gold>'])),
+    variant('inline-symbol', '''customPiece14 = ln:KNAD
+customPiece15 = kn:FD +kn:<ln>'''),
+    variant('inline-symbol-forward', '''customPiece15 = ln:KNAD
+customPiece14 = kn:FD +kn:<LN>'''),
+    variant('inline-symbol-reordered', '''customPiece15 = kn:FD +kn:<ln>
+customPiece14 = ln:KNAD'''),
+    variant('inline-slot-forward', '''customPiece14 = kn:FD +kn:<customPiece15>
+customPiece15 = ln:KNAD'''),
+    variant('inline-symbol-legacy', '''customPiece14 = ln:KNAD
+customPiece15 = kn:FD
+promotedPieceType = kn:ln'''),
+    '''[inline-symbol-inherited:inline-symbol-legacy]
+customPiece15 = kn:FD +kn:<ln>
+[inline-symbol-lion:inline-symbol-forward]
+lionMovePieces = ln:FFFFFFFFFFFFFFFF
+tradingRule = ln:[dist!,{ln}] ln:[dist2c!,{ln},{kn}]
+[inline-legacy-lion:inline-symbol-legacy]
+lionMovePieces = ln:FFFFFFFFFFFFFFFF
+tradingRule = ln:[dist!,{ln}] ln:[dist2c!,{ln},{kn}]
+''',
+    variant('inline-symbol-native', '''customPiece1 = sp:<shogiPawn> +sp:<gg>
+customPiece2 = gg:<gold>'''),
+    variant('inline-name-precedence', '''customPiece1 = sp:<shogiPawn> +sp:<gold>
+customPiece2 = gold:KNAD'''),
+    variant('inline-mapping-order', '''gold = gg
+customPiece1 = sp:<shogiPawn> +sp:<gold>
+customPiece2 = sp:<shogiPawn> +sp:KNAD'''),
+    variant('inline-symbol-full', '\n'.join(
+        [f'customPiece{i} = d{chr(ord("a") + i - 1)}:K' for i in range(1, 24)]
+        + ['customPiece24 = ln:KNAD', 'customPiece25 = kn:FD +kn:<ln>'])),
 ))
 
 
@@ -175,6 +205,65 @@ class InlinePromotions(unittest.TestCase):
             with self.subTest(piece=piece):
                 moves = self.moves('inline-slots', fen({'c5': piece}), 'c5c6+ h8g8')
                 self.assertEqual({m for m in moves if m.startswith('c6')}, self.gold_moves('c6', 'w'))
+
+    def test_symbol_and_slot_references_match_explicit_mapping(self):
+        names = ('inline-symbol', 'inline-symbol-forward', 'inline-symbol-reordered',
+                 'inline-slot-forward', 'inline-symbol-inherited', 'inline-symbol-full')
+        for side in ('w', 'b'):
+            source, target, reply = ('c5', 'd6', 'h8g8') if side == 'w' else ('c4', 'd3', 'h1g1')
+            position = fen({source: 'KN' if side == 'w' else 'kn',
+                            'a3' if side == 'w' else 'a6': 'LN' if side == 'w' else 'ln'}, side)
+            promotion = source + target + '+'
+            moves = promotion + ' ' + reply
+            expected = self.moves('inline-symbol-legacy', position, moves)
+            self.assertEqual(len({m for m in expected if m.startswith(target)}), 24)
+            for name in names:
+                with self.subTest(name=name, side=side):
+                    self.assertIn(promotion, self.moves(name, position))
+                    self.assertEqual(self.moves(name, position, moves), expected)
+                    output = self.output(name, position, moves)
+                    reloaded = next(line[5:] for line in output.splitlines() if line.startswith('Fen: '))
+                    self.assertIn('+KN' if side == 'w' else '+kn', reloaded)
+                    self.assertIn('LN' if side == 'w' else 'ln', reloaded)
+                    self.assertEqual(self.moves(name, reloaded), expected)
+
+    def test_symbol_reference_preserves_lion_rules(self):
+        position = fen({'c5': 'KN', 'e6': 'ln', 'e7': 'kn'})
+        moves = 'c5d6+ h8g8'
+        expected = self.moves('inline-legacy-lion', position, moves)
+        self.assertTrue(any(m.startswith('d6') and len(m) > 4 for m in expected))
+        self.assertEqual(self.moves('inline-symbol-lion', position, moves), expected)
+
+    def test_symbol_reference_to_native_alias(self):
+        for side in ('w', 'b'):
+            with self.subTest(side=side):
+                self.check_pawn('inline-symbol-native', side)
+                self.check_pawn('inline-symbol-native', side, last=True)
+
+    def test_type_name_takes_precedence_over_symbol(self):
+        self.check_pawn('inline-name-precedence', 'w')
+
+    def test_later_raw_mapping_overrides_reference_for_same_base(self):
+        moves = self.moves('inline-mapping-order', fen({'c5': 'SP'}), 'c5c6+ h8g8')
+        self.assertIn('c6e7', moves)
+        self.assertIn('c6a6', moves)
+
+    def test_unknown_and_ambiguous_reference_diagnostics(self):
+        for target, definitions, diagnostic in (
+            ('missing', '', 'Unknown'),
+            ('ln', 'customPiece14 = ln:KNAD\ncustomPiece16 = ln:K', 'Ambiguous'),
+        ):
+            with self.subTest(target=target):
+                config = Path(self.temp.name) / 'invalid.ini'
+                config.write_text(variant('inline-invalid', definitions
+                                  + f'\ncustomPiece15 = kn:FD +kn:<{target}>'))
+                result = subprocess.run([self.engine, 'check', str(config)],
+                                        text=True, capture_output=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f'customPiece15 - {diagnostic} promotion reference: <{target}>', result.stderr)
+                self.assertNotIn('No free custom piece slot', result.stderr)
+                initial = self.moves('inline-invalid', fen({'c5': 'KN'}), config=config)
+                self.assertNotIn('c5d6+', initial)
 
     @unittest.skipUnless(os.environ.get('FSF_TEST_11X11') == '1',
                          'set FSF_TEST_11X11=1 with an 11x11-capable build')
