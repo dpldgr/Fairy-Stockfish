@@ -16,10 +16,10 @@ commoner = k
 castling = false
 promotionRegionOptionalWhite = *6 *7 *8
 promotionRegionOptionalBlack = *1 *2 *3
-promotionRegionMandatoryWhiteShogiPawn = *8
-promotionRegionMandatoryBlackShogiPawn = *1
-promotionRegionMandatoryWhiteCustomPiece1 = *8
-promotionRegionMandatoryBlackCustomPiece1 = *1
+promotionRegionMandatoryWhite<shogiPawn> = *8
+promotionRegionMandatoryBlack<shogiPawn> = *1
+promotionRegionMandatoryWhite<customPiece1> = *8
+promotionRegionMandatoryBlack<customPiece1> = *1
 promotionPolicy = optional:{{oi,iic,ioc}} mandatory:{{oi}}
 extinctionValue = loss
 extinctionPieceTypes = k
@@ -28,51 +28,48 @@ startFen = 7,k/8/8/8/8/8/8/7,K w - - 0 1
 
 
 RULES = ''.join((
-    variant('inline-alias', '''customPiece1 = sp:<shogiPawn> +sp:<gold>
-customPiece2 = sw:WrlR +sw:<rook>
-customPiece3 = vw:WfF +vw:<commoner>'''),
-    variant('inline-raw', '''customPiece1 = sp:fW +sp:<gold>
-customPiece2 = sw:WrlR +sw:<rook>'''),
-    variant('inline-existing', '''gold = gg
-customPiece1 = sp:<shogiPawn> +sp:<gold>'''),
-    variant('inline-late', '''customPiece1 = sp:<shogiPawn> +sp:<gold>
-customPiece2 = gg:<gold>'''),
-    variant('inline-shared', '''customPiece1 = sp:<shogiPawn> +sp:<gold>
-customPiece2 = si:<silver> +si:<gold>'''),
+    variant('inline-alias', """piece = sp:<shogiPawn> +sp:<gold>
+piece = sw:WrlR +sw:<rook>
+piece = vw:WfF +vw:<commoner>"""),
+    variant('inline-raw', """piece = sp:fW +sp:<gold>
+piece = sw:WrlR +sw:<rook>"""),
+    variant('inline-existing', """gold = gg
+piece = sp:<shogiPawn> +sp:<gold>"""),
+    variant('inline-late', """piece = sp:<shogiPawn> +sp:<gold>
+piece = gg:<gold>"""),
+    variant('inline-shared', """piece = sp:<shogiPawn> +sp:<gold>
+piece = si:<silver> +si:<gold>"""),
     variant('inline-slots', '\n'.join(
-        ['customPiece1 = aa:fW +aa:WfF']
-        + [f'customPiece{i} = d{chr(ord("a") + i - 2)}:K' for i in range(2, 25)]
-        + ['customPiece25 = sp:<shogiPawn> +sp:<gold>'])),
-    variant('inline-symbol', '''customPiece14 = ln:KNAD
-customPiece15 = kn:FD +kn:<ln>'''),
-    variant('inline-symbol-forward', '''customPiece15 = ln:KNAD
-customPiece14 = kn:FD +kn:<LN>'''),
-    variant('inline-symbol-reordered', '''customPiece15 = kn:FD +kn:<ln>
-customPiece14 = ln:KNAD'''),
-    variant('inline-slot-forward', '''customPiece14 = kn:FD +kn:<customPiece15>
-customPiece15 = ln:KNAD'''),
-    variant('inline-symbol-legacy', '''customPiece14 = ln:KNAD
+        ['piece = aa:fW +aa:WfF']
+        + [f'customPiece{i} = d{chr(ord("a") + i - 1)}:K' for i in range(1, 24)]
+        + ['piece = sp:<shogiPawn> +sp:<gold>'])),
+    variant('inline-symbol', """piece = ln:KNAD
+piece = kn:FD +kn:<ln>"""),
+    variant('inline-symbol-forward', """piece = kn:FD +kn:<LN>
+piece = ln:KNAD"""),
+    variant('inline-symbol-reordered', """piece = kn:FD +kn:<ln>
+piece = ln:KNAD"""),
+    variant('inline-slot-forward', """piece = kn:FD +kn:<customPiece15>
+customPiece15 = ln:KNAD"""),
+    variant('inline-symbol-legacy', """customPiece14 = ln:KNAD
 customPiece15 = kn:FD
-promotedPieceType = kn:ln'''),
-    '''[inline-symbol-inherited:inline-symbol-legacy]
-customPiece15 = kn:FD +kn:<ln>
+promotedPieceType = kn:ln"""),
+    """[inline-symbol-inherited:inline-symbol-legacy]
+piece = kn:FD +kn:<ln>
 [inline-symbol-lion:inline-symbol-forward]
 lionMovePieces = ln:FFFFFFFFFFFFFFFF
 tradingRule = ln:[dist!,{ln}] ln:[dist2c!,{ln},{kn}]
 [inline-legacy-lion:inline-symbol-legacy]
 lionMovePieces = ln:FFFFFFFFFFFFFFFF
 tradingRule = ln:[dist!,{ln}] ln:[dist2c!,{ln},{kn}]
-''',
-    variant('inline-symbol-native', '''customPiece1 = sp:<shogiPawn> +sp:<gg>
-customPiece2 = gg:<gold>'''),
-    variant('inline-name-precedence', '''customPiece1 = sp:<shogiPawn> +sp:<gold>
-customPiece2 = gold:KNAD'''),
-    variant('inline-mapping-order', '''gold = gg
-customPiece1 = sp:<shogiPawn> +sp:<gold>
-customPiece2 = sp:<shogiPawn> +sp:KNAD'''),
+""",
+    variant('inline-symbol-native', """piece = sp:<shogiPawn> +sp:<gg>
+piece = gg:<gold>"""),
+    variant('inline-name-precedence', """piece = sp:<shogiPawn> +sp:<gold>
+piece = gold:KNAD"""),
     variant('inline-symbol-full', '\n'.join(
         [f'customPiece{i} = d{chr(ord("a") + i - 1)}:K' for i in range(1, 24)]
-        + ['customPiece24 = ln:KNAD', 'customPiece25 = kn:FD +kn:<ln>'])),
+        + ['piece = ln:KNAD', 'piece = kn:FD +kn:<ln>'])),
 ))
 
 
@@ -122,6 +119,19 @@ class InlinePromotions(unittest.TestCase):
         output = self.output(name, position, moves, config)
         return {m.group(1) for line in output.splitlines()
                 if (m := re.fullmatch(r'(\S+): \d+', line))}
+
+    def checked_config(self, rules, diagnostic=None):
+        config = Path(self.temp.name) / 'declarations.ini'
+        config.write_text(rules)
+        result = subprocess.run([self.engine, 'check', str(config)],
+                                text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        if diagnostic:
+            self.assertIn(diagnostic, result.stderr)
+        else:
+            self.assertFalse(any(line and not line.startswith('Parsing variant:')
+                                 for line in result.stderr.splitlines()), result.stderr)
+        return config
 
     def gold_moves(self, square, side, size=8):
         file, rank = ord(square[0]) - ord('a'), int(square[1:])
@@ -197,10 +207,9 @@ class InlinePromotions(unittest.TestCase):
         moves = self.moves('inline-alias', position)
         self.assertEqual({m for m in moves if m.startswith('c6')}, self.gold_moves('c6', 'w'))
 
-    def test_unused_native_alias_slot_is_reused_only_when_needed(self):
-        # All 25 custom keys are present, but the final key aliases a native
-        # type. The first promotion can borrow that slot without being erased
-        # when the alias is parsed later, and the alias still promotes to Gold.
+    def test_explicit_slots_are_reserved_before_automatic_allocation(self):
+        # Explicit slots 1-23 are reserved even though the new declaration
+        # appears first. Its raw base and promoted form fill slots 24 and 25.
         for piece in ('AA', 'SP'):
             with self.subTest(piece=piece):
                 moves = self.moves('inline-slots', fen({'c5': piece}), 'c5c6+ h8g8')
@@ -243,11 +252,6 @@ class InlinePromotions(unittest.TestCase):
     def test_type_name_takes_precedence_over_symbol(self):
         self.check_pawn('inline-name-precedence', 'w')
 
-    def test_later_raw_mapping_overrides_reference_for_same_base(self):
-        moves = self.moves('inline-mapping-order', fen({'c5': 'SP'}), 'c5c6+ h8g8')
-        self.assertIn('c6e7', moves)
-        self.assertIn('c6a6', moves)
-
     def test_unknown_and_ambiguous_reference_diagnostics(self):
         for target, definitions, diagnostic in (
             ('missing', '', 'Unknown'),
@@ -256,14 +260,139 @@ class InlinePromotions(unittest.TestCase):
             with self.subTest(target=target):
                 config = Path(self.temp.name) / 'invalid.ini'
                 config.write_text(variant('inline-invalid', definitions
-                                  + f'\ncustomPiece15 = kn:FD +kn:<{target}>'))
+                                  + f'\npiece = kn:FD +kn:<{target}>'))
                 result = subprocess.run([self.engine, 'check', str(config)],
                                         text=True, capture_output=True, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn(f'customPiece15 - {diagnostic} promotion reference: <{target}>', result.stderr)
+                self.assertIn(f'piece - {diagnostic} piece reference: <{target}>', result.stderr)
                 self.assertNotIn('No free custom piece slot', result.stderr)
                 initial = self.moves('inline-invalid', fen({'c5': 'KN'}), config=config)
                 self.assertNotIn('c5d6+', initial)
+
+    def test_bracketed_regions_and_policies_resolve_symbols_and_slots(self):
+        for base, references in (('fW', ('sp', 'customPiece2')),
+                                 ('<shogiPawn>', ('sp', 'shogiPawn'))):
+            for reference in references:
+                with self.subTest(base=base, reference=reference):
+                    rules = variant('brackets', f'''piece = sp:{base} +sp:<gold>
+customPiece1 = aa:K''')
+                    rules = rules.replace('promotionRegionMandatoryWhite<shogiPawn> = *8\n', '')
+                    rules = rules.replace('promotionRegionMandatoryBlack<shogiPawn> = *1\n', '')
+                    rules += f'''
+promotionRegionOptionalWhite = -
+promotionRegionOptionalBlack = -
+promotionPolicy = optional:{{}} mandatory:{{}}
+promotionRegionOptionalWhite<{reference}> = *6
+promotionRegionOptionalBlack<{reference}> = *3
+promotionRegionMandatoryWhite<{reference}> = *8
+promotionRegionMandatoryBlack<{reference}> = *1
+promotionPolicyWhite<{reference}> = optional:{{oi}} mandatory:{{oi}}
+promotionPolicyBlack<{reference}> = optional:{{oi}} mandatory:{{oi}}
+'''
+                    config = self.checked_config(rules)
+                    for side in ('w', 'b'):
+                        self.check_pawn('brackets', side, config=config)
+                        self.check_pawn('brackets', side, last=True, config=config)
+
+    def test_child_keeps_allocated_base_and_promoted_slots(self):
+        rules = variant('allocated-parent', 'piece = sp:fW +sp:WfF') + '''
+[allocated-child:allocated-parent]
+piece = zz:K
+piece = sp:fW +sp:Q
+promotionPolicy = optional:{} mandatory:{}
+promotionPolicyWhite<customPiece1> = optional:{oi}
+'''
+        config = self.checked_config(rules)
+        position = fen({'c5': 'SP'})
+        self.assertIn('c5c6+', self.moves('allocated-child', position, config=config))
+        moves = self.moves('allocated-child', position, 'c5c6+ h8g8', config)
+        self.assertIn('c6g6', moves)
+        self.assertIn('c6e8', moves)
+
+    def test_identical_betza_bases_remain_independent(self):
+        rules = variant('independent', '''piece = aa:WfF +aa:<rook>
+piece = bb:WfF +bb:<bishop>
+promotionPolicyWhite<aa> = optional:{} mandatory:{}''')
+        config = self.checked_config(rules)
+        self.assertNotIn('c5c6+', self.moves('independent', fen({'c5': 'AA'}), config=config))
+        self.assertIn('c5c6+', self.moves('independent', fen({'c5': 'BB'}), config=config))
+
+    def test_shogi_sources_share_gold_without_custom_slots(self):
+        definitions = '\n'.join(f'customPiece{i} = d{chr(ord("a") + i - 1)}:K'
+                                for i in range(1, 26)) + '''
+piece = p:<shogiPawn> +p:<g>
+piece = l:<lance> +l:<g>
+piece = n:<shogiKnight> +n:<g>
+piece = s:<silver> +s:<g>
+piece = g:<gold>
+'''
+        config = self.checked_config(variant('shared-gold', definitions))
+        for piece, source, target in (('P', 'c5', 'c6'), ('L', 'c5', 'c6'),
+                                      ('N', 'c4', 'd6'), ('S', 'c5', 'd6')):
+            with self.subTest(piece=piece):
+                position = fen({source: piece})
+                promotion = source + target + '+'
+                self.assertIn(promotion, self.moves('shared-gold', position, config=config))
+                moves = self.moves('shared-gold', position, promotion + ' h8g8', config)
+                self.assertEqual({m for m in moves if m.startswith(target)},
+                                 self.gold_moves(target, 'w'))
+
+    def test_tenjiku_declaration_chain_and_inline_comments(self):
+        definitions = '''piece = gg:QcppQ              # Great General
+piece = rg:RcppR +rg:<gg>     # Rook General
+piece = se:RbBfFfA +se:<rg>   # Soaring Eagle
+piece = dk:<bers> +dk:<se>    # Dragon King
+piece = r:<rook> +r:<dk>      # Rook
+piece = g:<gold> +g:<r>       # Gold General
+piece = p:<shogiPawn> +p:<g>  # Pawn
+'''
+        config = self.checked_config(variant('tenjiku-chain', definitions))
+        for piece in ('P', 'G', 'R', 'DK', 'SE', 'RG'):
+            with self.subTest(piece=piece):
+                position = fen({'c5': piece})
+                self.assertIn('c5c6+', self.moves('tenjiku-chain', position, config=config))
+        self.assertIn('c6c1', self.moves('tenjiku-chain', fen({'c5': 'G'}),
+                                       'c5c6+ h8g8', config))
+
+    def test_invalid_declarations_and_duplicate_bases(self):
+        for definitions, diagnostic in (
+            ('customPiece1 = aa:K +aa:Q', 'Single-slot definition required'),
+            ('customPiece1 = aa:<gold>', 'Single-slot definition required'),
+            ('piece = aa:K +bb:Q', 'Invalid definition'),
+            ('piece = aa:K +aa:Q +aa:R', 'Invalid definition'),
+            ('piece = aa:<missing>', 'Unknown piece reference'),
+            ('piece = aa:<bers>\npiece = bb:<bers>', 'Duplicate base slot'),
+            ('piece = aa:K\npiece = aa:Q', 'Duplicate or ambiguous base symbol'),
+        ):
+            with self.subTest(definitions=definitions):
+                self.checked_config(variant('invalid-declaration', definitions), diagnostic)
+        full = '\n'.join(f'customPiece{i} = d{chr(ord("a") + i - 1)}:K'
+                         for i in range(1, 26))
+        self.checked_config(variant('exhausted-base', full + '\npiece = aa:K'),
+                            'No free custom piece slot for base')
+        almost_full = '\n'.join(full.splitlines()[:-1])
+        self.checked_config(variant('exhausted-promotion', almost_full + '\npiece = aa:K +aa:Q'),
+                            'No free custom piece slot for promoted piece')
+
+    def test_legacy_single_slots_accept_inline_comments(self):
+        config = self.checked_config(variant('legacy-comments', '''customPiece1 = aa:K # King movement
+customPiece2 = bb:Q # Queen movement'''))
+        moves = self.moves('legacy-comments', fen({'c5': 'AA'}), config=config)
+        self.assertEqual(len({m for m in moves if m.startswith('c5')}), 8)
+        self.assertIn('c5c1', self.moves('legacy-comments', fen({'c5': 'BB'}), config=config))
+
+    def test_old_promotion_suffixes_and_bad_references_are_reported(self):
+        for option, diagnostic in (
+            ('promotionPolicyWhiteShogiPawn', 'Invalid option'),
+            ('promotionRegionOptionalWhiteShogiPawn', 'Invalid option'),
+            ('promotionRegionMandatoryWhiteShogiPawn', 'Invalid option'),
+            ('promotionPolicyWhite<missing>', 'Unknown piece reference'),
+            ('promotionRegionOptionalWhite<missing>', 'Unknown piece reference'),
+        ):
+            with self.subTest(option=option):
+                value = 'optional:{oi}' if option.startswith('promotionPolicy') else '*6'
+                self.checked_config(variant('invalid-option', 'piece = sp:<shogiPawn> +sp:<gold>')
+                                    + f'\n{option} = {value}\n', diagnostic)
 
     @unittest.skipUnless(os.environ.get('FSF_TEST_11X11') == '1',
                          'set FSF_TEST_11X11=1 with an 11x11-capable build')

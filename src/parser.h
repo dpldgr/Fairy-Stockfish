@@ -27,6 +27,8 @@ namespace Stockfish {
 
 class Config : public std::map<std::string, std::string> {
 public:
+    // Unlike ordinary options, piece declarations may repeat and retain order.
+    std::vector<std::string> pieceDefinitions;
     Config::iterator find (const std::string& s) {
         constexpr bool PrintOptions = false; // print config options?
         if (PrintOptions)

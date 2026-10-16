@@ -14,50 +14,50 @@ promotionRegionOptionalBlack = *1 *2 *3
 promotionRegionMandatoryWhite = -
 promotionRegionMandatoryBlack = -
 promotionPolicy = optional:{oi,iic,ioc} mandatory:{}
-promotionPolicyWhiteShogiPawn = optional:{inherit,last}
-promotionPolicyBlackShogiPawn = optional:{inherit,last}
+promotionPolicyWhite<shogiPawn> = optional:{inherit,last}
+promotionPolicyBlack<shogiPawn> = optional:{inherit,last}
 immobilityIllegal = false
 pieceDrops = false
 capturesToHand = false
 [explicit-shogi:shogi]
 promotionRegionOptionalWhite = *7 *8 *9
 promotionRegionOptionalBlack = *1 *2 *3
-promotionRegionMandatoryWhiteShogiPawn = *9
-promotionRegionMandatoryBlackShogiPawn = *1
-promotionRegionMandatoryWhiteLance = *9
-promotionRegionMandatoryBlackLance = *1
-promotionRegionMandatoryWhiteShogiKnight = *8 *9
-promotionRegionMandatoryBlackShogiKnight = *1 *2
+promotionRegionMandatoryWhite<shogiPawn> = *9
+promotionRegionMandatoryBlack<shogiPawn> = *1
+promotionRegionMandatoryWhite<lance> = *9
+promotionRegionMandatoryBlack<lance> = *1
+promotionRegionMandatoryWhite<shogiKnight> = *8 *9
+promotionRegionMandatoryBlack<shogiKnight> = *1 *2
 promotionPolicy = optional:{all} mandatory:{oi}
 [empty:chu]
-promotionRegionOptionalWhiteShogiPawn = -
-promotionRegionOptionalBlackShogiPawn = -
+promotionRegionOptionalWhite<shogiPawn> = -
+promotionRegionOptionalBlack<shogiPawn> = -
 [clear:chu]
-promotionPolicyWhiteShogiPawn = optional:{}
-promotionPolicyBlackShogiPawn = optional:{}
+promotionPolicyWhite<shogiPawn> = optional:{}
+promotionPolicyBlack<shogiPawn> = optional:{}
 [white-only:chu]
 promotionPolicyBlack = optional:{}
-promotionPolicyBlackShogiPawn = optional:{}
+promotionPolicyBlack<shogiPawn> = optional:{}
 [parent:chu]
 promotionPolicyWhite = optional:{oi}
 [child:parent]
-promotionPolicyWhiteShogiPawn = optional:{inherit,last}
+promotionPolicyWhite<shogiPawn> = optional:{inherit,last}
 [last-only:chu]
 promotionPolicy = optional:{last} mandatory:{}
-promotionPolicyWhiteShogiPawn = optional:{inherit}
-promotionPolicyBlackShogiPawn = optional:{inherit}
+promotionPolicyWhite<shogiPawn> = optional:{inherit}
+promotionPolicyBlack<shogiPawn> = optional:{inherit}
 [last-quiet:last-only]
-promotionPolicyWhiteShogiPawn = optional:{lastq}
+promotionPolicyWhite<shogiPawn> = optional:{lastq}
 [last-capture:last-only]
-promotionPolicyWhiteShogiPawn = optional:{lastc}
+promotionPolicyWhite<shogiPawn> = optional:{lastc}
 [mobility:last-only]
 mobilityRegionWhiteShogiPawn = *1 *2 *3 *4 *5 *6 *7 *8
 [capture-only:last-only]
 shogiPawn = -
 customPiece1 = p:cfW
 promotedPieceType = p:g
-promotionPolicyWhiteCustomPiece1 = optional:{last}
-promotionPolicyBlackCustomPiece1 = optional:{last}
+promotionPolicyWhite<customPiece1> = optional:{last}
+promotionPolicyBlack<customPiece1> = optional:{last}
 [mandatory-capture:chess]
 promotionPieceTypes = -
 promotionPawnTypes = -
@@ -66,10 +66,10 @@ promotionRegionOptionalWhite = *7 *8
 promotionRegionMandatoryWhite = *7 *8
 promotionPolicy = optional:{oiq} mandatory:{oic,iic}
 [silver-zone:chu]
-promotionRegionOptionalWhiteSilver = *8 *9
+promotionRegionOptionalWhite<silver> = *8 *9
 [mandatory-silver:chu]
-promotionRegionMandatoryWhiteSilver = *8 *9
-promotionPolicyWhiteSilver = mandatory:{oi}
+promotionRegionMandatoryWhite<silver> = *8 *9
+promotionPolicyWhite<silver> = mandatory:{oi}
 [legacy-new-mix]
 maxRank = 8
 maxFile = 8
@@ -81,8 +81,8 @@ promotionRegionWhite = *7 *8
 promotionPolicy = optional:{oi}
 castling = false
 [normal-pawn:chess]
-promotionRegionMandatoryWhitePawn = *8
-promotionRegionMandatoryBlackPawn = *1
+promotionRegionMandatoryWhite<pawn> = *8
+promotionRegionMandatoryBlack<pawn> = *1
 promotionPolicy = mandatory:{oi}
 [inside-pawn:normal-pawn]
 promotionPolicy = mandatory:{ii}

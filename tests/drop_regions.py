@@ -53,7 +53,7 @@ dropRegionWhiteRook = -
 dropRegionBlackRook = -
 [drop-alias]
 king = k
-customPiece2 = p:<shogiPawn> +p:<gold>
+piece = p:<shogiPawn> +p:<gold>
 pieceDrops = true
 castling = false
 dropRegionWhiteShogiPawn = a4

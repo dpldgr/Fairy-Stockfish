@@ -3099,7 +3099,13 @@ void VariantMap::parse_istream(std::istream& file) {
                 if (DoCheck && !input.empty() && input.find('=') == std::string::npos)
                     std::cerr << "Invalid syntax: '" << input << "'." << std::endl;
                 if (std::getline(std::getline(ss, key, '=') >> std::ws, value) && !key.empty())
-                    attribs[key.erase(key.find_last_not_of(" ") + 1)] = value;
+                {
+                    key.erase(key.find_last_not_of(" ") + 1);
+                    if (key == "piece")
+                        attribs.pieceDefinitions.push_back(value.substr(0, value.find('#')));
+                    else
+                        attribs[key] = value;
+                }
             }
         }
 
