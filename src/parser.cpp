@@ -265,16 +265,28 @@ namespace {
         }
     }
 
-    PieceType piece_type_by_symbol(const Variant* v, const std::string& symbol) {
+    PieceType piece_type_by_symbol(const Variant* v, const std::string& symbol, bool* ambiguous = nullptr) {
         std::string whiteSymbol = Variant::white_symbol(symbol);
+        PieceType found = NO_PIECE_TYPE;
+        if (ambiguous)
+            *ambiguous = false;
         for (PieceSet ps = v->pieceTypes; ps;)
         {
             PieceType pt = pop_lsb(ps);
             if (   v->pieceToSymbol[make_piece(WHITE, pt)] == whiteSymbol
                 || v->pieceToSymbolSynonyms[make_piece(WHITE, pt)] == whiteSymbol)
-                return pt;
+            {
+                if (!ambiguous)
+                    return pt;
+                if (found != NO_PIECE_TYPE)
+                {
+                    *ambiguous = true;
+                    return NO_PIECE_TYPE;
+                }
+                found = pt;
+            }
         }
-        return NO_PIECE_TYPE;
+        return found;
     }
 
     bool parse_lion_move_mask(const std::string& value, uint64_t& mask) {
@@ -722,6 +734,12 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             v->shuffleSquares[BLACK] |= make_square(f, v->maxRank);
         }
     }
+    struct InlinePromotion {
+        PieceType base;
+        std::string key, target, symbol;
+        PieceType resolved = NO_PIECE_TYPE;
+    };
+    std::vector<InlinePromotion> inlinePromotions;
     // piece types
     for (PieceType pt = PAWN; pt <= KING; ++pt)
     {
@@ -785,29 +803,22 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
                             if (   valid_piece_symbol(promotedSymbol)
                                 && (!shogiStylePromotion || Variant::white_symbol(promotedSymbol) == Variant::white_symbol(symbol)))
                             {
-                                PieceType promotedPt = NO_PIECE_TYPE;
-                                bool referencedPromotion = piece_reference(promotedBetza, reference);
-                                if (referencedPromotion)
-                                    promotedPt = piece_type_by_name(reference);
+                                if (piece_reference(promotedBetza, reference))
+                                    inlinePromotions.push_back({basePt, name, reference,
+                                                                shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol});
                                 else
-                                    promotedPt = next_free_custom_piece(v, config, baseUsesCurrentSlot ? NO_PIECE_TYPE : pt);
-
-                                if (promotedPt != NO_PIECE_TYPE)
                                 {
-                                    if (!referencedPromotion || !(v->pieceTypes & promotedPt))
+                                    PieceType promotedPt = next_free_custom_piece(v, config, baseUsesCurrentSlot ? NO_PIECE_TYPE : pt);
+                                    if (promotedPt != NO_PIECE_TYPE)
                                     {
-                                        // Referenced targets also need to be active: move generation,
-                                        // evaluation and piece indexing iterate the variant's piece set.
-                                        // Keep an already-defined target's symbol and movement intact.
                                         v->add_piece(promotedPt, shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol,
-                                                     referencedPromotion ? "" : promotedBetza);
-                                        if (!referencedPromotion)
-                                            set_custom_piece_betza(v, promotedPt, promotedBetza);
+                                                     promotedBetza);
+                                        set_custom_piece_betza(v, promotedPt, promotedBetza);
+                                        inlinePromotions.push_back({basePt, name, "", "", promotedPt});
                                     }
-                                    v->promotedPieceType[basePt] = promotedPt;
+                                    else if (DoCheck)
+                                        std::cerr << name << " - No free custom piece slot for promoted piece" << std::endl;
                                 }
-                                else if (DoCheck)
-                                    std::cerr << name << " - No free custom piece slot for promoted piece" << std::endl;
                             }
                             else if (DoCheck)
                                 std::cerr << name << " - Invalid promoted piece symbol: " << token << std::endl;
@@ -843,6 +854,30 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             parse_attribute("mobilityRegion" + color + capitalizedPiece, v->mobilityRegion[c][pt]);
         }
     }
+    // Resolve against the complete set of definitions, including forward and
+    // inherited targets. Type names retain precedence over configured symbols.
+    for (auto& promotion : inlinePromotions)
+    {
+        if (promotion.target.empty())
+            continue;
+        bool ambiguous = false;
+        promotion.resolved = piece_type_by_name(promotion.target);
+        if (promotion.resolved == NO_PIECE_TYPE)
+            promotion.resolved = piece_type_by_symbol(v, promotion.target, &ambiguous);
+        if (DoCheck && promotion.resolved == NO_PIECE_TYPE)
+            std::cerr << promotion.key << " - " << (ambiguous ? "Ambiguous" : "Unknown")
+                      << " promotion reference: <" << promotion.target << ">" << std::endl;
+    }
+    // Apply raw and referenced mappings together in their original order.
+    for (const auto& promotion : inlinePromotions)
+        if (promotion.resolved != NO_PIECE_TYPE)
+        {
+            // Move generation, evaluation and indexing require an active type.
+            // Preserve the movement and symbol of an already-defined target.
+            if (!(v->pieceTypes & promotion.resolved))
+                v->add_piece(promotion.resolved, promotion.symbol);
+            v->promotedPieceType[promotion.base] = promotion.resolved;
+        }
     // piece values
     for (Phase phase : {MG, EG})
     {
