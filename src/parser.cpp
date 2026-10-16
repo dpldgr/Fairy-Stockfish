@@ -600,6 +600,25 @@ namespace {
         for (PieceType pt = CUSTOM_PIECES; pt < CUSTOM_PIECES_END; ++pt)
             if (!(v->pieceTypes & pt) && entries.find(piece_name(pt)) == entries.end())
                 return pt;
+
+        // A native alias does not occupy its custom slot. Reuse such slots
+        // only as a fallback, preserving allocations in configurations that
+        // already fit. Parsing the alias later leaves this slot's moves intact.
+        for (PieceType pt = CUSTOM_PIECES; pt < CUSTOM_PIECES_END; ++pt)
+        {
+            auto entry = entries.find(piece_name(pt));
+            if ((v->pieceTypes & pt) || entry == entries.end())
+                continue;
+            std::string token, symbol, betza, reference;
+            std::stringstream(entry->second) >> token;
+            if (split_piece_definition(token, symbol, betza) && valid_piece_symbol(symbol)
+                && piece_reference(betza, reference))
+            {
+                PieceType native = piece_type_by_name(reference);
+                if (native != NO_PIECE_TYPE && !is_custom(native))
+                    return pt;
+            }
+        }
         return NO_PIECE_TYPE;
     }
 
@@ -767,17 +786,23 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
                                 && (!shogiStylePromotion || Variant::white_symbol(promotedSymbol) == Variant::white_symbol(symbol)))
                             {
                                 PieceType promotedPt = NO_PIECE_TYPE;
-                                if (piece_reference(promotedBetza, reference))
+                                bool referencedPromotion = piece_reference(promotedBetza, reference);
+                                if (referencedPromotion)
                                     promotedPt = piece_type_by_name(reference);
                                 else
                                     promotedPt = next_free_custom_piece(v, config, baseUsesCurrentSlot ? NO_PIECE_TYPE : pt);
 
                                 if (promotedPt != NO_PIECE_TYPE)
                                 {
-                                    if (!piece_reference(promotedBetza, reference))
+                                    if (!referencedPromotion || !(v->pieceTypes & promotedPt))
                                     {
-                                        v->add_piece(promotedPt, shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol, promotedBetza);
-                                        set_custom_piece_betza(v, promotedPt, promotedBetza);
+                                        // Referenced targets also need to be active: move generation,
+                                        // evaluation and piece indexing iterate the variant's piece set.
+                                        // Keep an already-defined target's symbol and movement intact.
+                                        v->add_piece(promotedPt, shogiStylePromotion ? "+" + promotedSymbol : promotedSymbol,
+                                                     referencedPromotion ? "" : promotedBetza);
+                                        if (!referencedPromotion)
+                                            set_custom_piece_betza(v, promotedPt, promotedBetza);
                                     }
                                     v->promotedPieceType[basePt] = promotedPt;
                                 }
