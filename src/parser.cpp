@@ -525,6 +525,48 @@ namespace {
             && parse_piece_symbol_list(v, token.substr(1, token.size() - 2), pieces);
     }
 
+    bool parse_extinction_piece_set(const Variant* v, const std::string& value, PieceSet& pieces) {
+        std::string token = trim(value);
+        bool explicitList = token.size() >= 2 && token.front() == '{' && token.back() == '}';
+        if (explicitList)
+            token = trim(token.substr(1, token.size() - 2));
+        if (token.empty() || token == "-")
+        {
+            pieces = NO_PIECE_SET;
+            return true;
+        }
+        if (token == "*")
+        {
+            pieces = piece_set(ALL_PIECES);
+            return true;
+        }
+        if (explicitList || token.find(',') != std::string::npos)
+            return token.back() != ',' && parse_piece_symbol_list(v, token, pieces);
+
+        // Preserve compact legacy sets such as "kq", including when a full
+        // symbol has the same spelling. Braces disambiguate a single symbol.
+        pieces = NO_PIECE_SET;
+        std::stringstream chars(token);
+        char c;
+        bool compact = true;
+        while (chars >> c)
+        {
+            size_t index = c == '*' ? size_t(ALL_PIECES)
+                                   : v->pieceToChar.find(std::toupper(static_cast<unsigned char>(c)));
+            if (index == std::string::npos)
+            {
+                compact = false;
+                break;
+            }
+            pieces |= PieceType(index);
+        }
+        if (compact)
+            return true;
+        PieceType pt = piece_type_by_symbol(v, token);
+        pieces = pt == NO_PIECE_TYPE ? NO_PIECE_SET : piece_set(pt);
+        return pt != NO_PIECE_TYPE;
+    }
+
     bool split_trading_fields(const std::string& value, std::vector<std::string>& fields) {
         size_t start = 0;
         int depth = 0;
@@ -1305,7 +1347,15 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("extinctionPseudoRoyal", v->extinctionPseudoRoyal);
     parse_attribute("dupleCheck", v->dupleCheck);
     // extinction piece types
-    parse_attribute("extinctionPieceTypes", v->extinctionPieceTypes, v->pieceToChar);
+    const auto extinctionTypes = config.find("extinctionPieceTypes");
+    if (extinctionTypes != config.end())
+    {
+        PieceSet parsed;
+        if (parse_extinction_piece_set(v, extinctionTypes->second, parsed))
+            v->extinctionPieceTypes = parsed;
+        else if (DoCheck)
+            std::cerr << "extinctionPieceTypes - Invalid piece set: " << extinctionTypes->second << std::endl;
+    }
     parse_attribute("extinctionPieceCount", v->extinctionPieceCount);
     parse_attribute("extinctionOpponentPieceCount", v->extinctionOpponentPieceCount);
     parse_attribute("flagPiece", v->flagPiece[WHITE], v->pieceToChar);
