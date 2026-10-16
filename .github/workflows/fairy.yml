@@ -80,6 +80,10 @@ jobs:
           bash ../tests/drop.sh
           python3 ../tests/drop_regions.py
 
+      - name: Test extinction symbols
+        run: |
+          python3 ../tests/extinction_symbols.py
+
       - name: Test variants.ini
         run: |
           ! ./stockfish check variants.ini 2>&1 >/dev/null | grep -v "Parsing variant"
