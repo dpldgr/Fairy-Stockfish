@@ -74,6 +74,7 @@ jobs:
         run: |
           bash ../tests/promotion.sh
           python3 ../tests/promotion_rules.py
+          python3 ../tests/inline_promotions.py
 
       - name: Test drop regions
         run: |
