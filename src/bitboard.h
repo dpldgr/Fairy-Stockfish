@@ -845,49 +845,45 @@ inline Square frontmost_sq(Color c, Bitboard b) {
 /// popcount() counts the number of non-zero bits in a piece set
 
 inline int popcount(PieceSet ps) {
-
+  int result = 0;
+  for (auto word : ps.words)
+  {
 #ifndef USE_POPCNT
-
-  union { uint64_t bb; uint16_t u[4]; } v = { (uint64_t)ps };
-  return PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]];
-
+      union { uint64_t bb; uint16_t u[4]; } v = { word };
+      result += PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]];
 #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
-
-  return (int)_mm_popcnt_u64(ps);
-
-#else // Assumed gcc or compatible compiler
-
-  return __builtin_popcountll(ps);
-
+      result += int(_mm_popcnt_u64(word));
+#else
+      result += __builtin_popcountll(word);
 #endif
+  }
+  return result;
 }
-
-/// lsb() and msb() return the least/most significant bit in a non-zero piece set
 
 #if defined(__GNUC__)  // GCC, Clang, ICC
 
-inline PieceType lsb(PieceSet ps) {
+inline int lsb_piece_word(uint64_t ps) {
   assert(ps);
   return PieceType(__builtin_ctzll(ps));
 }
 
-inline PieceType msb(PieceSet ps) {
+inline int msb_piece_word(uint64_t ps) {
   assert(ps);
-  return PieceType((PIECE_TYPE_NB - 1) ^ __builtin_clzll(ps));
+  return PieceType(63 ^ __builtin_clzll(ps));
 }
 
 #elif defined(_MSC_VER)  // MSVC
 
 #ifdef _WIN64  // MSVC, WIN64
 
-inline PieceType lsb(PieceSet ps) {
+inline int lsb_piece_word(uint64_t ps) {
   assert(ps);
   unsigned long idx;
   _BitScanForward64(&idx, ps);
   return (PieceType) idx;
 }
 
-inline PieceType msb(PieceSet ps) {
+inline int msb_piece_word(uint64_t ps) {
   assert(ps);
   unsigned long idx;
   _BitScanReverse64(&idx, ps);
@@ -896,7 +892,7 @@ inline PieceType msb(PieceSet ps) {
 
 #else  // MSVC, WIN32
 
-inline PieceType lsb(PieceSet ps) {
+inline int lsb_piece_word(uint64_t ps) {
   assert(ps);
   unsigned long idx;
 
@@ -909,7 +905,7 @@ inline PieceType lsb(PieceSet ps) {
   }
 }
 
-inline PieceType msb(PieceSet ps) {
+inline int msb_piece_word(uint64_t ps) {
   assert(ps);
   unsigned long idx;
   if (ps >> 32) {
@@ -929,12 +925,26 @@ inline PieceType msb(PieceSet ps) {
 
 #endif
 
+inline PieceType lsb(PieceSet ps) {
+  assert(ps);
+  for (int i = 0; i < PIECE_SET_WORDS; ++i)
+      if (ps.words[i]) return PieceType(64 * i + lsb_piece_word(ps.words[i]));
+  return NO_PIECE_TYPE;
+}
+
+inline PieceType msb(PieceSet ps) {
+  assert(ps);
+  for (int i = PIECE_SET_WORDS - 1; i >= 0; --i)
+      if (ps.words[i]) return PieceType(64 * i + msb_piece_word(ps.words[i]));
+  return NO_PIECE_TYPE;
+}
+
 /// pop_lsb() and pop_msb() find and clear the least/most significant bit in a non-zero piece set
 
 inline PieceType pop_lsb(PieceSet& ps) {
   assert(ps);
   const PieceType pt = lsb(ps);
-  ps &= PieceSet(ps - 1);
+  ps.words[int(pt) / 64] &= ps.words[int(pt) / 64] - 1;
   return pt;
 }
 

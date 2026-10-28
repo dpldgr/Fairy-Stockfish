@@ -21,6 +21,7 @@
 
 #include <array>
 #include <limits>
+#include <memory>
 #include <type_traits>
 
 #include "movegen.h"
@@ -161,7 +162,13 @@ private:
   Value threshold;
   Depth depth;
   int ply;
+#if PIECE_TYPE_CAPACITY > 64
+  // A wide catalogue's drop list can exceed the worker's stack size.
+  std::unique_ptr<ExtMove[]> moveStorage{new ExtMove[MAX_MOVES]};
+  ExtMove* moves = moveStorage.get();
+#else
   ExtMove moves[MAX_MOVES];
+#endif
 };
 
 } // namespace Stockfish

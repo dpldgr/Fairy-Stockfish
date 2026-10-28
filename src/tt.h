@@ -48,7 +48,7 @@ struct TTEntry {
 private:
   friend class TranspositionTable;
 
-#if BOARD_SQUARES <= 256
+#if !WIDE_MOVES
   uint16_t key16;
   uint8_t  depth8;
   uint8_t  genBound8;
@@ -80,7 +80,7 @@ struct TTClusterPadding<0> {};
 
 class TranspositionTable {
 
-  static constexpr int ClusterSize = BOARD_SQUARES <= 256 ? 5 : 4;
+  static constexpr int ClusterSize = sizeof(MoveStorage) == 4 ? 5 : 4;
   static constexpr size_t ClusterEntryBytes = sizeof(TTEntry) * ClusterSize;
 
   static_assert(ClusterEntryBytes <= 64, "TT cluster entries exceed cache line size");

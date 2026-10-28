@@ -136,8 +136,8 @@ struct Variant {
   int pieceValue[PHASE_NB][PIECE_TYPE_NB] = {};
   std::string customPiece[CUSTOM_PIECES_NB] = {};
   PieceSet pieceTypes = CHESS_PIECES;
-  std::string pieceToChar =  " PNBRQ" + std::string(KING - QUEEN - 1, ' ') + "K" + std::string(PIECE_TYPE_NB - KING - 1, ' ')
-                           + " pnbrq" + std::string(KING - QUEEN - 1, ' ') + "k" + std::string(PIECE_TYPE_NB - KING - 1, ' ');
+  std::string pieceToChar =  " PNBRQ" + std::string(KING - QUEEN - 1, ' ') + "K" + std::string(PIECE_COLOR_STRIDE - KING - 1, ' ')
+                           + " pnbrq" + std::string(KING - QUEEN - 1, ' ') + "k" + std::string(PIECE_COLOR_STRIDE - KING - 1, ' ');
   std::string pieceToCharSynonyms = std::string(PIECE_NB, ' ');
   std::vector<std::string> pieceToSymbol;
   std::vector<std::string> pieceToSymbolSynonyms;
@@ -434,7 +434,7 @@ public:
   std::vector<std::string> get_keys();
 
 private:
-  void add(std::string s, Variant* v);
+  void add(std::string s, Variant* v, bool configured = false);
 };
 
 extern VariantMap variants;

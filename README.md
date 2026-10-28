@@ -89,6 +89,48 @@ The games currently supported besides chess are listed below. Fairy-Stockfish ca
 
 See the [Fairy-Stockfish Wiki](https://github.com/fairy-stockfish/Fairy-Stockfish/wiki) for more info, or if the required information is not available, open an [issue](https://github.com/fairy-stockfish/Fairy-Stockfish/issues) or join our [discord server](https://discord.gg/FYUGgmCFB4).
 
+## Configurable builds
+
+Board dimensions are compile-time settings, with a maximum area of 384 cells.
+For example, a portable 19x19 executable with 128 total piece-type slots:
+
+```sh
+make -C src -j2 ARCH=x86-64 board_files=19 board_ranks=19 \
+  piece_slots=128 gating=yes precomputedmagics=no all=yes build
+```
+
+`piece_slots` defaults to 64. Requests must be integers from 64 through 512
+and are rounded upward to a multiple of 64 (`129` selects `192`). The total
+includes native and reserved slots; ordinary custom slots number `piece_slots - 39`.
+Piece sets use exactly one 64-bit word per 64 slots. Non-power-of-two capacities
+use padding in colour encodings, while type-indexed storage uses the selected
+capacity. Larger capacities increase memory use, including per-worker histories.
+
+`gating=yes|no` defaults to `yes` and controls Seirawan-style extra-piece
+placement during a move. With `no`, built-in variants requiring it are omitted
+and incompatible external variants are rejected. Drops and their regions,
+walling, and Cambodian initial-move rules remain available.
+
+Moves widen to 64 bits when any retained payload needs it, including walling
+and promoted drops. Every 19x19 build uses 64-bit moves. Native Make builds
+automatically rebuild objects when compiler flags change.
+Wider-slot builds also reserve larger move lists for drop choices and store the
+search move buffer on the heap; the 64-slot build retains its existing bound.
+
+The JavaScript Makefile accepts the same two options. Python builds use the
+environment variables `PIECE_SLOTS` and `GATING`; force recompilation when
+changing them, for example `PIECE_SLOTS=192 GATING=no python3 setup.py build_ext --force`.
+Larger games use classical evaluation when they exceed NNUE feature limits.
+
+Capacity and encoding checks:
+
+```sh
+python3 tests/build_features.py
+python3 tests/piece_slots_matrix.py
+# Run from src/ after building the desired engine:
+PIECE_SLOTS=128 BOARD_SIZE=19 GATING=yes python3 ../tests/piece_slots.py
+```
+
 ## Bindings
 
 Besides the C++ engine, this project also includes bindings for other programming languages in order to be able to use it as a library for chess variants. They support move, SAN, and FEN generation, as well as checking of game end conditions for all variants supported by Fairy-Stockfish. Since the bindings are using the C++ code, they are very performant compared to libraries directly written in the respective target language.

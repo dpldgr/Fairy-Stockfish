@@ -672,7 +672,9 @@ inline bool Position::nnue_use_pockets() const {
 
 inline bool Position::nnue_applicable() const {
   // Do not use NNUE during setup phases (placement, sittuyin)
-  return (!count_in_hand(ALL_PIECES) || nnue_use_pockets() || !must_drop())
+  return count<ALL_PIECES>() + (nnue_use_pockets() ? count_in_hand(ALL_PIECES) : 0)
+           <= int(Eval::NNUE::FeatureSet::MaxActiveDimensions)
+         && (!count_in_hand(ALL_PIECES) || nnue_use_pockets() || !must_drop())
          && !virtualPieces
          && (!nnue_king() || (count(WHITE, nnue_king()) == 1 && count(BLACK, nnue_king()) == 1));
 }
@@ -938,7 +940,7 @@ inline Bitboard Position::walling_region(Color c) const {
 
 inline bool Position::seirawan_gating() const {
   assert(var != nullptr);
-  return var->seirawanGating;
+  return ENABLE_GATING && var->seirawanGating;
 }
 
 inline bool Position::cambodian_moves() const {
