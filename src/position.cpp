@@ -1800,6 +1800,15 @@ bool Position::pseudo_legal(const Move m) const {
   Color us = sideToMove;
   Square from = from_sq(m);
   Square to = to_sq(m);
+  // TT moves can contain unused encoded IDs or square padding. Validate
+  // before any board, hand or type-indexed access.
+  if (!is_ok(to) || (type_of(m) != DROP && !is_ok(from)))
+      return false;
+  if (type_of(m) == DROP
+      && (dropped_piece_type(m) <= NO_PIECE_TYPE || dropped_piece_type(m) >= PIECE_TYPE_NB
+          || in_hand_piece_type(m) <= NO_PIECE_TYPE || in_hand_piece_type(m) >= PIECE_TYPE_NB))
+      return false;
+
   Piece pc = moved_piece(m);
 
   // Illegal moves to squares outside of board or to wall squares

@@ -36,6 +36,7 @@
 /// -DUSE_PEXT    | Add runtime support for use of pext asm-instruction. Works
 ///               | only in 64-bit mode and requires hardware with pext support.
 
+#include <array>
 #include <cassert>
 #include <cctype>
 #include <cstdint>
@@ -43,6 +44,21 @@
 #include <string_view>
 #include <type_traits>
 #include <algorithm>
+
+// Type capacity and colour encoding are separate: e.g. 192 types use an
+// eight-bit field and a 256-ID colour stride, but only three PieceSet words.
+#ifndef PIECE_TYPE_CAPACITY
+#define PIECE_TYPE_CAPACITY 64
+#endif
+#if PIECE_TYPE_CAPACITY < 64 || PIECE_TYPE_CAPACITY > 512 || PIECE_TYPE_CAPACITY % 64
+#error "PIECE_TYPE_CAPACITY must be a multiple of 64 between 64 and 512"
+#endif
+#ifndef ENABLE_GATING
+#define ENABLE_GATING 1
+#endif
+#if ENABLE_GATING != 0 && ENABLE_GATING != 1
+#error "ENABLE_GATING must be 0 or 1"
+#endif
 
 #ifndef BOARD_FILES
 #define BOARD_FILES 8
@@ -457,7 +473,7 @@ inline unsigned pext(Bitboard b, Bitboard m) {
 #define USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
 
 #ifdef ALLVARS
-constexpr int MAX_MOVES = 8192;
+constexpr int BASE_MAX_MOVES = 8192;
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
 constexpr int MAX_PLY = 246;
 #else
@@ -465,24 +481,38 @@ constexpr int MAX_PLY = 60;
 #endif
 /// endif USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
 #else
-constexpr int MAX_MOVES = 1024;
+constexpr int BASE_MAX_MOVES = 1024;
 constexpr int MAX_PLY = 246;
 #endif
 /// endif ALLVARS
 
-/// A move needs 16 bits to be stored
-///
-/// bit  0- 5: destination square (from 0 to 63)
-/// bit  6-11: origin square (from 0 to 63)
-/// bit 12-13: promotion piece type - 2 (from KNIGHT-2 to QUEEN-2)
-/// bit 14-15: special move flag: promotion (1), en passant (2), castling (3)
-/// NOTE: en passant bit is set only when a pawn can be captured
+// Wider catalogues can offer both ordinary and promoted drops for every
+// type on every empty square. Preserve the original default-build bound.
+constexpr int MAX_MOVES = BASE_MAX_MOVES
+                       + (PIECE_TYPE_CAPACITY > 64 ? 2 * PIECE_TYPE_CAPACITY * BOARD_SQUARES : 0);
+
+/// Moves use 32 or 64 bits, selected from the board and type capacity.
+/// The low fields hold destination, origin and four move-type bits. Higher
+/// fields carry promotion/drop types, an extra square, or a Lion path index.
 ///
 /// Special cases are MOVE_NONE and MOVE_NULL. We can sneak these in because in
 /// any normal move destination square is always different from origin square
 /// while MOVE_NONE and MOVE_NULL have the same origin and destination square.
 
-using MoveStorage = std::conditional_t<BOARD_SQUARES <= 256, uint32_t, uint64_t>;
+#define PIECE_TYPE_ENCODING_BITS (PIECE_TYPE_CAPACITY <= 64 ? 6 : PIECE_TYPE_CAPACITY <= 128 ? 7 : PIECE_TYPE_CAPACITY <= 256 ? 8 : 9)
+constexpr int PIECE_TYPE_BITS = PIECE_TYPE_ENCODING_BITS;
+constexpr int PIECE_COLOR_STRIDE = 1 << PIECE_TYPE_BITS;
+constexpr int PIECE_TYPE_MASK = PIECE_COLOR_STRIDE - 1;
+constexpr int PIECE_SET_WORDS = PIECE_TYPE_CAPACITY / 64;
+
+// Walling shares the extra-square payload with gating, even in gating=no
+// builds. Drops carry both the in-hand and placed type.
+constexpr int MOVE_TYPE_BITS = 4;
+constexpr int MOVE_PAYLOAD_BITS = std::max(2 * SQUARE_BITS + MOVE_TYPE_BITS + 2 * PIECE_TYPE_BITS,
+                                         3 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS);
+#define MOVE_SQUARE_BITS (BOARD_SQUARES <= 64 ? 6 : BOARD_SQUARES <= 128 ? 7 : BOARD_SQUARES <= 256 ? 8 : 9)
+#define WIDE_MOVES (3 * MOVE_SQUARE_BITS + 4 + PIECE_TYPE_ENCODING_BITS > 32 || 2 * MOVE_SQUARE_BITS + 4 + 2 * PIECE_TYPE_ENCODING_BITS > 32)
+using MoveStorage = std::conditional_t<MOVE_PAYLOAD_BITS <= 32, uint32_t, uint64_t>;
 
 enum Move : MoveStorage {
   MOVE_NONE,
@@ -502,8 +532,6 @@ enum MoveType : MoveStorage {
   HOOK               = MoveStorage(9) << (2 * SQUARE_BITS),
   DOUBLE_MOVE        = MoveStorage(10) << (2 * SQUARE_BITS),
 };
-
-constexpr int MOVE_TYPE_BITS = 4;
 
 enum Color {
   WHITE, BLACK, COLOR_NB = 2
@@ -633,8 +661,6 @@ enum Value : int {
   MidgameLimit  = 15258, EndgameLimit  = 3915
 };
 
-constexpr int PIECE_TYPE_BITS = 6; // PIECE_TYPE_NB = pow(2, PIECE_TYPE_BITS)
-
 enum PieceType {
   NO_PIECE_TYPE, PAWN, KNIGHT, BISHOP, ROOK, QUEEN,
   FERS, MET = FERS, ALFIL, FERS_ALFIL, SILVER, KHON = SILVER, AIWOK, BERS, DRAGON = BERS,
@@ -647,7 +673,7 @@ enum PieceType {
   CUSTOM_PIECE_1, CUSTOM_PIECE_2, CUSTOM_PIECE_3, CUSTOM_PIECE_4,
   CUSTOM_PIECE_5, CUSTOM_PIECE_6, CUSTOM_PIECE_7, CUSTOM_PIECE_8,
 
-  PIECE_TYPE_NB = 1 << PIECE_TYPE_BITS,
+  PIECE_TYPE_NB = PIECE_TYPE_CAPACITY,
   KING = PIECE_TYPE_NB - 1,
 
   // Aliases
@@ -660,26 +686,86 @@ enum PieceType {
   ALL_PIECES = 0,
 };
 static_assert(KING < PIECE_TYPE_NB, "KING exceeds PIECE_TYPE_NB.");
-static_assert(PIECE_TYPE_BITS <= 6, "PIECE_TYPE uses more than 6 bit");
-static_assert(!(PIECE_TYPE_NB & (PIECE_TYPE_NB - 1)), "PIECE_TYPE_NB is not a power of 2");
+static_assert(PIECE_TYPE_NB <= PIECE_COLOR_STRIDE, "Type capacity exceeds encoded range");
 
-static_assert(2 * SQUARE_BITS + MOVE_TYPE_BITS + 2 * PIECE_TYPE_BITS <= 8 * sizeof(MoveStorage), "Move encoding uses more bits than MoveStorage");
+static_assert(MOVE_PAYLOAD_BITS <= 8 * sizeof(MoveStorage), "Move encoding uses more bits than MoveStorage");
+static_assert(bool(WIDE_MOVES) == (sizeof(MoveStorage) == 8), "Move and TT layouts disagree");
 
 enum Piece {
   NO_PIECE,
   W_PAWN = PAWN,                 W_KNIGHT, W_BISHOP, W_ROOK, W_QUEEN, W_KING = KING,
-  B_PAWN = PAWN + PIECE_TYPE_NB, B_KNIGHT, B_BISHOP, B_ROOK, B_QUEEN, B_KING = KING + PIECE_TYPE_NB,
-  PIECE_NB = 2 * PIECE_TYPE_NB
+  B_PAWN = PAWN + PIECE_COLOR_STRIDE, B_KNIGHT, B_BISHOP, B_ROOK, B_QUEEN, B_KING = KING + PIECE_COLOR_STRIDE,
+  PIECE_NB = 2 * PIECE_COLOR_STRIDE
 };
 
-enum PieceSet : uint64_t {
-  NO_PIECE_SET = 0,
-  CHESS_PIECES = (1ULL << PAWN) | (1ULL << KNIGHT) | (1ULL << BISHOP) | (1ULL << ROOK) | (1ULL << QUEEN) | (1ULL << KING),
-  COMMON_FAIRY_PIECES = (1ULL << IMMOBILE_PIECE) | (1ULL << COMMONER) | (1ULL << ARCHBISHOP) | (1ULL << CHANCELLOR),
-  SHOGI_PIECES = (1ULL << SHOGI_PAWN) | (1ULL << GOLD) | (1ULL << SILVER) | (1ULL << SHOGI_KNIGHT) | (1ULL << LANCE)
-                | (1ULL << DRAGON)| (1ULL << DRAGON_HORSE) | (1ULL << KING),
-  COMMON_STEP_PIECES = (1ULL << COMMONER) | (1ULL << FERS) | (1ULL << WAZIR) | (1ULL << BREAKTHROUGH_PIECE),
+// Independent of board geometry; the 64-slot build remains a single word.
+struct PieceSet {
+  std::array<uint64_t, PIECE_SET_WORDS> words;
+
+  constexpr explicit operator bool() const {
+    for (auto word : words)
+        if (word) return true;
+    return false;
+  }
+  constexpr int count() const {
+    int result = 0;
+    for (auto word : words)
+    {
+#if defined(__GNUC__)
+        result += __builtin_popcountll(word);
+#else
+        word -= (word >> 1) & 0x5555555555555555ULL;
+        word = (word & 0x3333333333333333ULL) + ((word >> 2) & 0x3333333333333333ULL);
+        word = (word + (word >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
+        result += int((word * 0x0101010101010101ULL) >> 56);
+#endif
+    }
+    return result;
+  }
+  friend constexpr bool operator==(PieceSet a, PieceSet b) {
+    for (int i = 0; i < PIECE_SET_WORDS; ++i)
+        if (a.words[i] != b.words[i]) return false;
+    return true;
+  }
+  friend constexpr bool operator!=(PieceSet a, PieceSet b) { return !(a == b); }
+  friend constexpr PieceSet operator~(PieceSet a) {
+    for (auto& word : a.words) word = ~word;
+    return a;
+  }
+  constexpr PieceSet& operator|=(PieceSet b) {
+    for (int i = 0; i < PIECE_SET_WORDS; ++i) words[i] |= b.words[i];
+    return *this;
+  }
+  constexpr PieceSet& operator&=(PieceSet b) {
+    for (int i = 0; i < PIECE_SET_WORDS; ++i) words[i] &= b.words[i];
+    return *this;
+  }
+  constexpr PieceSet& operator^=(PieceSet b) {
+    for (int i = 0; i < PIECE_SET_WORDS; ++i) words[i] ^= b.words[i];
+    return *this;
+  }
+  friend constexpr PieceSet operator|(PieceSet a, PieceSet b) { return a |= b; }
+  friend constexpr PieceSet operator&(PieceSet a, PieceSet b) { return a &= b; }
+  friend constexpr PieceSet operator^(PieceSet a, PieceSet b) { return a ^= b; }
 };
+
+constexpr PieceSet piece_set(PieceType pt) {
+  PieceSet result = {};
+  result.words[int(pt) / 64] = uint64_t(1) << (int(pt) % 64);
+  return result;
+}
+constexpr PieceSet NO_PIECE_SET = {};
+constexpr PieceSet CHESS_PIECES = piece_set(PAWN) | piece_set(KNIGHT) | piece_set(BISHOP)
+                                | piece_set(ROOK) | piece_set(QUEEN) | piece_set(KING);
+constexpr PieceSet COMMON_FAIRY_PIECES = piece_set(IMMOBILE_PIECE) | piece_set(COMMONER)
+                                       | piece_set(ARCHBISHOP) | piece_set(CHANCELLOR);
+constexpr PieceSet SHOGI_PIECES = piece_set(SHOGI_PAWN) | piece_set(GOLD) | piece_set(SILVER)
+                                | piece_set(SHOGI_KNIGHT) | piece_set(LANCE) | piece_set(DRAGON)
+                                | piece_set(DRAGON_HORSE) | piece_set(KING);
+constexpr PieceSet COMMON_STEP_PIECES = piece_set(COMMONER) | piece_set(FERS) | piece_set(WAZIR)
+                                      | piece_set(BREAKTHROUGH_PIECE);
+static_assert(sizeof(PieceSet) == PIECE_TYPE_CAPACITY / 8, "Unexpected PieceSet size");
+static_assert(std::is_trivial<PieceSet>::value, "Piece sets must support zero-initialized position state");
 
 enum RiderType : int {
   NO_RIDER = 0,
@@ -845,23 +931,12 @@ ENABLE_BASE_OPERATORS_ON(RiderType)
 #undef ENABLE_BASE_OPERATORS_ON
 #undef ENABLE_BIT_OPERATORS_ON
 
-constexpr PieceSet piece_set(PieceType pt) {
-  return PieceSet(1ULL << pt);
-}
-
-constexpr PieceSet operator~ (PieceSet ps) { return (PieceSet)~(uint64_t)ps; }
-constexpr PieceSet operator| (PieceSet ps1, PieceSet ps2) { return (PieceSet)((uint64_t)ps1 | (uint64_t)ps2); }
 constexpr PieceSet operator| (PieceSet ps, PieceType pt) { return ps | piece_set(pt); }
-constexpr PieceSet operator& (PieceSet ps1, PieceSet ps2) { return (PieceSet)((uint64_t)ps1 & (uint64_t)ps2); }
 constexpr PieceSet operator& (PieceSet ps, PieceType pt) { return ps & piece_set(pt); }
-constexpr PieceSet operator^ (PieceSet ps1, PieceSet ps2) { return (PieceSet)((uint64_t)ps1 ^ (uint64_t)ps2); }
 constexpr PieceSet operator^ (PieceSet ps, PieceType pt) { return ps ^ piece_set(pt); }
-inline PieceSet& operator|= (PieceSet& ps1, PieceSet ps2) { return (PieceSet&)((uint64_t&)ps1 |= (uint64_t)ps2); }
 inline PieceSet& operator|= (PieceSet& ps, PieceType pt) { return ps |= piece_set(pt); }
-inline PieceSet& operator&= (PieceSet& ps1, PieceSet ps2) { return (PieceSet&)((uint64_t&)ps1 &= (uint64_t)ps2); }
-//inline PieceSet& operator&= (PieceSet& ps, PieceType pt) does not make sense
-inline PieceSet& operator^= (PieceSet& ps1, PieceSet ps2) { return (PieceSet&)((uint64_t&)ps1 ^= (uint64_t)ps2); }
 inline PieceSet& operator^= (PieceSet& ps, PieceType pt) { return ps ^= piece_set(pt); }
+
 
 static_assert(piece_set(PAWN) & PAWN);
 static_assert(piece_set(KING) & KING);
@@ -911,7 +986,7 @@ constexpr Square flip_file(Square s, File maxFile = FILE_H) { // Swap A1 <-> H1
 }
 
 constexpr Piece operator~(Piece pc) {
-  return Piece(pc ^ PIECE_TYPE_NB);  // Swap color of piece B_KNIGHT <-> W_KNIGHT
+  return Piece(pc ^ PIECE_COLOR_STRIDE);  // Swap color of piece B_KNIGHT <-> W_KNIGHT
 }
 
 constexpr CastlingRights operator&(Color c, CastlingRights cr) {
@@ -1071,7 +1146,7 @@ constexpr Piece make_piece(Color c, PieceType pt) {
 }
 
 constexpr PieceType type_of(Piece pc) {
-  return PieceType(pc & (PIECE_TYPE_NB - 1));
+  return PieceType(pc & PIECE_TYPE_MASK);
 }
 
 inline Color color_of(Piece pc) {
@@ -1124,11 +1199,11 @@ inline int from_to(Move m) {
 }
 
 inline PieceType promotion_type(Move m) {
-  return type_of(m) == PROMOTION ? PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & (PIECE_TYPE_NB - 1)) : NO_PIECE_TYPE;
+  return type_of(m) == PROMOTION ? PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & PIECE_TYPE_MASK) : NO_PIECE_TYPE;
 }
 
 inline PieceType gating_type(Move m) {
-  return PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & (PIECE_TYPE_NB - 1));
+  return PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & PIECE_TYPE_MASK);
 }
 
 inline Square gating_square(Move m) {
@@ -1190,11 +1265,11 @@ constexpr Move make_double_move(Square from, Square intermediate, Square to) {
 }
 
 constexpr PieceType dropped_piece_type(Move m) {
-  return PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & (PIECE_TYPE_NB - 1));
+  return PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & PIECE_TYPE_MASK);
 }
 
 constexpr PieceType in_hand_piece_type(Move m) {
-  return PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) & (PIECE_TYPE_NB - 1));
+  return PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) & PIECE_TYPE_MASK);
 }
 
 inline bool is_custom(PieceType pt) {

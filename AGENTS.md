@@ -210,6 +210,13 @@ When making code changes:
 - Mention benchmark caveats if timings are noisy or only short-depth checks were run.
 - Commit only the intended changes on the current branch.
 
+## Report storage
+
+Save generated reports to the user's Library when Library tools are available.
+Do not use `/tmp` as the sole location for a report or deliverable. If Library
+upload is unavailable, state that limitation and preserve workspace copies with
+file/download links; do not describe those copies as Library uploads.
+
 ## External references for variant rules
 
 When rule research is needed, useful starting points include:

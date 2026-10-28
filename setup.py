@@ -14,6 +14,16 @@ else:
 
 args.extend(["-DBOARD_FILES=12", "-DBOARD_RANKS=10", "-DALLVARS", "-DPRECOMPUTED_MAGICS", "-DNNUE_EMBEDDING_OFF"])
 
+piece_slots_request = os.environ.get("PIECE_SLOTS", "64")
+if not piece_slots_request.isdigit() or not 64 <= int(piece_slots_request) <= 512:
+    raise ValueError("PIECE_SLOTS must be an integer between 64 and 512")
+piece_slots = (int(piece_slots_request) + 63) // 64 * 64
+gating = os.environ.get("GATING", "yes")
+if gating not in ("yes", "no"):
+    raise ValueError("GATING must be yes or no")
+args.extend(["-DPIECE_TYPE_CAPACITY=%d" % piece_slots,
+             "-DENABLE_GATING=%d" % (gating == "yes")])
+
 if "64bit" in platform.architecture():
     args.append("-DIS_64BIT")
 

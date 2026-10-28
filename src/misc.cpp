@@ -238,6 +238,8 @@ std::string compiler_info() {
   #endif
 
   compiler += "\nCompilation settings include: ";
+  compiler += " piece_slots=" + std::to_string(PIECE_TYPE_NB);
+  compiler += ENABLE_GATING ? " gating=yes" : " gating=no";
   compiler += (Is64Bit ? " 64bit" : " 32bit");
   #if defined(USE_VNNI)
     compiler += " VNNI";

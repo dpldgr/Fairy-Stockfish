@@ -1255,7 +1255,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
                 bool categoriesOverlap = existing.category == rule.category
                                       || existing.category == TRADING_ANY
                                       || rule.category == TRADING_ANY;
-                bool targetsOverlap = existing.targets & rule.targets;
+                bool targetsOverlap = bool(existing.targets & rule.targets);
                 bool restrictorsOverlap = !existing.restrictors || !rule.restrictors
                                         || (existing.restrictors & rule.restrictors);
                 bool sameScope = existing.category == rule.category

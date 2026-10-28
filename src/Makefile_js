@@ -32,6 +32,9 @@ board_ranks = 8
 all = yes
 optimize = yes
 debug = no
+precomputedmagics = yes
+
+include $(dir $(lastword $(MAKEFILE_LIST)))build_features.mk
 
 ### Debugging
 ifeq ($(debug),no)
@@ -90,7 +93,10 @@ endif
 CXXFLAGS += -DBOARD_FILES=$(board_files) -DBOARD_RANKS=$(board_ranks)
 
 ifneq ($(filter-out 8x8,$(board_files)x$(board_ranks)),)
-	CXXFLAGS += -DPRECOMPUTED_MAGICS -s TOTAL_MEMORY=32MB -s ALLOW_MEMORY_GROWTH=1 -s WASM_MEM_MAX=1GB
+	ifeq ($(precomputedmagics),yes)
+		CXXFLAGS += -DPRECOMPUTED_MAGICS
+	endif
+	CXXFLAGS += -s TOTAL_MEMORY=32MB -s ALLOW_MEMORY_GROWTH=1 -s WASM_MEM_MAX=1GB
 endif
 
 # Enable all variants, even heavyweight ones like duck and amazons

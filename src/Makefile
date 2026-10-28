@@ -103,6 +103,8 @@ tiledmagics = no
 nnue = no
 load_net = $(if $(filter $(nnue),yes),net)
 
+include $(dir $(lastword $(MAKEFILE_LIST)))build_features.mk
+
 ifeq ($(ARCH),)
    ARCH = x86-64-modern
    help_skip_sanity = yes
@@ -869,7 +871,7 @@ install:
 
 # clean all
 clean: objclean profileclean
-	@rm -f .depend *~ core
+	@rm -f .depend .build-config .build-config.tmp *~ core
 
 # evaluation network (nnue)
 net:
@@ -957,6 +959,8 @@ config-sanity: $(load_net)
 	@echo "requested_board_ranks: '$(requested_board_ranks)'"
 	@echo "board_files: '$(board_files)'"
 	@echo "board_ranks: '$(board_ranks)'"
+	@echo "piece_slots requested: '$(piece_slots)' effective: '$(effective_piece_slots)'"
+	@echo "gating: '$(gating)'"
 	@echo "all: '$(all)'"
 	@echo "precomputedmagics: '$(precomputedmagics)'"
 	@echo "tiledmagics: '$(tiledmagics)'"
@@ -995,6 +999,17 @@ config-sanity: $(load_net)
 
 $(EXE): $(OBJS)
 	+$(CXX) -o $@ $(OBJS) $(LDFLAGS)
+
+# Objects from different type capacities, board geometries or feature flags
+# must never be mixed. Only change the stamp's mtime when configuration changes.
+shell_quote = '$(subst ','"'"',$(1))'
+.PHONY: FORCE
+FORCE:
+.build-config: FORCE
+	@printf '%s\n' $(call shell_quote,$(CXX) $(CXXFLAGS) | $(LDFLAGS)) > $@.tmp
+	@cmp -s $@.tmp $@ && rm -f $@.tmp || mv -f $@.tmp $@
+
+$(OBJS): .build-config
 
 clang-profile-make:
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) \

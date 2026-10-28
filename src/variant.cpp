@@ -2955,10 +2955,10 @@ Variant* Variant::conclude() {
     }
     // We can not use popcount here yet, as the lookup tables are initialized after the variants
     int nnueSquares = (maxRank + 1) * (maxFile + 1);
-    nnueUsePockets = (pieceDrops && (capturesToHand || (!mustDrop && std::bitset<64>(pieceTypes).count() != 1))) || seirawanGating;
+    nnueUsePockets = (pieceDrops && (capturesToHand || (!mustDrop && pieceTypes.count() != 1))) || seirawanGating;
     int nnuePockets = nnueUsePockets ? 2 * int(maxFile + 1) : 0;
-    int nnueNonDropPieceIndices = (2 * std::bitset<64>(pieceTypes).count() - (nnueKing != NO_PIECE_TYPE)) * nnueSquares;
-    int nnuePieceIndices = nnueNonDropPieceIndices + 2 * (std::bitset<64>(pieceTypes).count() - (nnueKing != NO_PIECE_TYPE)) * nnuePockets;
+    int nnueNonDropPieceIndices = (2 * pieceTypes.count() - (nnueKing != NO_PIECE_TYPE)) * nnueSquares;
+    int nnuePieceIndices = nnueNonDropPieceIndices + 2 * (pieceTypes.count() - (nnueKing != NO_PIECE_TYPE)) * nnuePockets;
     int i = 0;
     for (PieceSet ps = pieceTypes; ps;)
     {
@@ -3122,10 +3122,10 @@ void VariantMap::parse_istream(std::istream& file) {
                                                    : VariantParser<DoCheck>(attribs).parse();
             if (v->maxFile <= FILE_MAX && v->maxRank <= RANK_MAX)
             {
-                add(variant, v);
+                add(variant, v, true);
                 // In order to allow inheritance, we need to temporarily add configured variants
                 // even when only checking them, but we remove them later after parsing is finished.
-                if (DoCheck)
+                if (DoCheck && find(variant) != end())
                     varsToErase.push_back(variant);
             }
             else
@@ -3159,9 +3159,17 @@ void VariantMap::parse(std::string path) {
 template void VariantMap::parse<true>(std::string path);
 template void VariantMap::parse<false>(std::string path);
 
-void VariantMap::add(std::string s, Variant* v) {
+void VariantMap::add(std::string s, Variant* v, bool configured) {
   if (!v)
       return;
+
+  if (!ENABLE_GATING && v->seirawanGating)
+  {
+      if (configured)
+          std::cerr << "Variant '" << s << "' requires Seirawan gating; rebuild with gating=yes." << std::endl;
+      delete v;
+      return;
+  }
 
   if (v->maxFile <= FILE_MAX && v->maxRank <= RANK_MAX)
       insert(std::pair<std::string, const Variant*>(s, v->conclude()));
