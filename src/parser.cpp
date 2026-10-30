@@ -361,7 +361,9 @@ namespace {
         if (modeSep != std::string::npos)
         {
             std::string mode = body.substr(modeSep + 1);
-            if (mode == "1")
+            if (mode == "1!")
+                spec.stopOnCapture = true;
+            else if (mode == "1")
                 spec.captureLimit = 1;
             else if (mode == "2")
                 spec.captureLimit = 2;

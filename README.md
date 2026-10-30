@@ -131,6 +131,27 @@ python3 tests/piece_slots_matrix.py
 PIECE_SLOTS=128 BOARD_SIZE=19 GATING=yes python3 ../tests/piece_slots.py
 ```
 
+## Hook movement capture modes
+
+Hook moves use `hookMovePieces = <piece>:<firstLeg>-<secondLeg>[:1|:2|:1!]`.
+The default `:1` allows at most one capture, including a capture on the first leg
+followed by a quiet second leg. `:2` allows captures on both legs. `:1!` ends the
+move immediately upon capture, so a two-leg route must have a quiet first leg.
+A capture on the second leg always ends the move in every mode.
+
+For Dai Dai Shogi's Hook Mover and Long-Nosed Goblin:
+
+```ini
+piece = hm:<rook>
+piece = lo:WB
+hookMovePieces = hm:R-sR:1! lo:B-sB:1!
+```
+
+First-leg-only quiet moves and captures are supplied by the regular piece
+definition. The hook option adds two-leg routes. Run
+`STOCKFISH=src/stockfish python3 tests/hook_moves.py` from the repository root
+to test the capture modes.
+
 ## Lion Dog multi-leg movement
 
 `lionDogMovePieces` follows the Lion-powered interpretation described by

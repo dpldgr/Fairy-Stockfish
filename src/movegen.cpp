@@ -146,6 +146,10 @@ namespace {
                     break;
 
                 bool firstCapture = bool(enemies & hook);
+                // Single-leg moves are supplied by the regular piece definition.
+                // A capture at the turn ends a stop-on-capture move immediately.
+                if (firstCapture && spec.stopOnCapture)
+                    break;
                 if (   firstCapture
                     && prohibited
                     && (prohibited & type_of(pos.piece_on(hook))))

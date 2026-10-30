@@ -80,6 +80,7 @@ struct HookMoveSpec {
   int firstRange = 0;
   int secondRange = 0;
   int captureLimit = 1;
+  bool stopOnCapture = false;
 };
 
 struct DoubleMoveSpec {
