@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <string>
 #include <sstream>
 
@@ -543,16 +544,8 @@ namespace {
             && parse_piece_symbol_list(v, token.substr(1, token.size() - 2), pieces);
     }
 
-    bool parse_extinction_piece_set(const Variant* v, const std::string& value, PieceSet& pieces, bool& all) {
+    bool parse_extinction_piece_set(const Variant* v, const std::string& value, PieceSet& pieces) {
         std::string token = trim(value);
-        all = false;
-        if (token.rfind("any:", 0) == 0 || token.rfind("all:", 0) == 0)
-        {
-            all = token.rfind("all:", 0) == 0;
-            token = trim(token.substr(4));
-            if (token.size() < 2 || token.front() != '{' || token.back() != '}')
-                return false;
-        }
         bool explicitList = token.size() >= 2 && token.front() == '{' && token.back() == '}';
         if (explicitList)
             token = trim(token.substr(1, token.size() - 2));
@@ -591,6 +584,144 @@ namespace {
         PieceType pt = piece_type_by_symbol(v, token);
         pieces = pt == NO_PIECE_TYPE ? NO_PIECE_SET : piece_set(pt);
         return pt != NO_PIECE_TYPE;
+    }
+
+    class ExtinctionConditionParser {
+    public:
+        ExtinctionConditionParser(const Variant* variant, const std::string& value)
+            : v(variant), text(value) {}
+
+        bool parse(ExtinctionCondition& condition, PieceSet& pieces) {
+            skip_spaces();
+            if (cursor == text.size() || text.substr(cursor) == "-")
+            {
+                condition = {};
+                pieces = NO_PIECE_SET;
+                return true;
+            }
+            if (!parse_expression(condition, 0))
+                return false;
+            skip_spaces();
+            if (cursor != text.size())
+                return false;
+            pieces = referencedPieces;
+            return true;
+        }
+
+    private:
+        const Variant* v;
+        const std::string& text;
+        size_t cursor = 0;
+        int nodes = 0;
+        PieceSet referencedPieces = NO_PIECE_SET;
+
+        void skip_spaces() {
+            while (cursor < text.size() && std::isspace(static_cast<unsigned char>(text[cursor])))
+                ++cursor;
+        }
+
+        bool consume(char c) {
+            skip_spaces();
+            if (cursor >= text.size() || text[cursor] != c)
+                return false;
+            ++cursor;
+            return true;
+        }
+
+        bool parse_name(std::string& name) {
+            skip_spaces();
+            size_t begin = cursor;
+            while (cursor < text.size()
+                   && !std::isspace(static_cast<unsigned char>(text[cursor]))
+                   && text[cursor] != '(' && text[cursor] != ')'
+                   && text[cursor] != ',' && text[cursor] != '=' && text[cursor] != '<')
+                ++cursor;
+            name = text.substr(begin, cursor - begin);
+            return !name.empty();
+        }
+
+        bool parse_count(int& count) {
+            skip_spaces();
+            if (cursor >= text.size() || !std::isdigit(static_cast<unsigned char>(text[cursor])))
+                return false;
+            count = 0;
+            while (cursor < text.size() && std::isdigit(static_cast<unsigned char>(text[cursor])))
+            {
+                int digit = text[cursor++] - '0';
+                if (count > (std::numeric_limits<int>::max() - digit) / 10)
+                    return false;
+                count = count * 10 + digit;
+            }
+            return true;
+        }
+
+        bool parse_expression(ExtinctionCondition& condition, int depth) {
+            if (depth > 32 || ++nodes > 256)
+                return false;
+
+            std::string name;
+            if (!parse_name(name))
+                return false;
+            std::string lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                           [](unsigned char c) { return char(std::tolower(c)); });
+
+            skip_spaces();
+            if (cursor < text.size() && text[cursor] == '(')
+            {
+                if (lower != "and" && lower != "or")
+                    return false;
+                ++cursor;
+                condition = {};
+                condition.type = lower == "and" ? EXTINCTION_CONDITION_AND : EXTINCTION_CONDITION_OR;
+                do
+                {
+                    ExtinctionCondition child;
+                    if (!parse_expression(child, depth + 1))
+                        return false;
+                    condition.children.push_back(child);
+                    skip_spaces();
+                    if (cursor < text.size() && text[cursor] == ')')
+                        break;
+                } while (consume(','));
+                return condition.children.size() >= 2 && consume(')');
+            }
+
+            PieceType pt = name == "*" ? ALL_PIECES : piece_type_by_symbol(v, name);
+            if (pt == NO_PIECE_TYPE)
+                return false;
+
+            ExtinctionCountComparison comparison;
+            skip_spaces();
+            if (cursor + 1 < text.size() && text[cursor] == '<' && text[cursor + 1] == '=')
+            {
+                comparison = EXTINCTION_COUNT_AT_MOST;
+                cursor += 2;
+            }
+            else if (cursor < text.size() && text[cursor] == '=')
+            {
+                comparison = EXTINCTION_COUNT_EQUAL;
+                ++cursor;
+            }
+            else
+                return false;
+
+            int count;
+            if (!parse_count(count))
+                return false;
+            condition = {};
+            condition.type = EXTINCTION_CONDITION_PIECE_COUNT;
+            condition.comparison = comparison;
+            condition.pieceType = pt;
+            condition.count = count;
+            referencedPieces |= pt;
+            return true;
+        }
+    };
+
+    bool parse_extinction_condition(const Variant* v, const std::string& value,
+                                    ExtinctionCondition& condition, PieceSet& pieces) {
+        return ExtinctionConditionParser(v, trim(value)).parse(condition, pieces);
     }
 
     bool split_trading_fields(const std::string& value, std::vector<std::string>& fields) {
@@ -1489,14 +1620,23 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     if (extinctionTypes != config.end())
     {
         PieceSet parsed;
-        bool all;
-        if (parse_extinction_piece_set(v, extinctionTypes->second, parsed, all))
-        {
+        if (parse_extinction_piece_set(v, extinctionTypes->second, parsed))
             v->extinctionPieceTypes = parsed;
-            v->extinctionPieceTypesAll = all && bool(parsed);
-        }
         else if (DoCheck)
             std::cerr << "extinctionPieceTypes - Invalid piece set: " << extinctionTypes->second << std::endl;
+    }
+    const auto extinctionCondition = config.find("extinctionCondition");
+    if (extinctionCondition != config.end())
+    {
+        ExtinctionCondition parsed;
+        PieceSet parsedPieces;
+        if (parse_extinction_condition(v, extinctionCondition->second, parsed, parsedPieces))
+        {
+            v->extinctionCondition = parsed;
+            v->extinctionConditionPieceTypes = parsedPieces;
+        }
+        else if (DoCheck)
+            std::cerr << "extinctionCondition - Invalid condition: " << extinctionCondition->second << std::endl;
     }
     parse_attribute("extinctionPieceCount", v->extinctionPieceCount);
     parse_attribute("extinctionOpponentPieceCount", v->extinctionOpponentPieceCount);

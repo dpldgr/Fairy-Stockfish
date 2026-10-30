@@ -99,6 +99,26 @@ struct DoubleMoveSpec {
   bool outwardOnly = false;
 };
 
+enum ExtinctionConditionType {
+  EXTINCTION_CONDITION_NONE,
+  EXTINCTION_CONDITION_PIECE_COUNT,
+  EXTINCTION_CONDITION_AND,
+  EXTINCTION_CONDITION_OR
+};
+
+enum ExtinctionCountComparison {
+  EXTINCTION_COUNT_EQUAL,
+  EXTINCTION_COUNT_AT_MOST
+};
+
+struct ExtinctionCondition {
+  ExtinctionConditionType type = EXTINCTION_CONDITION_NONE;
+  ExtinctionCountComparison comparison = EXTINCTION_COUNT_EQUAL;
+  PieceType pieceType = NO_PIECE_TYPE;
+  int count = 0;
+  std::vector<ExtinctionCondition> children;
+};
+
 enum TradingCategory {
   TRADING_NONE,
   TRADING_ANY,
@@ -266,7 +286,8 @@ struct Variant {
   bool extinctionPseudoRoyal = false;
   bool dupleCheck = false;
   PieceSet extinctionPieceTypes = NO_PIECE_SET;
-  bool extinctionPieceTypesAll = false;
+  ExtinctionCondition extinctionCondition;
+  PieceSet extinctionConditionPieceTypes = NO_PIECE_SET;
   int extinctionPieceCount = 0;
   int extinctionOpponentPieceCount = 0;
   PieceType flagPiece[COLOR_NB] = {ALL_PIECES, ALL_PIECES};
