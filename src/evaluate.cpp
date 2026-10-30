@@ -871,7 +871,7 @@ namespace {
     }
 
     // Extinction threats
-    if (pos.extinction_value() == -VALUE_MATE)
+    if (pos.extinction_value() == -VALUE_MATE && !pos.has_extinction_condition())
     {
         Bitboard bExt = attackedBy[Us][ALL_PIECES] & pos.pieces(Them);
         for (PieceSet ps = pos.extinction_piece_types(); ps;)
@@ -879,9 +879,7 @@ namespace {
             PieceType pt = pop_lsb(ps);
             if (pt == ALL_PIECES)
                 continue;
-            int denom = std::max((pos.extinction_piece_types_all()
-                                    ? pos.extinction_group_count(Them)
-                                    : pos.count_with_hand(Them, pt)) - pos.extinction_piece_count(), 1);
+            int denom = std::max(pos.count_with_hand(Them, pt) - pos.extinction_piece_count(), 1);
             // Explosion threats
             if (pos.blast_on_capture())
             {
@@ -1242,26 +1240,9 @@ namespace {
     }
 
     // Extinction
-    if (pos.extinction_value() != VALUE_NONE)
+    if (pos.extinction_value() != VALUE_NONE && !pos.has_extinction_condition())
     {
-        if (   pos.extinction_piece_types_all()
-            && !(pos.extinction_piece_types() & ALL_PIECES))
-        {
-            int mg = 0, eg = 0, types = 0;
-            for (PieceSet ps = pos.extinction_piece_types(); ps;)
-            {
-                PieceType pt = pop_lsb(ps);
-                mg += PieceValue[MG][pt];
-                eg += PieceValue[EG][pt];
-                ++types;
-            }
-            int denom = std::max(pos.extinction_group_count(Us) - pos.extinction_piece_count(), 1);
-            if (pos.extinction_group_count(Them) >= pos.extinction_opponent_piece_count() || pos.two_boards())
-                score += make_score(1000000 / (500 + mg / std::max(types, 1)),
-                                    1000000 / (500 + eg / std::max(types, 1))) / (denom * denom)
-                        * (pos.extinction_value() / VALUE_MATE);
-        }
-        else for (PieceSet ps = pos.extinction_piece_types(); ps;)
+        for (PieceSet ps = pos.extinction_piece_types(); ps;)
         {
             PieceType pt = pop_lsb(ps);
             if (pt != ALL_PIECES)

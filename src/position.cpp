@@ -230,6 +230,82 @@ std::ostream& operator<<(std::ostream& os, const Position& pos) {
   return os;
 }
 
+namespace {
+
+bool evaluate_extinction_condition(const Position& pos, const ExtinctionCondition& condition,
+                                   Color c, const std::array<int, PIECE_TYPE_CAPACITY>* adjustments) {
+  switch (condition.type)
+  {
+  case EXTINCTION_CONDITION_PIECE_COUNT:
+  {
+      int count = pos.count_with_hand(c, condition.pieceType)
+                + (adjustments ? (*adjustments)[condition.pieceType] : 0);
+      return condition.comparison == EXTINCTION_COUNT_EQUAL ? count == condition.count
+                                                            : count <= condition.count;
+  }
+  case EXTINCTION_CONDITION_AND:
+      for (const ExtinctionCondition& child : condition.children)
+          if (!evaluate_extinction_condition(pos, child, c, adjustments))
+              return false;
+      return true;
+  case EXTINCTION_CONDITION_OR:
+      for (const ExtinctionCondition& child : condition.children)
+          if (evaluate_extinction_condition(pos, child, c, adjustments))
+              return true;
+      return false;
+  default:
+      return false;
+  }
+}
+
+}
+
+bool Position::extinction_condition(Color c) const {
+  assert(has_extinction_condition());
+  return evaluate_extinction_condition(*this, var->extinctionCondition, c, nullptr);
+}
+
+bool Position::extinction_condition(Color c, const std::array<int, PIECE_TYPE_CAPACITY>& adjustments) const {
+  assert(has_extinction_condition());
+  return evaluate_extinction_condition(*this, var->extinctionCondition, c, &adjustments);
+}
+
+PieceSet Position::extinction_critical_piece_types(Color c,
+                                                   std::array<int, PIECE_TYPE_CAPACITY> adjustments) const {
+  assert(has_extinction_condition());
+  PieceSet critical = NO_PIECE_SET;
+  if (extinction_condition(c, adjustments))
+      return critical;
+
+  PieceSet candidates = var->extinctionConditionPieceTypes;
+  if (candidates & ALL_PIECES)
+      candidates |= piece_types();
+  for (PieceSet ps = candidates; ps;)
+  {
+      PieceType pt = pop_lsb(ps);
+      if (pt == ALL_PIECES)
+          continue;
+      --adjustments[pt];
+      if (var->extinctionConditionPieceTypes & ALL_PIECES)
+          --adjustments[ALL_PIECES];
+      if (extinction_condition(c, adjustments))
+          critical |= pt;
+      ++adjustments[pt];
+      if (var->extinctionConditionPieceTypes & ALL_PIECES)
+          ++adjustments[ALL_PIECES];
+  }
+  return critical;
+}
+
+Bitboard Position::extinction_pieces(Color c, PieceSet types) const {
+  if (types & ALL_PIECES)
+      return pieces(c);
+  Bitboard result = 0;
+  for (PieceSet ps = types; ps;)
+      result |= pieces(c, pop_lsb(ps));
+  return result;
+}
+
 
 // Marcel van Kervinck's cuckoo algorithm for fast detection of "upcoming repetition"
 // situations. Description of the algorithm in the following paper:
@@ -732,13 +808,12 @@ void Position::set_check_info(StateInfo* si) const {
   {
       si->pseudoRoyalCandidates = 0;
       si->pseudoRoyals = 0;
-      if (extinction_piece_types_all())
+      if (has_extinction_condition())
       {
-          si->pseudoRoyalCandidates = extinction_group_pieces(WHITE) | extinction_group_pieces(BLACK);
-          if (extinction_group_count(WHITE) <= var->extinctionPieceCount + 1)
-              si->pseudoRoyals |= extinction_group_pieces(WHITE);
-          if (extinction_group_count(BLACK) <= var->extinctionPieceCount + 1)
-              si->pseudoRoyals |= extinction_group_pieces(BLACK);
+          si->pseudoRoyalCandidates = extinction_pieces(WHITE, extinction_piece_types())
+                                    | extinction_pieces(BLACK, extinction_piece_types());
+          si->pseudoRoyals = extinction_pieces(WHITE, extinction_critical_piece_types(WHITE))
+                           | extinction_pieces(BLACK, extinction_critical_piece_types(BLACK));
       }
       else for (PieceSet ps = extinction_piece_types(); ps;)
       {
@@ -1517,11 +1592,10 @@ bool Position::legal(Move m) const {
       if (capture(m) && (var->petrifyOnCaptureTypes & type_of(moved_piece(m))) && (st->pseudoRoyals & from))
           return false;
       Bitboard pseudoRoyals = st->pseudoRoyals & pieces(sideToMove);
-      Bitboard extinctionGroupPieces = 0;
-      if (extinction_piece_types_all())
+      Bitboard pseudoRoyalCandidatesAfter = st->pseudoRoyalCandidates & pieces(sideToMove);
+      if (has_extinction_condition())
       {
-          Bitboard groupPieces = extinction_group_pieces(sideToMove);
-          int groupCount = extinction_group_count(sideToMove);
+          std::array<int, PIECE_TYPE_CAPACITY> adjustments = {};
           PieceType fromType = type_of(moved_piece(m));
           PieceType resultType = fromType;
           if (type_of(m) == PROMOTION)
@@ -1532,22 +1606,38 @@ bool Position::legal(Move m) const {
               resultType = path_promotion_type(m);
           else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m))
               resultType = type_of(unpromoted_piece_on(from));
-          bool fromGroup = is_ok(from) && (extinction_piece_types() & fromType);
-          bool toGroup = bool(extinction_piece_types() & resultType);
-
-          if (type_of(m) == DROP)
-              groupPieces |= square_bb(to);
-          else
+          if (type_of(m) != DROP && resultType != fromType)
           {
-              if (fromGroup)
-                  groupPieces &= ~square_bb(from);
-              if (toGroup)
-                  groupPieces |= kto;
-              if (resultType != fromType)
-                  groupCount += int(toGroup) - int(fromGroup);
+              --adjustments[fromType];
+              ++adjustments[resultType];
           }
-          extinctionGroupPieces = groupPieces;
-          pseudoRoyals = groupCount <= extinction_piece_count() + 1 ? groupPieces : Bitboard(0);
+
+          PieceSet criticalTypes = extinction_critical_piece_types(sideToMove, adjustments);
+          PieceSet boardTypes = extinction_piece_types();
+          if (boardTypes & ALL_PIECES)
+              boardTypes = piece_types();
+          pseudoRoyals = 0;
+          pseudoRoyalCandidatesAfter = 0;
+          for (PieceSet ps = boardTypes; ps;)
+          {
+              PieceType pt = pop_lsb(ps);
+              Bitboard b = pieces(sideToMove, pt);
+              if (type_of(m) == DROP)
+              {
+                  if (pt == resultType)
+                      b |= square_bb(to);
+              }
+              else
+              {
+                  if (pt == fromType)
+                      b &= ~square_bb(from);
+                  if (pt == resultType)
+                      b |= kto;
+              }
+              pseudoRoyalCandidatesAfter |= b;
+              if (criticalTypes & pt)
+                  pseudoRoyals |= b;
+          }
       }
       else
       {
@@ -1556,9 +1646,9 @@ bool Position::legal(Move m) const {
               pseudoRoyals |= square_bb(to);
       }
       Bitboard pseudoRoyalsTheirs = st->pseudoRoyals & pieces(~sideToMove);
-      if (!extinction_piece_types_all() && is_ok(from) && (pseudoRoyals & from))
+      if (!has_extinction_condition() && is_ok(from) && (pseudoRoyals & from))
           pseudoRoyals ^= square_bb(from) ^ kto;
-      if (!extinction_piece_types_all() && type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
+      if (!has_extinction_condition() && type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
       {
           if (count(sideToMove, promotion_type(m)) > extinction_piece_count())
               // increase in count leads to loss of pseudo-royalty
@@ -1572,7 +1662,10 @@ bool Position::legal(Move m) const {
           return false;
       // Petrifiable pseudo-royals can't capture
       Bitboard attackerCandidatesTheirs = occupied & ~square_bb(kto);
-      for (PieceSet ps = var->petrifyOnCaptureTypes & extinction_piece_types(); ps;)
+      PieceSet petrifiableExtinctionTypes = var->petrifyOnCaptureTypes;
+      if (!(extinction_piece_types() & ALL_PIECES))
+          petrifiableExtinctionTypes &= extinction_piece_types();
+      for (PieceSet ps = petrifiableExtinctionTypes; ps;)
           attackerCandidatesTheirs &= ~pieces(~us, pop_lsb(ps));
       // Check for legality unless we capture a pseudo-royal piece
       if (!(pseudoRoyalsTheirs & ~occupied))
@@ -1587,16 +1680,11 @@ bool Position::legal(Move m) const {
       // Look for duple check
       if (var->dupleCheck)
       {
-          Bitboard pseudoRoyalCandidates = extinction_piece_types_all()
-                                              ? extinctionGroupPieces
-                                              : st->pseudoRoyalCandidates & pieces(sideToMove);
-          if (!extinction_piece_types_all())
-          {
-              if (is_ok(from) && (pseudoRoyalCandidates & from))
-                  pseudoRoyalCandidates ^= square_bb(from) ^ kto;
-              if (type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
-                  pseudoRoyalCandidates |= kto;
-          }
+          Bitboard pseudoRoyalCandidates = pseudoRoyalCandidatesAfter;
+          if (!has_extinction_condition() && is_ok(from) && (pseudoRoyalCandidates & from))
+              pseudoRoyalCandidates ^= square_bb(from) ^ kto;
+          if (!has_extinction_condition() && type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
+              pseudoRoyalCandidates |= kto;
           bool allCheck = bool(pseudoRoyalCandidates);
           while (allCheck && pseudoRoyalCandidates)
           {
@@ -3201,7 +3289,8 @@ Value Position::blast_see(Move m) const {
       while (attackers)
       {
           Square s = pop_lsb(attackers);
-          if (!(extinction_piece_types() & type_of(piece_on(s))))
+          if (   !(extinction_piece_types() & ALL_PIECES)
+              && !(extinction_piece_types() & type_of(piece_on(s))))
               minAttacker = std::min(minAttacker, blast & s ? VALUE_ZERO : CapturePieceValue[MG][piece_on(s)]);
       }
 
@@ -3216,21 +3305,22 @@ Value Position::blast_see(Move m) const {
   // Sum up blast piece values
   bool extinctsUs = false;
   bool extinctsThem = false;
-  int removedExtinctionPiecesUs = 0;
-  int removedExtinctionPiecesThem = 0;
+  std::array<int, PIECE_TYPE_CAPACITY> blastAdjustmentsUs = {};
+  std::array<int, PIECE_TYPE_CAPACITY> blastAdjustmentsThem = {};
   while (blast)
   {
       Piece bpc = piece_on(pop_lsb(blast));
-      if (extinction_piece_types() & type_of(bpc))
+      if (has_extinction_condition())
       {
-          if (extinction_piece_types_all())
-          {
-              if (color_of(bpc) == us)
-                  ++removedExtinctionPiecesUs;
-              else
-                  ++removedExtinctionPiecesThem;
-          }
-          else if (color_of(bpc) == us)
+          std::array<int, PIECE_TYPE_CAPACITY>& adjustments = color_of(bpc) == us
+                                                               ? blastAdjustmentsUs : blastAdjustmentsThem;
+          --adjustments[type_of(bpc)];
+          if (extinction_piece_types() & ALL_PIECES)
+              --adjustments[ALL_PIECES];
+      }
+      else if (extinction_piece_types() & type_of(bpc))
+      {
+          if (color_of(bpc) == us)
               extinctsUs = true;
           else
               extinctsThem = true;
@@ -3238,10 +3328,10 @@ Value Position::blast_see(Move m) const {
       result += color_of(bpc) == us ? -CapturePieceValue[MG][bpc] : CapturePieceValue[MG][bpc];
   }
 
-  if (extinction_piece_types_all())
+  if (has_extinction_condition())
   {
-      extinctsUs = extinction_group_count(us) - removedExtinctionPiecesUs <= extinction_piece_count();
-      extinctsThem = extinction_group_count(~us) - removedExtinctionPiecesThem <= extinction_piece_count();
+      extinctsUs = extinction_condition(us, blastAdjustmentsUs);
+      extinctsThem = extinction_condition(~us, blastAdjustmentsThem);
   }
 
   // Evaluate extinctions
@@ -3291,15 +3381,23 @@ bool Position::see_ge(Move m, Value threshold) const {
       return blast_see(m) >= threshold;
 
   // Extinction
-  if (   extinction_value() != VALUE_NONE
-      && piece_on(to)
-      && (   (   (extinction_piece_types() & type_of(piece_on(to)))
-              && (extinction_piece_types_all()
-                    ? extinction_group_count(~sideToMove) == extinction_piece_count() + 1
-                    : pieceCount[piece_on(to)] == extinction_piece_count() + 1))
-          || (   (extinction_piece_types() & ALL_PIECES)
-              && count<ALL_PIECES>(~sideToMove) == extinction_piece_count() + 1)))
-      return extinction_value() < VALUE_ZERO;
+  if (extinction_value() != VALUE_NONE && piece_on(to))
+  {
+      if (has_extinction_condition())
+      {
+          std::array<int, PIECE_TYPE_CAPACITY> adjustments = {};
+          --adjustments[type_of(piece_on(to))];
+          if (extinction_piece_types() & ALL_PIECES)
+              --adjustments[ALL_PIECES];
+          if (extinction_condition(~sideToMove, adjustments))
+              return extinction_value() < VALUE_ZERO;
+      }
+      else if (   (   (extinction_piece_types() & type_of(piece_on(to)))
+                   && pieceCount[piece_on(to)] == extinction_piece_count() + 1)
+               || (   (extinction_piece_types() & ALL_PIECES)
+                   && count<ALL_PIECES>(~sideToMove) == extinction_piece_count() + 1))
+          return extinction_value() < VALUE_ZERO;
+  }
 
   // Do not evaluate SEE if value would be unreliable
   if (must_capture() || !checking_permitted() || is_gating(m) || count<CLOBBER_PIECE>() == count<ALL_PIECES>())
@@ -3574,10 +3672,9 @@ bool Position::is_immediate_game_end(Value& result, int ply) const {
   {
       for (Color c : { ~sideToMove, sideToMove })
       {
-          if (extinction_piece_types_all())
+          if (has_extinction_condition())
           {
-              if (   extinction_group_count(c) <= var->extinctionPieceCount
-                  && extinction_group_count(~c) >= var->extinctionOpponentPieceCount + (extinction_claim() && c == sideToMove))
+              if (extinction_condition(c) && (!extinction_claim() || c != sideToMove))
               {
                   result = c == sideToMove ? extinction_value(ply) : -extinction_value(ply);
                   return true;

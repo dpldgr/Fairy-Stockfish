@@ -262,6 +262,7 @@ void init(const Variant* v) {
 
       // In variants such as horde where all pieces need to be captured, weak pieces such as pawns are more useful
       if (   v->extinctionValue == -VALUE_MATE
+          && v->extinctionCondition.type == EXTINCTION_CONDITION_NONE
           && v->extinctionPieceCount == 0
           && (v->extinctionPieceTypes & ALL_PIECES))
           score += make_score(0, std::max(KnightValueEg - PieceValue[EG][pt], VALUE_ZERO) / 20);
@@ -313,7 +314,11 @@ void init(const Variant* v) {
                                  : pt == KING  ? KingBonus[std::clamp(Rank(r - pawnRank + 1), RANK_1, RANK_8)][std::min(f, FILE_D)] * (1 + v->capturesToHand)
                                  : pt <= QUEEN ? Bonus[pc][std::min(r, RANK_8)][std::min(f, FILE_D)] * (1 + v->blastOnCapture)
                                  : pt == HORSE ? Bonus[KNIGHT][std::min(r, RANK_8)][std::min(f, FILE_D)]
-                                 : pt == COMMONER && v->extinctionValue == -VALUE_MATE && (v->extinctionPieceTypes & COMMONER) ? KingBonus[std::clamp(Rank(r - pawnRank + 1), RANK_1, RANK_8)][std::min(f, FILE_D)]
+                                 : pt == COMMONER
+                                   && v->extinctionValue == -VALUE_MATE
+                                   && v->extinctionCondition.type == EXTINCTION_CONDITION_NONE
+                                   && (v->extinctionPieceTypes & COMMONER)
+                                     ? KingBonus[std::clamp(Rank(r - pawnRank + 1), RANK_1, RANK_8)][std::min(f, FILE_D)]
                                  : isSlider    ? make_score(5, 5) * (2 * f + std::max(std::min(r, Rank(v->maxRank - r)), RANK_1) - v->maxFile - 1)
                                  : isPawn      ? make_score(5, 5) * (2 * f - v->maxFile)
                                                : make_score(10, 10) * (1 + isSlowLeaper) * (f + std::max(std::min(r, Rank(v->maxRank - r)), RANK_1) - v->maxFile / 2));

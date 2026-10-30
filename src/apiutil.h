@@ -396,7 +396,11 @@ inline bool has_insufficient_material(Color c, const Position& pos) {
         PieceType pt = pop_lsb(ps);
 
         // Constrained pieces
-        if (pt == KING || !(pos.board_bb(c, pt) & pos.board_bb(~c, KING)) || (pos.extinction_pseudo_royal() && pos.blast_on_capture() && (pos.extinction_piece_types() & pt)))
+        if (   pt == KING
+            || !(pos.board_bb(c, pt) & pos.board_bb(~c, KING))
+            || (   pos.extinction_pseudo_royal() && pos.blast_on_capture()
+                && (   (pos.extinction_piece_types() & ALL_PIECES)
+                    || (pos.extinction_piece_types() & pt))))
             restricted |= pos.pieces(c, pt);
 
         // If piece is a major piece or a custom piece we consider it sufficient for mate.

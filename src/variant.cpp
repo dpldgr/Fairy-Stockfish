@@ -2989,7 +2989,8 @@ Variant* Variant::conclude() {
 
     // Initialize calculated NNUE properties
     nnueKing =  pieceTypes & KING ? KING
-              : extinctionPieceCount == 0 && (extinctionPieceTypes & COMMONER) ? COMMONER
+              : extinctionCondition.type == EXTINCTION_CONDITION_NONE
+                && extinctionPieceCount == 0 && (extinctionPieceTypes & COMMONER) ? COMMONER
               : NO_PIECE_TYPE;
     // The nnueKing has to present exactly once and must not change in count
     if (nnueKing != NO_PIECE_TYPE)
