@@ -222,10 +222,13 @@ public:
   Value extinction_value(int ply = 0) const;
   bool extinction_claim() const;
   PieceSet extinction_piece_types() const;
+  bool extinction_piece_types_all() const;
   bool extinction_single_piece() const;
   int extinction_piece_count() const;
   int extinction_opponent_piece_count() const;
   bool extinction_pseudo_royal() const;
+  int extinction_group_count(Color c) const;
+  Bitboard extinction_group_pieces(Color c) const;
   PieceType flag_piece(Color c) const;
   Bitboard flag_region(Color c) const;
   bool flag_move() const;
@@ -1114,6 +1117,11 @@ inline PieceSet Position::extinction_piece_types() const {
   return var->extinctionPieceTypes;
 }
 
+inline bool Position::extinction_piece_types_all() const {
+  assert(var != nullptr);
+  return var->extinctionPieceTypesAll;
+}
+
 inline bool Position::extinction_single_piece() const {
   assert(var != nullptr);
   return   var->extinctionValue == -VALUE_MATE
@@ -1133,6 +1141,20 @@ inline int Position::extinction_opponent_piece_count() const {
 inline bool Position::extinction_pseudo_royal() const {
   assert(var != nullptr);
   return var->extinctionPseudoRoyal;
+}
+
+inline int Position::extinction_group_count(Color c) const {
+  int result = 0;
+  for (PieceSet ps = extinction_piece_types(); ps;)
+      result += count_with_hand(c, pop_lsb(ps));
+  return result;
+}
+
+inline Bitboard Position::extinction_group_pieces(Color c) const {
+  Bitboard result = 0;
+  for (PieceSet ps = extinction_piece_types(); ps;)
+      result |= pieces(c, pop_lsb(ps));
+  return result;
 }
 
 inline PieceType Position::flag_piece(Color c) const {

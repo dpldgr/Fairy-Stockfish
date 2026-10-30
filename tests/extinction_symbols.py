@@ -13,15 +13,16 @@ def fen(missing=None, side='w', only_kings=False):
     if not only_kings:
         pieces.update({'a1': 'CK', 'b2': 'AD', 'c3': 'DH', 'd2': 'DR',
                        'a8': 'ck', 'b7': 'ad', 'c6': 'dh', 'd7': 'dr',
+                       'e2': 'EM', 'e7': 'em',
                        'f2': 'P', 'f7': 'p', 'g2': 'Q', 'g7': 'q',
                        'd4': 'C', 'd5': 'c'})
+    missing = [] if missing is None else ([missing] if isinstance(missing, str) else missing)
     # C is defined only by the ambiguity fixture; omit it otherwise.
-    if missing is None or not missing.startswith('ambiguous:'):
+    if not any(item.startswith('ambiguous:') for item in missing):
         pieces.pop('d4', None)
         pieces.pop('d5', None)
-    if missing:
-        square = missing.split(':')[-1]
-        pieces.pop(square, None)
+    for item in missing:
+        pieces.pop(item.split(':')[-1], None)
     rows = []
     for rank in range(8, 0, -1):
         cells, empty = [], 0
@@ -46,6 +47,7 @@ customPiece1 = ck:K
 customPiece2 = ad:K
 customPiece3 = dh:K
 customPiece4 = dr:K
+customPiece5 = em:K
 extinctionValue = loss
 extinctionPieceTypes = ck,ad,dh
 castling = false
@@ -54,12 +56,20 @@ startFen = {fen()}
 extinctionPieceTypes = ck
 [symbol-mixed:symbol-extinction]
 extinctionPieceTypes = q,ck
+[symbol-any:symbol-extinction]
+extinctionPieceTypes = any:{{ck,ad,dh}}
+[symbol-all-condition:symbol-extinction]
+extinctionPieceTypes = all:{{ck,em}}
+[symbol-all-count:symbol-all-condition]
+extinctionPieceCount = 1
+[symbol-all-opponent-count:symbol-all-condition]
+extinctionOpponentPieceCount = 2
 [symbol-compact:symbol-extinction]
 extinctionPieceTypes = pq
 [symbol-compact-spaced:symbol-extinction]
 extinctionPieceTypes = p q
 [symbol-ambiguous:symbol-extinction]
-customPiece5 = c:K
+customPiece6 = c:K
 extinctionPieceTypes = ck
 startFen = {fen('ambiguous:')}
 [symbol-explicit:symbol-ambiguous]
@@ -70,6 +80,24 @@ extinctionPieceTypes = *
 extinctionPieceTypes = -
 [symbol-empty:symbol-extinction]
 extinctionPieceTypes = {{}}
+[symbol-all-empty:symbol-extinction]
+extinctionPieceTypes = all:{{}}
+[group-promotion]
+maxFile = 8
+maxRank = 8
+piece = em:K
+piece = ck:K +ck:<em>
+castling = false
+promotionRegionOptionalWhite = *
+promotionRegionOptionalBlack = *
+promotionPolicy = optional:{{iiq}} mandatory:{{}}
+extinctionValue = loss
+extinctionPieceTypes = all:{{ck,em}}
+startFen = 7,ck/8/8/8/8/8/8/CK,7 w - - 0 1
+[group-promotion-legacy:group-promotion]
+extinctionPieceTypes = ck
+[group-promotion-pseudo:group-promotion]
+extinctionPseudoRoyal = true
 '''
 
 
@@ -85,9 +113,10 @@ class ExtinctionSymbols(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
-    def nodes(self, variant, position, config=None):
+    def nodes(self, variant, position, config=None, moves=''):
         result = subprocess.run([self.engine, 'load', str(config or self.config)],
-            input=f'setoption name UCI_Variant value {variant}\nposition fen {position}\n'
+            input=f'setoption name UCI_Variant value {variant}\nposition fen {position}'
+                  f'{" moves " + moves if moves else ""}\n'
                   'go perft 1\nquit\n', text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         match = re.search(r'Nodes searched:\s*(\d+)', result.stdout)
@@ -123,6 +152,40 @@ class ExtinctionSymbols(unittest.TestCase):
                 self.assertEqual(self.nodes('symbol-mixed', fen(missing)), 0)
         self.assertGreater(self.nodes('symbol-mixed', fen('b2')), 0)
 
+    def test_explicit_any_preserves_legacy_per_type_condition(self):
+        for missing in (None, 'a1', 'b2', 'c3', 'd2'):
+            with self.subTest(missing=missing):
+                self.assertEqual(self.nodes('symbol-any', fen(missing)),
+                                 self.nodes('symbol-extinction', fen(missing)))
+
+    def test_all_uses_combined_piece_count(self):
+        self.assertGreater(self.nodes('symbol-all-condition', fen()), 0)
+        for side, first, second in (('w', 'a1', 'e2'), ('b', 'a8', 'e7')):
+            with self.subTest(side=side, remaining='em'):
+                self.assertGreater(self.nodes('symbol-all-condition', fen(first, side)), 0)
+            with self.subTest(side=side, remaining='ck'):
+                self.assertGreater(self.nodes('symbol-all-condition', fen(second, side)), 0)
+            with self.subTest(side=side, remaining='none'):
+                self.assertEqual(self.nodes('symbol-all-condition', fen((first, second), side)), 0)
+
+    def test_all_applies_extinction_count_to_combined_group(self):
+        self.assertGreater(self.nodes('symbol-all-count', fen()), 0)
+        for side, missing in (('w', 'a1'), ('w', 'e2'), ('b', 'a8'), ('b', 'e7')):
+            with self.subTest(side=side, missing=missing):
+                self.assertEqual(self.nodes('symbol-all-count', fen(missing, side)), 0)
+
+    def test_all_applies_opponent_count_to_combined_group(self):
+        white_extinct = ('a1', 'e2')
+        self.assertEqual(self.nodes('symbol-all-opponent-count', fen(white_extinct)), 0)
+        self.assertGreater(self.nodes('symbol-all-opponent-count',
+                                      fen(white_extinct + ('e7',))), 0)
+
+    def test_promotion_between_group_types_preserves_the_group(self):
+        position = '7,ck/8/8/8/8/8/8/CK,7 w - - 0 1'
+        self.assertGreater(self.nodes('group-promotion', position, moves='a1b1+'), 0)
+        self.assertGreater(self.nodes('group-promotion-pseudo', position, moves='a1b1+'), 0)
+        self.assertEqual(self.nodes('group-promotion-legacy', position, moves='a1b1+'), 0)
+
     def test_legacy_compact_and_spaced_sets(self):
         for variant in ('symbol-compact', 'symbol-compact-spaced'):
             for missing in ('f2', 'f7', 'g2', 'g7'):
@@ -137,12 +200,14 @@ class ExtinctionSymbols(unittest.TestCase):
         self.assertGreater(self.nodes('symbol-explicit', fen('ambiguous:d4')), 0)
 
     def test_all_and_clearing_inherited_sets(self):
-        for variant in ('symbol-all', 'symbol-clear', 'symbol-empty'):
+        for variant in ('symbol-all', 'symbol-clear', 'symbol-empty', 'symbol-all-empty'):
             with self.subTest(variant=variant):
                 self.assertGreater(self.nodes(variant, fen(only_kings=True)), 0)
 
     def test_invalid_lists_are_diagnosed_and_do_not_partially_replace_parent(self):
-        for value in ('ck,unknown', ',ck', 'ck,', 'ck,,ad', '{ck,}', '{ck', 'ck,*'):
+        for value in ('ck,unknown', ',ck', 'ck,', 'ck,,ad', '{ck,}', '{ck', 'ck,*',
+                      'any:ck,ad', 'all:ck,ad', 'any:{ck,}', 'all:{ck,unknown}',
+                      'some:{ck,ad}'):
             with self.subTest(value=value):
                 config = Path(self.temp.name) / 'invalid.ini'
                 config.write_text(RULES + '\n[invalid:symbol-extinction]\n'
