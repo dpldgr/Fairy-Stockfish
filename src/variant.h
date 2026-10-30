@@ -36,10 +36,14 @@
 namespace Stockfish {
 
 enum PromotionCase : uint16_t {
-  PROMO_OIQ = 1 << 0, PROMO_OIC = 1 << 1,
-  PROMO_IIQ = 1 << 2, PROMO_IIC = 1 << 3,
-  PROMO_IOQ = 1 << 4, PROMO_IOC = 1 << 5,
-  PROMO_LASTQ = 1 << 6, PROMO_LASTC = 1 << 7,
+  PROMO_OIQ = 1 << 0, PROMO_OICU = 1 << 1, PROMO_OICP = 1 << 8,
+  PROMO_IIQ = 1 << 2, PROMO_IICU = 1 << 3, PROMO_IICP = 1 << 9,
+  PROMO_IOQ = 1 << 4, PROMO_IOCU = 1 << 5, PROMO_IOCP = 1 << 10,
+  PROMO_LASTQ = 1 << 6, PROMO_LASTCU = 1 << 7, PROMO_LASTCP = 1 << 11,
+  PROMO_OIC = PROMO_OICU | PROMO_OICP,
+  PROMO_IIC = PROMO_IICU | PROMO_IICP,
+  PROMO_IOC = PROMO_IOCU | PROMO_IOCP,
+  PROMO_LASTC = PROMO_LASTCU | PROMO_LASTCP,
   PROMO_OI = PROMO_OIQ | PROMO_OIC,
   PROMO_II = PROMO_IIQ | PROMO_IIC,
   PROMO_IO = PROMO_IOQ | PROMO_IOC,
@@ -48,6 +52,11 @@ enum PromotionCase : uint16_t {
 };
 
 enum PromotionRequirement { PROMOTION_OPTIONAL, PROMOTION_MANDATORY };
+
+enum PromotionCapture : uint8_t {
+  PROMO_CAPTURE_AUTO = 0, PROMO_CAPTURE_NONE = 1,
+  PROMO_CAPTURE_UNPROMOTED = 2, PROMO_CAPTURE_PROMOTED = 4
+};
 
 struct PromotionRegionSetting {
   Bitboard region = 0;
@@ -127,6 +136,7 @@ enum ShuffleSquaresMethod {
 };
 
 struct Variant {
+  bool promotionVictimState = false;
   std::string variantTemplate = "fairy";
   std::string pieceToCharTable = "-";
   int pocketSize = 0;

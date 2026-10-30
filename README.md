@@ -131,6 +131,37 @@ python3 tests/piece_slots_matrix.py
 PIECE_SLOTS=128 BOARD_SIZE=19 GATING=yes python3 ../tests/piece_slots.py
 ```
 
+## Promotion capture policies
+
+Capture triggers can distinguish whether the victim was promoted before capture:
+`oicu/oicp`, `iicu/iicp`, `iocu/iocp`, and optional-only `lastcu/lastcp`.
+The `u` suffix means unpromoted and `p` means promoted. This uses the stored
+promoted flag, independently of the victim's movement or ability to promote.
+Existing `oic`, `iic`, `ioc` and `lastc` include both states; quiet triggers and
+the `oi`, `ii`, `io`, `all`, `last` and `inherit` aliases retain their meaning.
+
+For optional promotion on capturing an unpromoted piece and compulsory promotion
+on capturing a promoted piece, anywhere on the board:
+
+```ini
+promotionRegionOptionalWhite = *
+promotionRegionOptionalBlack = *
+promotionRegionMandatoryWhite = *
+promotionRegionMandatoryBlack = *
+promotionPolicy = optional:{iicu} mandatory:{iicp}
+```
+
+Every victim on a multi-capture route is considered. Capturing any promoted
+piece makes promotion mandatory in this example, even if another victim is
+unpromoted or the final landing is empty. Promotion occurs at the end of the
+whole move. Lion, Lion Dog, Hook and generic double moves use the same resolver.
+`lastcu`/`lastcp` remain restricted to the optional section and optional region.
+When these policies distinguish victim states, FEN retains promoted markers
+and position hashes distinguish promoted from unpromoted instances.
+
+Run `STOCKFISH=src/stockfish python3 tests/promotion_victims.py` from the repository
+root for victim-state policy and multi-capture promotion regressions.
+
 ## Universal leaper
 
 Custom piece definitions support `U` to leap directly to any other square on the

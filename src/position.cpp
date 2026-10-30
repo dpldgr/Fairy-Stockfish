@@ -56,6 +56,7 @@ namespace Zobrist {
   Key checks[COLOR_NB][CHECKS_NB];
   Key wall[SQUARE_NB];
   Key endgame[EG_EVAL_NB];
+  Key promoted[SQUARE_NB];
 }
 
 namespace {
@@ -293,6 +294,8 @@ void Position::init() {
 
   for (int i = NO_EG_EVAL; i < EG_EVAL_NB; ++i)
       Zobrist::endgame[i] = rng.rand<Key>();
+  for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
+      Zobrist::promoted[s] = rng.rand<Key>();
 
   // Prepare the cuckoo tables
   std::memset(cuckoo, 0, sizeof(cuckoo));
@@ -430,6 +433,30 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
           ++sq;
       }
 
+      // Resolve +base before looking up a configured +symbol alias, so FEN
+      // reload preserves both the promoted flag and the original piece.
+      else if (token == '+')
+      {
+          auto start = ss.tellg();
+          unsigned char base;
+          if ((ss >> base)
+              && (idx = read_piece_symbol(ss, base, var)) != string::npos
+              && promoted_piece_type(type_of(Piece(idx))))
+          {
+              put_piece(make_piece(color_of(Piece(idx)), promoted_piece_type(type_of(Piece(idx)))), sq, true, Piece(idx));
+              ++sq;
+          }
+          else
+          {
+              ss.clear();
+              ss.seekg(start);
+              if ((idx = read_piece_symbol(ss, token, var)) != string::npos)
+              {
+                  put_piece(Piece(idx), sq, true);
+                  ++sq;
+              }
+          }
+      }
       else if ((idx = read_piece_symbol(ss, token, var)) != string::npos)
       {
           if (ss.peek() == '~')
@@ -438,15 +465,6 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
           ++sq;
       }
 
-      // Promoted shogi pieces
-      else if (token == '+'
-            && (ss >> token)
-            && (idx = read_piece_symbol(ss, token, var)) != string::npos
-            && promoted_piece_type(type_of(Piece(idx))))
-      {
-          put_piece(make_piece(color_of(Piece(idx)), promoted_piece_type(type_of(Piece(idx)))), sq, true, Piece(idx));
-          ++sq;
-      }
   }
   // Pieces in hand
   if (!isspace(token))
@@ -737,6 +755,9 @@ void Position::set_state(StateInfo* si) const {
   si->key = si->materialKey = 0;
   si->pawnKey = Zobrist::noPawns;
   si->nonPawnMaterial[WHITE] = si->nonPawnMaterial[BLACK] = VALUE_ZERO;
+  if (var->promotionVictimState)
+      for (Bitboard b = promotedPieces; b;)
+          si->key ^= Zobrist::promoted[pop_lsb(b)];
   si->checkersBB = count<KING>(sideToMove) ? attackers_to(square<KING>(sideToMove), ~sideToMove) : Bitboard(0);
   si->move = MOVE_NONE;
 
@@ -998,7 +1019,8 @@ string Position::fen(bool sfen, bool showPromoted, int countStarted, std::string
                   ss << piece_symbol(piece_on(make_square(f, r)));
 
                   // Set promoted pieces
-                  if (((captures_to_hand() && !drop_loop()) || two_boards() ||  showPromoted) && is_promoted(make_square(f, r)))
+                  if (((captures_to_hand() && !drop_loop()) || two_boards() || showPromoted || var->promotionVictimState)
+                      && is_promoted(make_square(f, r)))
                       ss << "~";
               }
               tokenWritten = true;
@@ -1720,7 +1742,7 @@ bool Position::trading_rule_legal(Move m) const {
   else if (facts.doubleMove)
   {
       Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
-                 : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
+                 : is_hook(m) ? hook_sq(m) : double_move_sq(m);
       if (!empty(via) && color_of(piece_on(via)) != sideToMove)
       {
           facts.firstCapture = type_of(piece_on(via));
@@ -2009,7 +2031,7 @@ bool Position::gives_check(Move m) const {
   if (!count<KING>(~sideToMove))
       return false;
 
-  if (var->hasLionDog && type_of(m) != CASTLING)
+  if ((var->hasLionDog || is_path_promotion(m) || is_path_demotion(m)) && type_of(m) != CASTLING)
   {
       Bitboard occupied = (type_of(m) == DROP ? pieces() : pieces() & ~square_bb(from));
       if (is_multi_move(m)) occupied &= ~path_capture_squares(m);
@@ -2139,6 +2161,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   thisThread->nodes.fetch_add(1, std::memory_order_relaxed);
 #endif
   Key k = st->key ^ Zobrist::side;
+  Bitboard oldPromoted = var->promotionVictimState ? promotedPieces : Bitboard(0);
 
   // Copy some fields of the old state to our new StateInfo object except the
   // ones which are going to be recalculated from scratch anyway and then switch
@@ -2169,7 +2192,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Piece pc = moved_piece(m);
   Bitboard allPathCaptures = is_multi_move(m) ? path_capture_squares(m) : Bitboard(0);
   Piece captured = (is_multi_move(m)) && to == from ? NO_PIECE : piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
-  Square lionCapsq = type_of(m) == LION_DOG ? LionDogSquares[from][lion_dog_path_index(m)][0] : type_of(m) == LION ? LionVia[from][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : type_of(m) == DOUBLE_MOVE ? double_move_sq(m) : SQ_NONE;
+  Square lionCapsq = type_of(m) == LION_DOG ? LionDogSquares[from][lion_dog_path_index(m)][0] : type_of(m) == LION ? LionVia[from][lion_path_index(m)] : is_hook(m) ? hook_sq(m) : is_double_move(m) ? double_move_sq(m) : SQ_NONE;
   Piece lionCaptured = (is_multi_move(m)) && !empty(lionCapsq) && color_of(piece_on(lionCapsq)) == them ? piece_on(lionCapsq) : NO_PIECE;
   Square secondLionCapsq = SQ_NONE;
   Piece secondLionCaptured = NO_PIECE;
@@ -2786,6 +2809,9 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   }
 
   // Update the key with the final value
+  if (var->promotionVictimState)
+      for (Bitboard b = oldPromoted ^ promotedPieces; b;)
+          k ^= Zobrist::promoted[pop_lsb(b)];
   st->key = k;
   // Calculate checkers bitboard (if move gives check)
   st->checkersBB = givesCheck ? attackers_to(square<KING>(them), us) & pieces(us) : Bitboard(0);

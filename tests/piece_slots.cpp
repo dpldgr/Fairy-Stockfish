@@ -74,6 +74,18 @@ int main() {
         assert(is_path_demotion(demote) && !is_path_promotion(demote));
     }
     assert(hook_sq(make_hook(SQ_MIN, SQ_MAX, SQ_MIN)) == SQ_MAX);
+    for (Move m : {make_hook(SQ_MIN, SQ_MAX, SQ_MIN), make_double_move(SQ_MIN, SQ_MAX, SQ_MIN)})
+    {
+        assert(!is_path_promotion(m) && !is_path_demotion(m));
+        for (bool mapped : {false, true})
+        {
+            Move p = with_path_promotion(m, KING, mapped);
+            assert(path_promotion_type(p) == KING && is_path_pawn_promotion(p) == !mapped);
+            assert((type_of(p) == HOOK ? hook_sq(p) : double_move_sq(p)) == SQ_MAX);
+            assert(from_sq(p) == SQ_MIN && to_sq(p) == SQ_MIN);
+        }
+        assert(is_path_demotion(with_path_promotion(m, NO_PIECE_TYPE)));
+    }
     assert(double_move_sq(make_double_move(SQ_MIN, SQ_MAX, SQ_MIN)) == SQ_MAX);
     assert(lion_path_index(make_lion(SQ_MIN, 63, SQ_MAX)) == 63);
     assert(sizeof(TTEntry) == (sizeof(MoveStorage) == 4 ? 12 : 16));

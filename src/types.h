@@ -532,6 +532,8 @@ enum MoveType : MoveStorage {
   HOOK               = MoveStorage(9) << (2 * SQUARE_BITS),
   DOUBLE_MOVE        = MoveStorage(10) << (2 * SQUARE_BITS),
   LION_DOG           = MoveStorage(11) << (2 * SQUARE_BITS),
+  HOOK_ALTERNATE     = MoveStorage(13) << (2 * SQUARE_BITS),
+  DOUBLE_ALTERNATE   = MoveStorage(14) << (2 * SQUARE_BITS),
 };
 
 enum Color {
@@ -1265,26 +1267,48 @@ constexpr Move make_lion_dog(Square from, int path, Square to) {
   return Move((MoveStorage(path) << (2 * SQUARE_BITS + MOVE_TYPE_BITS))
               | MoveStorage(LION_DOG) | (MoveStorage(from) << SQUARE_BITS) | MoveStorage(to));
 }
+constexpr bool is_hook(Move m) {
+  return (type_of(m) & ~(MoveStorage(4) << (2 * SQUARE_BITS))) == HOOK;
+}
+constexpr bool is_double_move(Move m) {
+  return (type_of(m) & ~(MoveStorage(4) << (2 * SQUARE_BITS))) == DOUBLE_MOVE;
+}
 constexpr bool is_multi_move(Move m) {
-  return type_of(m) == LION || type_of(m) == LION_DOG || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE;
+  return type_of(m) == LION || type_of(m) == LION_DOG || is_hook(m) || is_double_move(m);
+}
+constexpr int path_payload_bits(Move m) {
+  return is_hook(m) || is_double_move(m) ? SQUARE_BITS : 6;
 }
 constexpr PieceType path_promotion_type(Move m) {
-  return (type_of(m) == LION || type_of(m) == LION_DOG)
-       ? PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS + 6)) & PIECE_TYPE_MASK) : NO_PIECE_TYPE;
+  return is_multi_move(m)
+       ? PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m))) & PIECE_TYPE_MASK) : NO_PIECE_TYPE;
 }
 constexpr bool path_mapped_flag(Move m) {
-  return (m & (MoveStorage(1) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + 6 + PIECE_TYPE_BITS))) != 0;
+  if (is_hook(m) || is_double_move(m))
+      return type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE;
+  return (m & (MoveStorage(1) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m) + PIECE_TYPE_BITS))) != 0;
 }
 constexpr bool is_path_promotion(Move m) { return path_promotion_type(m) != NO_PIECE_TYPE; }
 constexpr bool is_path_pawn_promotion(Move m) { return is_path_promotion(m) && !path_mapped_flag(m); }
 constexpr bool is_path_demotion(Move m) {
-  return (type_of(m) == LION || type_of(m) == LION_DOG) && !is_path_promotion(m) && path_mapped_flag(m);
+  if (is_hook(m) || is_double_move(m))
+      return !is_path_promotion(m) && !path_mapped_flag(m);
+  return is_multi_move(m) && !is_path_promotion(m) && path_mapped_flag(m);
 }
 constexpr Move with_path_promotion(Move m, PieceType target, bool mapped = true) {
-  return Move(m | (MoveStorage(target) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + 6))
-                | (MoveStorage(mapped) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + 6 + PIECE_TYPE_BITS)));
+  // Hook/double routes use alternate move types for pawn choices/demotion,
+  // leaving room for the full intermediate square in existing 32-bit builds.
+  if (is_hook(m) || is_double_move(m))
+  {
+      MoveStorage kind = is_hook(m) ? HOOK : DOUBLE_MOVE;
+      if (!mapped || !target) kind |= MoveStorage(4) << (2 * SQUARE_BITS);
+      return Move((m & ~(MoveStorage(15) << (2 * SQUARE_BITS))) | kind
+                  | (MoveStorage(target) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + SQUARE_BITS)));
+  }
+  return Move(m | (MoveStorage(target) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m)))
+                | (MoveStorage(mapped) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m) + PIECE_TYPE_BITS)));
 }
-static_assert(2 * SQUARE_BITS + MOVE_TYPE_BITS + 7 + PIECE_TYPE_BITS <= 8 * sizeof(MoveStorage),
+static_assert(2 * SQUARE_BITS + MOVE_TYPE_BITS + (SQUARE_BITS > 7 ? SQUARE_BITS : 7) + PIECE_TYPE_BITS <= 8 * sizeof(MoveStorage),
               "Path promotion exceeds move storage");
 
 constexpr Move make_hook(Square from, Square hook, Square to) {
