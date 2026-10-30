@@ -40,6 +40,8 @@ Bitboard LeaperMoves[2][COLOR_NB][PIECE_TYPE_NB][SQUARE_NB];
 uint64_t LionValidPathMask[SQUARE_NB];
 Square LionVia[SQUARE_NB][64];
 Square LionTo[SQUARE_NB][64];
+Square LionDogSquares[SQUARE_NB][32][3];
+uint32_t LionDogValidPathMask[SQUARE_NB];
 Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 RiderType AttackRiderTypes[PIECE_TYPE_NB];
 RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
@@ -447,6 +449,23 @@ void Bitboards::init() {
           }
       }
   }
+
+  // Four Silverman routes per ray; no step followed by a two-square jump.
+  constexpr int offsets[4][3] = {{1, 2, 3}, {1, 2, 1}, {2, 3, 3}, {2, 1, 1}};
+  for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+      for (int d = 0; d < 8; ++d)
+          for (int kind = 0; kind < 4; ++kind)
+          {
+              int path = d * 4 + kind;
+              bool valid = true;
+              for (int leg = 0; leg < lion_dog_legs(path); ++leg)
+              {
+                  Square to = Square(int(from) + offsets[kind][leg] * int(LionDirections[d]));
+                  if (!is_ok(to) || square_distance(from, to) != offsets[kind][leg]) valid = false;
+                  LionDogSquares[from][path][leg] = to;
+              }
+              if (valid) LionDogValidPathMask[from] |= uint32_t(1) << path;
+          }
 
   for (File f = FILE_A; f <= FILE_MAX; ++f)
       for (Rank r = RANK_1; r <= RANK_MAX; ++r)

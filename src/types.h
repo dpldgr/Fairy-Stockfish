@@ -531,6 +531,7 @@ enum MoveType : MoveStorage {
   LION               = MoveStorage(8) << (2 * SQUARE_BITS),
   HOOK               = MoveStorage(9) << (2 * SQUARE_BITS),
   DOUBLE_MOVE        = MoveStorage(10) << (2 * SQUARE_BITS),
+  LION_DOG           = MoveStorage(11) << (2 * SQUARE_BITS),
 };
 
 enum Color {
@@ -1256,6 +1257,36 @@ constexpr Move make_lion(Square from, int path, Square to) {
   return Move((MoveStorage(path) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(LION) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
+// Dog paths: direction * 4 + {three out, two out/back, jump/out, jump/back}.
+constexpr int lion_dog_path_index(Move m) {
+  return int((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & 31);
+}
+constexpr Move make_lion_dog(Square from, int path, Square to) {
+  return Move((MoveStorage(path) << (2 * SQUARE_BITS + MOVE_TYPE_BITS))
+              | MoveStorage(LION_DOG) | (MoveStorage(from) << SQUARE_BITS) | MoveStorage(to));
+}
+constexpr bool is_multi_move(Move m) {
+  return type_of(m) == LION || type_of(m) == LION_DOG || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE;
+}
+constexpr PieceType path_promotion_type(Move m) {
+  return (type_of(m) == LION || type_of(m) == LION_DOG)
+       ? PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS + 6)) & PIECE_TYPE_MASK) : NO_PIECE_TYPE;
+}
+constexpr bool path_mapped_flag(Move m) {
+  return (m & (MoveStorage(1) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + 6 + PIECE_TYPE_BITS))) != 0;
+}
+constexpr bool is_path_promotion(Move m) { return path_promotion_type(m) != NO_PIECE_TYPE; }
+constexpr bool is_path_pawn_promotion(Move m) { return is_path_promotion(m) && !path_mapped_flag(m); }
+constexpr bool is_path_demotion(Move m) {
+  return (type_of(m) == LION || type_of(m) == LION_DOG) && !is_path_promotion(m) && path_mapped_flag(m);
+}
+constexpr Move with_path_promotion(Move m, PieceType target, bool mapped = true) {
+  return Move(m | (MoveStorage(target) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + 6))
+                | (MoveStorage(mapped) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + 6 + PIECE_TYPE_BITS)));
+}
+static_assert(2 * SQUARE_BITS + MOVE_TYPE_BITS + 7 + PIECE_TYPE_BITS <= 8 * sizeof(MoveStorage),
+              "Path promotion exceeds move storage");
+
 constexpr Move make_hook(Square from, Square hook, Square to) {
   return Move((MoveStorage(hook) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(HOOK) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
@@ -1278,7 +1309,7 @@ inline bool is_custom(PieceType pt) {
 
 inline bool is_ok(Move m) {
   return from_sq(m) != to_sq(m) || type_of(m) == PROMOTION || type_of(m) == SPECIAL
-      || type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE; // Catch MOVE_NULL and MOVE_NONE
+      || is_multi_move(m); // Catch MOVE_NULL and MOVE_NONE
 }
 
 inline int dist(Direction d) {

@@ -103,7 +103,7 @@ namespace {
         return pos.piece_on(to);
 
     Square from = from_sq(m);
-    if ((type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE) && !pos.empty(from) && color_of(pos.piece_on(from)) == us)
+    if (is_multi_move(m) && !pos.empty(from) && color_of(pos.piece_on(from)) == us)
         return pos.piece_on(from);
 
     return NO_PIECE;
@@ -689,15 +689,22 @@ string UCI::move(const Position& pos, Move m) {
               : type_of(m) == DOUBLE_MOVE ? UCI::square(pos, from) + UCI::square(pos, double_move_sq(m)) + UCI::square(pos, to)
                                    : UCI::square(pos, from) + UCI::square(pos, to);
 
+  if (type_of(m) == LION_DOG)
+  {
+      Square path[3];
+      int n = pos.move_path(m, path);
+      move = UCI::square(pos, from);
+      for (int i = 0; i < n; ++i) move += UCI::square(pos, path[i]);
+  }
   // Wall square
   if (pos.walling() && CurrentProtocol == XBOARD)
       move += "," + UCI::square(pos, to) + UCI::square(pos, gating_square(m));
 
-  if (type_of(m) == PROMOTION)
-      move += pos.piece_symbol(make_piece(BLACK, promotion_type(m)));
-  else if (type_of(m) == PIECE_PROMOTION)
+  if (type_of(m) == PROMOTION || is_path_pawn_promotion(m))
+      move += pos.piece_symbol(make_piece(BLACK, is_path_promotion(m) ? path_promotion_type(m) : promotion_type(m)));
+  else if (type_of(m) == PIECE_PROMOTION || is_path_promotion(m))
       move += '+';
-  else if (type_of(m) == PIECE_DEMOTION)
+  else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m))
       move += '-';
   else if (is_gating(m))
   {

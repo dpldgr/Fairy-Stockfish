@@ -1203,6 +1203,25 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
 }
 
 
+Bitboard Position::multi_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended) const {
+    Bitboard result = 0;
+    Bitboard friends = (pieces(c) & occupied) & ~square_bb(from);
+    if (defended != SQ_NONE) friends &= ~square_bb(defended);
+    auto add = [&](Move move) {
+        Square path[3];
+        int n = move_path(move, path);
+        Bitboard visited = 0;
+        for (int i = 0; i < n; ++i) visited |= path[i];
+        if (!(visited & friends) && !(visited & ~board_bb(c, pt)))
+            result |= visited & ~square_bb(from);
+    };
+    uint64_t lion = lion_move_mask(c, pt, from);
+    while (lion) { int p = __builtin_ctzll(lion); lion &= lion - 1; add(make_lion(from, p, LionTo[from][p])); }
+    uint64_t dog = lion_dog_mask(c, pt, from);
+    while (dog) { int p = __builtin_ctzll(dog); dog &= dog - 1; add(make_lion_dog(from, p, LionDogSquares[from][p][lion_dog_legs(p)-1])); }
+    return result;
+}
+
 /// Position::attackers_to() computes a bitboard of all pieces which attack a
 /// given square. Slider attacks use the occupied bitboard to indicate occupancy.
 
@@ -1257,6 +1276,18 @@ Bitboard Position::attackers_to(Square s, Bitboard occupied, Color c, Bitboard j
               b |= attacks_bb(~c, move_pt, s, occupied) & pieces(c, pt);
       }
   }
+
+  if (var->hasLionDog)
+      for (PieceSet ps = piece_types(); ps;)
+      {
+          PieceType pt = pop_lsb(ps);
+          if (!var->lionDogMoveSpecified[pt]) continue;
+          for (Bitboard candidates = pieces(c, pt) & occupied; candidates;)
+          {
+              Square from = pop_lsb(candidates);
+              if (multi_attack_targets(c, pt, from, occupied, s) & s) b |= from;
+          }
+      }
 
   // Janggi palace moves
   if (diagonal_lines() & s)
@@ -1356,6 +1387,10 @@ bool Position::legal(Move m) const {
   if (type_of(m) == LION && !(lion_move_mask(us, type_of(moved_piece(m)), from) & (1ULL << lion_path_index(m))))
       return false;
 
+  if (type_of(m) == LION_DOG
+      && !(lion_dog_mask(us, type_of(moved_piece(m)), from) & (uint32_t(1) << lion_dog_path_index(m))))
+      return false;
+
   // Illegal checks
   if ((!checking_permitted() || (sittuyin_promotion() && type_of(m) == PROMOTION) || (!drop_checks() && type_of(m) == DROP)) && gives_check(m))
       return false;
@@ -1442,6 +1477,7 @@ bool Position::legal(Move m) const {
           // Move the rook
           occupied ^= to | rto;
       }
+      if (is_multi_move(m)) occupied &= ~path_capture_squares(m);
       occupied |= kto;
       if (type_of(m) == EN_PASSANT)
           occupied &= ~square_bb(capture_square(kto));
@@ -1513,11 +1549,12 @@ bool Position::legal(Move m) const {
 
   // mutuallyImmuneTypes (diplomacy in Atomar)-- In no-check Atomic, kings can be beside each other, but in Atomar, this prevents them from actually taking.
   // Generalized to allow a custom set of pieces that can't capture a piece of the same type.
-  if (capture(m) &&
-      (mutually_immune_types() & type_of(moved_piece(m))) &&
-      (type_of(moved_piece(m)) == type_of(piece_on(to)))
-  )
-  return false;
+  if (capture(m) && (mutually_immune_types() & type_of(moved_piece(m))))
+  {
+      Bitboard victims = is_multi_move(m) ? path_capture_squares(m) : square_bb(to);
+      for (; victims;)
+          if (type_of(piece_on(pop_lsb(victims))) == type_of(moved_piece(m))) return false;
+  }
 
   // En passant captures are a tricky special case. Because they are rather
   // uncommon, we do it simply by testing whether the king is attacked after
@@ -1562,14 +1599,11 @@ bool Position::legal(Move m) const {
       return !attackers_to(to, pieces() ^ to_sq(m), ~us);
   }
 
-  if ((type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE) && count<KING>(us))
+  if (is_multi_move(m) && count<KING>(us))
   {
       Square ksq = type_of(moved_piece(m)) == KING ? to : square<KING>(us);
-      Bitboard occupied = (pieces() ^ from) | to;
-      Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
-      if (!empty(via) && color_of(piece_on(via)) == ~us)
-          occupied ^= via;
-      return !(attackers_to(ksq, occupied, ~us) & occupied);
+      Bitboard occupied = (pieces() & ~square_bb(from) & ~path_capture_squares(m)) | to;
+      return !(attackers_to(ksq, occupied, ~us) & occupied & ~square_bb(to));
   }
 
   Bitboard occupied = (type_of(m) != DROP ? pieces() ^ from : pieces()) | to;
@@ -1633,6 +1667,8 @@ bool Position::trading_rule_legal(Move m) const {
       PieceType secondCapture = NO_PIECE_TYPE;
       Square firstCaptureSquare = SQ_NONE;
       Square secondCaptureSquare = SQ_NONE;
+      PieceType thirdCapture = NO_PIECE_TYPE;
+      Square thirdCaptureSquare = SQ_NONE;
       bool doubleMove = false;
       bool finalAdjacent = false;
 
@@ -1642,6 +1678,7 @@ bool Position::trading_rule_legal(Move m) const {
               captured |= firstCapture;
           if (secondCapture != NO_PIECE_TYPE)
               captured |= secondCapture;
+          if (thirdCapture != NO_PIECE_TYPE) captured |= thirdCapture;
           return captured;
       }
 
@@ -1653,15 +1690,34 @@ bool Position::trading_rule_legal(Move m) const {
           if (secondCapture != NO_PIECE_TYPE && (targets & secondCapture)
               && !((allowCheckers & secondCapture) && (checkingPieces & secondCaptureSquare)))
               squares |= secondCaptureSquare;
+          if (thirdCapture != NO_PIECE_TYPE && (targets & thirdCapture)
+              && !((allowCheckers & thirdCapture) && (checkingPieces & thirdCaptureSquare)))
+              squares |= thirdCaptureSquare;
           return squares;
       }
   };
 
   TradingMoveFacts facts;
-  facts.doubleMove = type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE;
+  facts.doubleMove = is_multi_move(m);
   facts.finalAdjacent = bool(attacks_bb<KING>(from) & to);
 
-  if (facts.doubleMove)
+  if (type_of(m) == LION_DOG)
+  {
+      Square path[3];
+      int n = move_path(m, path), capture = 0;
+      Bitboard seen = 0;
+      for (int i = 0; i < n; ++i)
+          if (!(seen & path[i]) && !empty(path[i]) && color_of(piece_on(path[i])) != sideToMove)
+          {
+              seen |= path[i];
+              PieceType pt = type_of(piece_on(path[i]));
+              if (capture == 0) { facts.firstCapture = pt; facts.firstCaptureSquare = path[i]; }
+              else if (capture == 1) { facts.secondCapture = pt; facts.secondCaptureSquare = path[i]; }
+              else { facts.thirdCapture = pt; facts.thirdCaptureSquare = path[i]; }
+              ++capture;
+          }
+  }
+  else if (facts.doubleMove)
   {
       Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
                  : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
@@ -1691,6 +1747,20 @@ bool Position::trading_rule_legal(Move m) const {
 
   Bitboard checkingPieces = checkers();
   auto category_for = [&](PieceSet targets) {
+      if (type_of(m) == LION_DOG)
+      {
+          PieceType types[] = {facts.firstCapture, facts.secondCapture, facts.thirdCapture};
+          Square squares[] = {facts.firstCaptureSquare, facts.secondCaptureSquare, facts.thirdCaptureSquare};
+          for (int i = 2; i >= 0; --i)
+              if (types[i] && (targets & types[i])
+                  && !((var->tradingRuleAllowCheckers & types[i]) && (checkingPieces & squares[i])))
+              {
+                  bool adjacent = bool(attacks_bb<KING>(from) & squares[i]);
+                  return i == 0 ? adjacent ? TRADING_ADJACENT : TRADING_DISTANT
+                                : adjacent ? TRADING_ADJACENT_2_CAPTURE : TRADING_DISTANT_2_CAPTURE;
+              }
+          return TRADING_NONE;
+      }
       bool firstTarget = facts.firstCapture != NO_PIECE_TYPE && (targets & facts.firstCapture)
                       && !((var->tradingRuleAllowCheckers & facts.firstCapture)
                            && (checkingPieces & facts.firstCaptureSquare));
@@ -1771,15 +1841,7 @@ bool Position::geometrically_recapturable_after(Move m) const {
   Square from = from_sq(m);
   Square to = to_sq(m);
   Bitboard capturedSquares = 0;
-  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
-  {
-      Square via = type_of(m) == LION ? LionVia[from][lion_path_index(m)]
-                 : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
-      if (!empty(via) && color_of(piece_on(via)) != sideToMove)
-          capturedSquares |= via;
-      if (to != from && !empty(to) && color_of(piece_on(to)) != sideToMove)
-          capturedSquares |= to;
-  }
+  if (is_multi_move(m)) capturedSquares = path_capture_squares(m);
   else
       capturedSquares |= type_of(m) == EN_PASSANT ? capture_square(to) : to;
 
@@ -1947,6 +2009,23 @@ bool Position::gives_check(Move m) const {
   if (!count<KING>(~sideToMove))
       return false;
 
+  if (var->hasLionDog && type_of(m) != CASTLING)
+  {
+      Bitboard occupied = (type_of(m) == DROP ? pieces() : pieces() & ~square_bb(from));
+      if (is_multi_move(m)) occupied &= ~path_capture_squares(m);
+      if (type_of(m) == EN_PASSANT) occupied &= ~square_bb(capture_square(to));
+      occupied |= to;
+      PieceType result = type_of(moved_piece(m));
+      if (type_of(m) == PROMOTION) result = promotion_type(m);
+      else if (is_path_promotion(m)) result = path_promotion_type(m);
+      else if (type_of(m) == PIECE_PROMOTION) result = promoted_piece_type(result);
+      else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)) result = type_of(unpromoted_piece_on(from));
+      Square king = square<KING>(~sideToMove);
+      bool direct = bool(attacks_bb(sideToMove, result == KING ? king_type() : result, to, occupied) & king);
+      direct |= bool(multi_attack_targets(sideToMove, result, to, occupied) & king);
+      return direct || (attackers_to(king, occupied, sideToMove) & occupied & ~square_bb(to));
+  }
+
   Bitboard occupied = (type_of(m) != DROP ? pieces() ^ from : pieces()) | to;
   Bitboard janggiCannons = pieces(JANGGI_CANNON);
   if (type_of(moved_piece(m)) == JANGGI_CANNON)
@@ -2088,12 +2167,33 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Square from = from_sq(m);
   Square to = to_sq(m);
   Piece pc = moved_piece(m);
-  Piece captured = (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE) && to == from ? NO_PIECE : piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
-  Square lionCapsq = type_of(m) == LION ? LionVia[from][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : type_of(m) == DOUBLE_MOVE ? double_move_sq(m) : SQ_NONE;
-  Piece lionCaptured = (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE) && !empty(lionCapsq) && color_of(piece_on(lionCapsq)) == them ? piece_on(lionCapsq) : NO_PIECE;
+  Bitboard allPathCaptures = is_multi_move(m) ? path_capture_squares(m) : Bitboard(0);
+  Piece captured = (is_multi_move(m)) && to == from ? NO_PIECE : piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
+  Square lionCapsq = type_of(m) == LION_DOG ? LionDogSquares[from][lion_dog_path_index(m)][0] : type_of(m) == LION ? LionVia[from][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : type_of(m) == DOUBLE_MOVE ? double_move_sq(m) : SQ_NONE;
+  Piece lionCaptured = (is_multi_move(m)) && !empty(lionCapsq) && color_of(piece_on(lionCapsq)) == them ? piece_on(lionCapsq) : NO_PIECE;
+  Square secondLionCapsq = SQ_NONE;
+  Piece secondLionCaptured = NO_PIECE;
+  if (type_of(m) == LION_DOG)
+  {
+      Square path[3];
+      int n = move_path(m, path);
+      lionCapsq = path[0];
+      lionCaptured = !empty(lionCapsq) && color_of(piece_on(lionCapsq)) == them ? piece_on(lionCapsq) : NO_PIECE;
+      if (n == 3)
+      {
+          secondLionCapsq = path[1];
+          secondLionCaptured = !empty(secondLionCapsq) && color_of(piece_on(secondLionCapsq)) == them ? piece_on(secondLionCapsq) : NO_PIECE;
+      }
+      // The returning route already captured its final square on the first leg.
+      if (to == lionCapsq || to == secondLionCapsq) captured = NO_PIECE;
+  }
+  st->lionSecondCaptureSquare = secondLionCapsq;
+  st->lionSecondCapturedPiece = secondLionCaptured;
+  st->lionSecondCapturedPromoted = secondLionCaptured && is_promoted(secondLionCapsq);
+  st->lionSecondUnpromotedCapturedPiece = secondLionCaptured ? unpromoted_piece_on(secondLionCapsq) : NO_PIECE;
   if (to == from)
   {
-      assert(type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE || (type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && (pass(us) || var->wallOrMove )));
+      assert(is_multi_move(m) || (type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && (pass(us) || var->wallOrMove )));
       captured = NO_PIECE;
   }
   st->capturedpromoted = captured && is_promoted(to);
@@ -2187,31 +2287,31 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       st->rule50 = 0;
   }
 
-  if (lionCaptured)
-  {
+  auto remove_path_capture = [&](Piece pathVictim, Square pathSquare) {
+      if (!pathVictim) return;
       // If the captured piece is a pawn, update pawn hash key, otherwise
       // update non-pawn material.
-      if (type_of(lionCaptured) == PAWN)
-          st->pawnKey ^= Zobrist::psq[lionCaptured][lionCapsq];
+      if (type_of(pathVictim) == PAWN)
+          st->pawnKey ^= Zobrist::psq[pathVictim][pathSquare];
       else
-          st->nonPawnMaterial[them] -= PieceValue[MG][lionCaptured];
+          st->nonPawnMaterial[them] -= PieceValue[MG][pathVictim];
 
       if (Eval::useNNUE)
       {
-          dp.piece[dp.dirty_num] = lionCaptured;
-          dp.from[dp.dirty_num] = lionCapsq;
+          dp.piece[dp.dirty_num] = pathVictim;
+          dp.from[dp.dirty_num] = pathSquare;
           dp.to[dp.dirty_num] = SQ_NONE;
       }
 
-      bool capturedPromoted = is_promoted(lionCapsq);
-      Piece unpromotedCaptured = unpromoted_piece_on(lionCapsq);
-      remove_piece(lionCapsq);
+      bool capturedPromoted = is_promoted(pathSquare);
+      Piece unpromotedCaptured = unpromoted_piece_on(pathSquare);
+      remove_piece(pathSquare);
 
       if (captures_to_hand())
       {
-          Piece pieceToHand = !capturedPromoted || drop_loop() ? ~lionCaptured
+          Piece pieceToHand = !capturedPromoted || drop_loop() ? ~pathVictim
                              : unpromotedCaptured ? ~unpromotedCaptured
-                                                  : make_piece(~color_of(lionCaptured), main_promotion_pawn_type(color_of(lionCaptured)));
+                                                  : make_piece(~color_of(pathVictim), main_promotion_pawn_type(color_of(pathVictim)));
           add_to_hand(pieceToHand);
           k ^=  Zobrist::inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)] - 1]
               ^ Zobrist::inHand[pieceToHand][pieceCountInHand[color_of(pieceToHand)][type_of(pieceToHand)]];
@@ -2229,14 +2329,16 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           dp.dirty_num++;
 
       // Update material hash key and prefetch access to materialTable
-      k ^= Zobrist::psq[lionCaptured][lionCapsq];
-      st->materialKey ^= Zobrist::psq[lionCaptured][pieceCount[lionCaptured]];
+      k ^= Zobrist::psq[pathVictim][pathSquare];
+      st->materialKey ^= Zobrist::psq[pathVictim][pieceCount[pathVictim]];
 #ifndef NO_THREADS
       prefetch(thisThread->materialTable[material_key(var->endgameEval)]);
 #endif
       // Reset rule 50 counter
       st->rule50 = 0;
-  }
+  };
+  remove_path_capture(lionCaptured, lionCapsq);
+  remove_path_capture(secondLionCaptured, secondLionCapsq);
 
   // Update hash key
   if (type_of(m) == DROP)
@@ -2267,11 +2369,14 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   while (st->epSquares)
       k ^= Zobrist::enpassant[file_of(pop_lsb(st->epSquares))];
 
+  // Capturing a rook on an intermediate landing also removes its rights.
+  int lostRights = type_of(m) == DROP ? 0 : castlingRightsMask[from] | castlingRightsMask[to];
+  for (Bitboard b = allPathCaptures; b;) lostRights |= castlingRightsMask[pop_lsb(b)];
   // Update castling rights if needed
-  if (type_of(m) != DROP && !is_pass(m) && st->castlingRights && (castlingRightsMask[from] | castlingRightsMask[to]))
+  if (type_of(m) != DROP && !is_pass(m) && st->castlingRights && lostRights)
   {
       k ^= Zobrist::castling[st->castlingRights];
-      st->castlingRights &= ~(castlingRightsMask[from] | castlingRightsMask[to]);
+      st->castlingRights &= ~lostRights;
 
       // Remove castling rights from opponent on the same side if oppositeCastling
       if ((var->oppositeCastling) && (type_of(m) == CASTLING))
@@ -2383,16 +2488,16 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   // If the moving piece is a pawn do some special extra work
   if (type_of(pc) == PAWN)
   {
-      if (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION)
+      if (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m))
       {
-          Piece promotion = make_piece(us, type_of(m) == PROMOTION ? promotion_type(m) : promoted_piece_type(PAWN));
+          Piece promotion = make_piece(us, is_path_promotion(m) ? path_promotion_type(m) : type_of(m) == PROMOTION ? promotion_type(m) : promoted_piece_type(PAWN));
 
           assert((promotion_zone(us, PAWN) & (square_bb(from) | to)) || sittuyin_promotion());
           assert(type_of(promotion) >= KNIGHT && type_of(promotion) < KING);
 
           st->promotionPawn = piece_on(to);
           remove_piece(to);
-          put_piece(promotion, to, true, type_of(m) == PIECE_PROMOTION ? pc : NO_PIECE);
+          put_piece(promotion, to, true, (type_of(m) == PIECE_PROMOTION || (is_path_promotion(m) && !is_path_pawn_promotion(m))) ? pc : NO_PIECE);
 
           if (Eval::useNNUE)
           {
@@ -2441,13 +2546,13 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       // Update pawn hash key
       st->pawnKey ^= (type_of(m) != DROP ? Zobrist::psq[pc][from] : 0) ^ Zobrist::psq[pc][to];
   }
-  else if (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION)
+  else if (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m))
   {
-      Piece promotion = make_piece(us, type_of(m) == PROMOTION ? promotion_type(m) : promoted_piece_type(type_of(pc)));
+      Piece promotion = make_piece(us, is_path_promotion(m) ? path_promotion_type(m) : type_of(m) == PROMOTION ? promotion_type(m) : promoted_piece_type(type_of(pc)));
 
       st->promotionPawn = piece_on(to);
       remove_piece(to);
-      put_piece(promotion, to, true, type_of(m) == PIECE_PROMOTION ? pc : NO_PIECE);
+      put_piece(promotion, to, true, (type_of(m) == PIECE_PROMOTION || (is_path_promotion(m) && !is_path_pawn_promotion(m))) ? pc : NO_PIECE);
 
       if (Eval::useNNUE)
       {
@@ -2469,7 +2574,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       // Update material
       st->nonPawnMaterial[us] += PieceValue[MG][promotion] - PieceValue[MG][pc];
   }
-  else if (type_of(m) == PIECE_DEMOTION)
+  else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m))
   {
       Piece demotion = unpromoted_piece_on(to);
 
@@ -2526,6 +2631,9 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           && !((var->tradingRuleAllowCheckers & type_of(lionCaptured))
                && (previousCheckers & lionCapsq)))
           st->tradingCounterstrikeSquares |= lionCapsq;
+      if (secondLionCaptured && (var->tradingCounterstrikeTargets & type_of(secondLionCaptured))
+          && !((var->tradingRuleAllowCheckers & type_of(secondLionCaptured)) && (previousCheckers & secondLionCapsq)))
+          st->tradingCounterstrikeSquares |= secondLionCapsq;
       if (st->tradingCounterstrikeSquares)
       {
           st->tradingCounterstrike = true;
@@ -2740,7 +2848,7 @@ void Position::undo_move(Move m) {
   Square to = to_sq(m);
   Piece pc = piece_on(to);
 
-  assert(type_of(m) == DROP || empty(from) || type_of(m) == CASTLING || is_gating(m) || type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE
+  assert(type_of(m) == DROP || empty(from) || type_of(m) == CASTLING || is_gating(m) || is_multi_move(m)
          || (type_of(m) == PROMOTION && sittuyin_promotion())
          || (is_pass(m) && (pass(us) || var->wallOrMove)));
   assert(type_of(st->capturedPiece) != KING);
@@ -2784,25 +2892,26 @@ void Position::undo_move(Move m) {
       st->gatesBB[us] |= gating_square(m);
   }
 
-  if (type_of(m) == PROMOTION)
+  if (type_of(m) == PROMOTION || is_path_pawn_promotion(m))
   {
-      assert((promotion_zone(us, PAWN) & (square_bb(from) | to)) || sittuyin_promotion());
-      assert(type_of(pc) == promotion_type(m));
+      assert((promotion_zone(us, is_path_pawn_promotion(m) ? type_of(st->promotionPawn) : PAWN)
+              & (square_bb(from) | to)) || sittuyin_promotion());
+      assert(type_of(pc) == (is_path_promotion(m) ? path_promotion_type(m) : promotion_type(m)));
       assert(type_of(pc) >= KNIGHT && type_of(pc) < KING);
-      assert(type_of(st->promotionPawn) == main_promotion_pawn_type(us) || !captures_to_hand());
+      assert(is_path_pawn_promotion(m) || type_of(st->promotionPawn) == main_promotion_pawn_type(us) || !captures_to_hand());
 
       remove_piece(to);
       pc = st->promotionPawn;
       put_piece(pc, to);
   }
-  else if (type_of(m) == PIECE_PROMOTION)
+  else if (type_of(m) == PIECE_PROMOTION || is_path_promotion(m))
   {
       Piece unpromotedPiece = unpromoted_piece_on(to);
       remove_piece(to);
       pc = unpromotedPiece;
       put_piece(pc, to);
   }
-  else if (type_of(m) == PIECE_DEMOTION)
+  else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m))
   {
       remove_piece(to);
       Piece unpromotedPc = pc;
@@ -2848,6 +2957,14 @@ void Position::undo_move(Move m) {
               remove_from_hand(!drop_loop() && st->lionCapturedPromoted ? (st->lionUnpromotedCapturedPiece ? ~st->lionUnpromotedCapturedPiece
                                                                                                             : make_piece(~color_of(st->lionCapturedPiece), main_promotion_pawn_type(us)))
                                                                          : ~st->lionCapturedPiece);
+      }
+      if (st->lionSecondCapturedPiece)
+      {
+          put_piece(st->lionSecondCapturedPiece, st->lionSecondCaptureSquare, st->lionSecondCapturedPromoted, st->lionSecondUnpromotedCapturedPiece);
+          if (captures_to_hand())
+              remove_from_hand(!drop_loop() && st->lionSecondCapturedPromoted ? (st->lionSecondUnpromotedCapturedPiece ? ~st->lionSecondUnpromotedCapturedPiece
+                                                                                                            : make_piece(~color_of(st->lionSecondCapturedPiece), main_promotion_pawn_type(us)))
+                                                                         : ~st->lionSecondCapturedPiece);
       }
   }
 

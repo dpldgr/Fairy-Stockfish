@@ -59,6 +59,20 @@ int main() {
         assert(pop_msb(descending) == PIECE_TYPE_NB - 1 - id);
     }
     assert(!all && !descending);
+    for (int path = 0; path < 32; ++path)
+    {
+        Move m = make_lion_dog(SQ_MIN, path, SQ_MAX);
+        assert(type_of(m) == LION_DOG && lion_dog_path_index(m) == path);
+        for (bool mapped : {false, true})
+        {
+            Move p = with_path_promotion(m, KING, mapped);
+            assert(path_promotion_type(p) == KING && is_path_promotion(p));
+            assert(is_path_pawn_promotion(p) == !mapped);
+            assert(lion_dog_path_index(p) == path && to_sq(p) == SQ_MAX && from_sq(p) == SQ_MIN);
+        }
+        Move demote = with_path_promotion(m, NO_PIECE_TYPE);
+        assert(is_path_demotion(demote) && !is_path_promotion(demote));
+    }
     assert(hook_sq(make_hook(SQ_MIN, SQ_MAX, SQ_MIN)) == SQ_MAX);
     assert(double_move_sq(make_double_move(SQ_MIN, SQ_MAX, SQ_MIN)) == SQ_MAX);
     assert(lion_path_index(make_lion(SQ_MIN, 63, SQ_MAX)) == 63);

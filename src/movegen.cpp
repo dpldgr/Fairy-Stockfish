@@ -465,6 +465,73 @@ namespace {
   }
 
 
+  ExtMove* append_lion_path(const Position& pos, ExtMove* list, Move m, PieceType pt) {
+    Color us = pos.side_to_move();
+    if (!pos.variant()->lionDogMoveSpecified[pt])
+    {
+        *list++ = m;
+        return list;
+    }
+    Square from = from_sq(m), to = to_sq(m);
+    PieceType rulePt = pos.is_promoted(from) && pos.unpromoted_piece_on(from)
+                     ? type_of(pos.unpromoted_piece_on(from)) : pt;
+    PieceType promotion = pos.is_promoted(from) ? NO_PIECE_TYPE : pos.promoted_piece_type(pt);
+    bool demote = pos.piece_demotion() && pos.is_promoted(from);
+    OptBool captures = pos.capture(m) ? VALUE_TRUE : VALUE_FALSE;
+    Bitboard target = square_bb(to);
+    if ((promotion || demote) && (pos.promotion_targets(us, rulePt, from, target, true, false, captures)
+                                || pos.promotion_targets(us, rulePt, from, target, true, true, captures)))
+    {
+        if (promotion && (!pos.promotion_limit(promotion) || pos.count(us, promotion) < pos.promotion_limit(promotion)))
+            *list++ = with_path_promotion(m, promotion);
+        if (demote) *list++ = with_path_promotion(m, NO_PIECE_TYPE);
+    }
+    bool pawnStyle = bool(pos.promotion_pawn_types(us) & pt);
+    if (pawnStyle && (pos.promotion_targets(us, pt, from, target, false, false, captures)
+                     || pos.promotion_targets(us, pt, from, target, false, true, captures)))
+        for (PieceSet ps = pos.promotion_piece_types(us); ps;)
+        {
+            PieceType p = pop_lsb(ps);
+            if (!pos.promotion_limit(p) || pos.count(us, p) < pos.promotion_limit(p))
+                *list++ = with_path_promotion(m, p, false);
+        }
+    bool mandatory = (promotion || demote) && bool(pos.promotion_targets(us, rulePt, from, target, true, true, captures));
+    mandatory |= pawnStyle && bool(pos.promotion_targets(us, pt, from, target, false, true, captures));
+    if (!mandatory) *list++ = m;
+    return list;
+  }
+
+  template<Color Us, GenType Type>
+  ExtMove* generate_lion_paths(const Position& pos, ExtMove* list, Square from, PieceType pt, Bitboard target) {
+    if (Type == QUIET_CHECKS) return list;
+    auto append = [&](Move m) {
+        Square squares[3];
+        int n = pos.move_path(m, squares);
+        Bitboard visited = 0;
+        for (int i = 0; i < n; ++i) visited |= squares[i];
+        if (visited & (pos.pieces(Us) - from)) return;
+        if (visited & ~pos.board_bb(Us, pt)) return;
+        if (pos.prohibited_capture(m)) return;
+        bool capture = pos.capture(m);
+        if (Type == NON_EVASIONS || (Type == CAPTURES && capture) || (Type == QUIETS && !capture)
+            || (Type == EVASIONS && ((target & to_sq(m)) || (visited & pos.checkers()))))
+            list = append_lion_path(pos, list, m, pt);
+    };
+    uint64_t lion = pos.lion_move_mask(Us, pt, from);
+    while (lion)
+    {
+        int path = pop_lsb64(lion);
+        append(make_lion(from, path, LionTo[from][path]));
+    }
+    uint64_t dog = pos.lion_dog_mask(Us, pt, from);
+    while (dog)
+    {
+        int path = pop_lsb64(dog);
+        append(make_lion_dog(from, path, LionDogSquares[from][path][lion_dog_legs(path)-1]));
+    }
+    return list;
+  }
+
   template<Color Us, GenType Type>
   ExtMove* generate_moves(const Position& pos, ExtMove* moveList, PieceType Pt, Bitboard target) {
 
@@ -541,34 +608,8 @@ namespace {
         moveList = generate_double_moves<Us, Type>(pos, moveList, from, Pt, target);
         moveList = generate_hook_moves<Us, Type>(pos, moveList, from, Pt, target);
 
-        uint64_t lionMask = pos.lion_move_mask(Us, Pt, from);
-        if (lionMask && Type != QUIET_CHECKS)
-        {
-            while (lionMask)
-            {
-                int path = pop_lsb64(lionMask);
-                Square via = LionVia[from][path];
-                Square to = LionTo[from][path];
-
-                Bitboard pathSquares = square_bb(via) | to;
-                if (pathSquares & (pos.pieces(Us) - from))
-                    continue;
-
-                PieceSet prohibited = pos.prohibited_capture_types(Us, Pt);
-                if (   prohibited
-                    && (  (!pos.empty(via) && color_of(pos.piece_on(via)) == ~Us && (prohibited & type_of(pos.piece_on(via))))
-                       || (to != from && !pos.empty(to) && color_of(pos.piece_on(to)) == ~Us && (prohibited & type_of(pos.piece_on(to))))))
-                    continue;
-
-                bool isCapture = bool(pathSquares & pos.pieces(~Us));
-                bool include = Type == NON_EVASIONS
-                            || (Type == CAPTURES && isCapture)
-                            || (Type == QUIETS && !isCapture)
-                            || (Type == EVASIONS && ((target & to) || (pathSquares & pos.checkers())));
-                if (include)
-                    *moveList++ = make_lion(from, path, to);
-            }
-        }
+        if (!pos.variant()->lionDogMoveSpecified[Pt])
+            moveList = generate_lion_paths<Us, Type>(pos, moveList, from, Pt, target);
     }
 
     return moveList;
@@ -672,6 +713,16 @@ namespace {
                 if (!pos.castling_impeded(cr) && pos.can_castle(cr))
                     moveList = make_move_and_gating<CASTLING>(pos, moveList, Us,ksq, pos.castling_rook_square(cr));
     }
+
+    if (pos.variant()->hasLionDog)
+        for (PieceSet ps = pos.piece_types(); ps;)
+        {
+            PieceType pt = pop_lsb(ps);
+            if (!pos.variant()->lionDogMoveSpecified[pt]) continue;
+            for (Bitboard b = pos.pieces(Us, pt); b;)
+                moveList = generate_lion_paths<Us, Type>(pos, moveList, pop_lsb(b), pt,
+                                                         Type == EVASIONS ? pos.board_bb() : target);
+        }
 
     return moveList;
   }

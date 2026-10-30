@@ -146,6 +146,13 @@ extern Bitboard SquareBB[SQUARE_NB];
 extern uint64_t LionValidPathMask[SQUARE_NB];
 extern Square LionVia[SQUARE_NB][64];
 extern Square LionTo[SQUARE_NB][64];
+extern Square LionDogSquares[SQUARE_NB][32][3];
+extern uint32_t LionDogValidPathMask[SQUARE_NB];
+constexpr int lion_dog_legs(int path) { return path % 4 < 2 ? 3 : 2; }
+// Both Lion masks use N, NE, E, SE, S, SW, W, NW, relative to White.
+constexpr int lion_dog_shared_path(int direction, int kind) {
+  return direction * 8 + (kind == 0 ? direction : (direction + 4) % 8);
+}
 extern Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 extern RiderType AttackRiderTypes[PIECE_TYPE_NB];
 extern RiderType MoveRiderTypes[2][PIECE_TYPE_NB];

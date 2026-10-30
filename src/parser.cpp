@@ -1150,9 +1150,36 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             if (   split_piece_definition(token, symbol, maskString)
                 && (pt = piece_type_by_symbol(v, symbol)) != NO_PIECE_TYPE
                 && parse_lion_move_mask(maskString, mask))
+            {
                 v->lionMoveMask[pt] = mask;
+                v->lionMoveSpecified[pt] = true;
+            }
             else if (DoCheck)
                 std::cerr << "lionMovePieces - Invalid piece/mask: " << token << std::endl;
+        }
+    }
+    const auto dog = config.find("lionDogMovePieces");
+    if (dog != config.end())
+    {
+        std::stringstream ss(dog->second);
+        std::string token;
+        while (ss >> token)
+        {
+            std::string symbol, bits;
+            PieceType pt = NO_PIECE_TYPE;
+            if (split_piece_definition(token, symbol, bits)
+                && (pt = piece_type_by_symbol(v, symbol)) != NO_PIECE_TYPE
+                && bits.size() == 12
+                && std::all_of(bits.begin(), bits.end(), [](unsigned char c) { return std::isxdigit(c); }))
+            {
+                v->lionDogMoveMask[pt] = std::stoull(bits, nullptr, 16);
+                v->lionDogMoveSpecified[pt] = true;
+            }
+            else
+            {
+                v->lionDogConfigurationValid = false;
+                std::cerr << "lionDogMovePieces - Invalid piece/mask: " << token << std::endl;
+            }
         }
     }
     auto parse_prohibited_captures = [&](const std::string& key, Color c) {

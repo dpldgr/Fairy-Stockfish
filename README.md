@@ -131,6 +131,64 @@ python3 tests/piece_slots_matrix.py
 PIECE_SLOTS=128 BOARD_SIZE=19 GATING=yes python3 ../tests/piece_slots.py
 ```
 
+## Lion Dog multi-leg movement
+
+`lionDogMovePieces` follows the Lion-powered interpretation described by
+[Dr Eric Silverman](https://drericsilverman.com/2021/04/22/shogi-variants-translation-notes-i/).
+Ordinary steps and jumps remain exclusively in the regular piece definition:
+
+```ini
+piece = ld:KADGH
+lionDogMovePieces = ld:FFFFFFFFFFFF
+```
+
+The option takes the same whitespace-separated `symbol:hex-mask` entries as
+`lionMovePieces`, with **12 hexadecimal digits (48 bits)** per mask. It neither
+grants nor disables ordinary moves. A zero mask leaves the piece's ordinary
+movement intact. The same notation can identify promoted piece symbols.
+
+Each direction has six consecutive bits, starting at the least significant bit.
+Direction groups are N, NE, E, SE, S, SW, W, NW for White, rotated 180 degrees
+for Black. Relative to the starting square `0`, with squares `1`, `2`, `3`
+along that ray:
+
+| Bit within direction | Route | Implementation |
+|---:|---|---|
+| 0 | `0→1→2` | Existing Lion path |
+| 1 | `0→1→0` | Existing Lion path (igui/pass) |
+| 2 | `0→1→2→3` | Three outward steps |
+| 3 | `0→1→2→1` | Two outward steps, retreat |
+| 4 | `0⇢2→3` | Initial jump, outward step |
+| 5 | `0⇢2→1` | Initial jump, backward step |
+
+`⇢` means a jump. Jumps bypass intervening pieces; each actual landing captures
+an enemy there. The two routes ending on square 1 remain distinct, including
+their capture order. Step-then-jump and routes passing backward beyond square 0
+are excluded. For example, `00000000003F` enables the six North paths for White
+and South paths for Black; `000000000004` selects only three outward North steps.
+
+A Furious Fiend can combine the complete Lion and Lion Dog masks:
+
+```ini
+piece = ff:KNADGH
+lionMovePieces = ff:FFFFFFFFFFFFFFFF
+lionDogMovePieces = ff:FFFFFFFFFFFF
+```
+
+Shared paths are generated once. When both masks are explicitly configured
+(including inherited settings), their bits must agree on the 16 shared ordered
+paths. A disagreement rejects the variant with a diagnostic; Lion-only paths
+are independent. An absent mask is distinct from an explicitly supplied zero.
+
+Coordinate notation retains every landing, for example `d4d5d6d7`,
+`d4d5d6d5`, `d4d6d7`, and `d4d6d5`. Promotion suffixes follow the complete route.
+Capture-based promotion considers captures on every leg and occurs at turn end.
+Gating, walling, blast, petrification and enclosure-rule combinations are currently rejected
+when Lion Dog movement is enabled.
+
+Run `STOCKFISH=src/stockfish python3 tests/lion_dog.py` from the repository root
+for parser, mask, movement, capture, promotion and state-restoration regressions.
+
 ## Bindings
 
 Besides the C++ engine, this project also includes bindings for other programming languages in order to be able to use it as a library for chess variants. They support move, SAN, and FEN generation, as well as checking of game end conditions for all variants supported by Fairy-Stockfish. Since the bindings are using the C++ code, they are very performant compared to libraries directly written in the respective target language.
