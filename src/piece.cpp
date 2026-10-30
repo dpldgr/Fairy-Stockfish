@@ -42,6 +42,7 @@ namespace {
       {'Z', {std::make_pair(3, 2)}},
       {'G', {std::make_pair(3, 3)}},
       {'K', {std::make_pair(1, 0), std::make_pair(1, 1)}},
+      {'U', {}}, // Board-wide leap, represented separately from fixed offsets
   };
   const std::map<char, std::vector<std::pair<int, int>>> riderAtoms = {
       {'R', {std::make_pair(1, 0)}},
@@ -126,6 +127,9 @@ namespace {
                   moveModalities.push_back(MODALITY_CAPTURE);
               }
               // Define moves
+              if (c == 'U')
+                  for (auto modality : moveModalities)
+                      p->universal[initial][modality] = true;
               for (const auto& atom : atoms)
               {
                   std::vector<std::string> directions = {};

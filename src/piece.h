@@ -34,6 +34,7 @@ enum MoveModality {MODALITY_QUIET, MODALITY_CAPTURE, MOVE_MODALITY_NB};
 struct PieceInfo {
   std::string name = "";
   std::string betza = "";
+  bool universal[2][MOVE_MODALITY_NB] = {};
   std::map<Direction, int> steps[2][MOVE_MODALITY_NB] = {};
   std::map<Direction, int> slider[2][MOVE_MODALITY_NB] = {};
   std::map<Direction, int> hopper[2][MOVE_MODALITY_NB] = {};

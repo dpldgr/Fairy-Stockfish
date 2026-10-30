@@ -154,6 +154,10 @@ Value piece_value(Phase phase, PieceType pt)
     const PieceInfo* pi = pieceMap.find(pt)->second;
     int v0 =  (phase == MG ?  60 :  60) * pi->steps[0][MODALITY_CAPTURE].size()
             + (phase == MG ?  30 :  40) * pi->steps[0][MODALITY_QUIET].size()
+            // A queen-like starting estimate, independently for each modality.
+            // Explicit variant piece values can tune universal pieces further.
+            + 8 * 185 * pi->universal[0][MODALITY_CAPTURE]
+            + 8 * (phase == MG ? 55 : 45) * pi->universal[0][MODALITY_QUIET]
             + (phase == MG ? 185 : 185) * slider_fraction(pi->slider[0][MODALITY_CAPTURE]) / 100
             + (phase == MG ?  55 :  45) * slider_fraction(pi->slider[0][MODALITY_QUIET]) / 100
             // Hoppers are more useful with more pieces on the board
@@ -211,9 +215,10 @@ void init(const Variant* v) {
       }
       
       const PieceInfo* pi = pieceMap.find(pt)->second;
+      bool isUniversal = pi->universal[0][MODALITY_QUIET] || pi->universal[0][MODALITY_CAPTURE];
       bool isSlider = pi->slider[0][MODALITY_QUIET].size() || pi->slider[0][MODALITY_CAPTURE].size() || pi->hopper[0][MODALITY_QUIET].size() || pi->hopper[0][MODALITY_CAPTURE].size();
-      bool isPawn = !isSlider && pi->steps[0][MODALITY_QUIET].size() && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return d.first < SOUTH / 2; });
-      bool isSlowLeaper = !isSlider && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return dist(d.first) > 1; });
+      bool isPawn = !isUniversal && !isSlider && pi->steps[0][MODALITY_QUIET].size() && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return d.first < SOUTH / 2; });
+      bool isSlowLeaper = !isUniversal && !isSlider && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return dist(d.first) > 1; });
 
       // Scale slider piece values with board size
       if (isSlider)

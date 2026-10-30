@@ -398,6 +398,8 @@ void Bitboards::init_pieces() {
                       auto& leaper = modality == MODALITY_CAPTURE ? LeaperAttacks[c][pt][s] : LeaperMoves[initial][c][pt][s];
                       pseudo = 0;
                       leaper = 0;
+                      if (pi->universal[initial][modality])
+                          pseudo = leaper = AllSquares & ~square_bb(s);
                       for (auto const& [d, limit] : pi->steps[initial][modality])
                       {
                           pseudo |= safe_destination(s, c == WHITE ? d : -d);
