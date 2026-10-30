@@ -26,6 +26,8 @@ namespace Stockfish {
 
 namespace {
 
+  ExtMove* append_path_promotion(const Position& pos, ExtMove* list, Move m, PieceType pt);
+
   inline int pop_lsb64(uint64_t& b) {
     int idx = __builtin_ctzll(b);
     b &= b - 1;
@@ -103,7 +105,7 @@ namespace {
                             || (Type == QUIETS && !isCapture)
                             || (Type == EVASIONS && ((target & to) || (pathSquares & pos.checkers())));
                 if (include)
-                    *moveList++ = make_double_move(from, intermediate, to);
+                    moveList = append_path_promotion(pos, moveList, make_double_move(from, intermediate, to), pt);
             }
         }
     }
@@ -178,7 +180,7 @@ namespace {
                                 || (Type == QUIETS && !isCapture)
                                 || (Type == EVASIONS && ((target & to) || (pathSquares & pos.checkers())));
                     if (include)
-                        *moveList++ = make_hook(from, hook, to);
+                        moveList = append_path_promotion(pos, moveList, make_hook(from, hook, to), pt);
 
                     if (secondCapture)
                         break;
@@ -469,9 +471,9 @@ namespace {
   }
 
 
-  ExtMove* append_lion_path(const Position& pos, ExtMove* list, Move m, PieceType pt) {
+  ExtMove* append_path_promotion(const Position& pos, ExtMove* list, Move m, PieceType pt) {
     Color us = pos.side_to_move();
-    if (!pos.variant()->lionDogMoveSpecified[pt])
+    if (!pos.promoted_piece_type(pt) && !pos.piece_demotion() && !(pos.promotion_pawn_types(us) & pt))
     {
         *list++ = m;
         return list;
@@ -481,7 +483,10 @@ namespace {
                      ? type_of(pos.unpromoted_piece_on(from)) : pt;
     PieceType promotion = pos.is_promoted(from) ? NO_PIECE_TYPE : pos.promoted_piece_type(pt);
     bool demote = pos.piece_demotion() && pos.is_promoted(from);
-    OptBool captures = pos.capture(m) ? VALUE_TRUE : VALUE_FALSE;
+    Bitboard victims = pos.path_capture_squares(m);
+    uint8_t captures = victims ? 0 : PROMO_CAPTURE_NONE;
+    while (victims)
+        captures |= pos.is_promoted(pop_lsb(victims)) ? PROMO_CAPTURE_PROMOTED : PROMO_CAPTURE_UNPROMOTED;
     Bitboard target = square_bb(to);
     if ((promotion || demote) && (pos.promotion_targets(us, rulePt, from, target, true, false, captures)
                                 || pos.promotion_targets(us, rulePt, from, target, true, true, captures)))
@@ -519,7 +524,7 @@ namespace {
         bool capture = pos.capture(m);
         if (Type == NON_EVASIONS || (Type == CAPTURES && capture) || (Type == QUIETS && !capture)
             || (Type == EVASIONS && ((target & to_sq(m)) || (visited & pos.checkers()))))
-            list = append_lion_path(pos, list, m, pt);
+            list = append_path_promotion(pos, list, m, pt);
     };
     uint64_t lion = pos.lion_move_mask(Us, pt, from);
     while (lion)

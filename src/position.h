@@ -144,7 +144,7 @@ public:
   const std::string& piece_symbol_synonym(Piece pc) const;
   Bitboard promotion_zone(Color c, PieceType pt) const;
   Square promotion_square(Color c, Square s, PieceType pt) const;
-  Bitboard promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory = false, OptBool captureOverride = NO_VALUE) const;
+  Bitboard promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory = false, uint8_t captureKinds = PROMO_CAPTURE_AUTO) const;
   Bitboard promotion_last_squares(Color c, PieceType pt) const;
   PieceType main_promotion_pawn_type(Color c) const;
   PieceSet promotion_piece_types(Color c) const;
@@ -504,34 +504,41 @@ inline Square Position::promotion_square(Color c, Square s, PieceType pt) const 
   return !b ? SQ_NONE : c == WHITE ? lsb(b) : msb(b);
 }
 
-inline Bitboard Position::promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory, OptBool captureOverride) const {
+inline Bitboard Position::promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory, uint8_t captureKinds) const {
     const auto& rule = var->promotionRules[mapped][c][pt];
     Bitboard zone = mandatory ? rule.mandatoryRegion : rule.optionalRegion;
     uint16_t cases = mandatory ? rule.mandatoryCases : rule.optionalCases;
     if (!cases || !targets)
         return 0;
-    Bitboard quiet = 0, captures = 0;
+    Bitboard quiet = 0, unpromoted = 0, promoted = 0;
     if (zone & from)
     {
         if (cases & PROMO_IIQ) quiet |= zone;
-        if (cases & PROMO_IIC) captures |= zone;
+        if (cases & PROMO_IICU) unpromoted |= zone;
+        if (cases & PROMO_IICP) promoted |= zone;
         if (cases & PROMO_IOQ) quiet |= ~zone;
-        if (cases & PROMO_IOC) captures |= ~zone;
+        if (cases & PROMO_IOCU) unpromoted |= ~zone;
+        if (cases & PROMO_IOCP) promoted |= ~zone;
     }
     else
     {
         if (cases & PROMO_OIQ) quiet |= zone;
-        if (cases & PROMO_OIC) captures |= zone;
+        if (cases & PROMO_OICU) unpromoted |= zone;
+        if (cases & PROMO_OICP) promoted |= zone;
     }
     if ((cases & PROMO_LAST) && (targets & zone))
     {
         Bitboard last = promotion_last_squares(c, pt) & zone;
         if (cases & PROMO_LASTQ) quiet |= last;
-        if (cases & PROMO_LASTC) captures |= last;
+        if (cases & PROMO_LASTCU) unpromoted |= last;
+        if (cases & PROMO_LASTCP) promoted |= last;
     }
-    if (captureOverride != NO_VALUE)
-        return targets & (captureOverride == VALUE_TRUE ? captures : quiet);
-    return targets & ((quiet & ~pieces()) | (captures & pieces(~c)));
+    if (captureKinds != PROMO_CAPTURE_AUTO)
+        return targets & ((captureKinds & PROMO_CAPTURE_NONE ? quiet : Bitboard(0))
+                        | (captureKinds & PROMO_CAPTURE_UNPROMOTED ? unpromoted : Bitboard(0))
+                        | (captureKinds & PROMO_CAPTURE_PROMOTED ? promoted : Bitboard(0)));
+    return targets & ((quiet & ~pieces()) | (unpromoted & pieces(~c) & ~promotedPieces)
+                                         | (promoted & pieces(~c) & promotedPieces));
 }
 
 inline PieceType Position::main_promotion_pawn_type(Color c) const {
@@ -1596,7 +1603,7 @@ inline int Position::move_path(Move m, Square (&squares)[3]) const {
       return count;
   }
   squares[0] = type_of(m) == LION ? LionVia[from_sq(m)][lion_path_index(m)]
-             : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
+             : is_hook(m) ? hook_sq(m) : double_move_sq(m);
   squares[1] = to_sq(m);
   return 2;
 }

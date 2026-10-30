@@ -2751,6 +2751,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
 }
 
 void Variant::resolve_promotion_rules() {
+    promotionVictimState = false;
     for (Color c : {WHITE, BLACK})
     {
         lastPromotionTypes[c] = NO_PIECE_SET;
@@ -2804,6 +2805,12 @@ void Variant::resolve_promotion_rules() {
                     }
                 }
                 promotionRules[route][c][pt] = rule;
+                for (uint16_t cases : {rule.optionalCases, rule.mandatoryCases})
+                    for (auto pair : {std::make_pair(PROMO_OICU, PROMO_OICP),
+                                      std::make_pair(PROMO_IICU, PROMO_IICP),
+                                      std::make_pair(PROMO_IOCU, PROMO_IOCP),
+                                      std::make_pair(PROMO_LASTCU, PROMO_LASTCP)})
+                        promotionVictimState |= bool(cases & pair.first) != bool(cases & pair.second);
                 bool eligible = route == 0 ? (pt == PAWN || (promotionPawnTypes[c] & pt))
                                            : promotedPieceType[pt] != NO_PIECE_TYPE;
                 if (eligible)

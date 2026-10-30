@@ -685,8 +685,8 @@ string UCI::move(const Position& pos, Move m) {
 
   string move = type_of(m) == DROP ? UCI::dropped_piece(pos, m) + (CurrentProtocol == USI ? '*' : '@') + UCI::square(pos, to)
               : type_of(m) == LION ? UCI::square(pos, from) + UCI::square(pos, LionVia[from][lion_path_index(m)]) + UCI::square(pos, to)
-              : type_of(m) == HOOK ? UCI::square(pos, from) + UCI::square(pos, hook_sq(m)) + UCI::square(pos, to)
-              : type_of(m) == DOUBLE_MOVE ? UCI::square(pos, from) + UCI::square(pos, double_move_sq(m)) + UCI::square(pos, to)
+              : is_hook(m) ? UCI::square(pos, from) + UCI::square(pos, hook_sq(m)) + UCI::square(pos, to)
+              : is_double_move(m) ? UCI::square(pos, from) + UCI::square(pos, double_move_sq(m)) + UCI::square(pos, to)
                                    : UCI::square(pos, from) + UCI::square(pos, to);
 
   if (type_of(m) == LION_DOG)

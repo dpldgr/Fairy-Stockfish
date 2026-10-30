@@ -462,6 +462,10 @@ namespace {
             {"oiq", PROMO_OIQ}, {"oic", PROMO_OIC}, {"iiq", PROMO_IIQ},
             {"iic", PROMO_IIC}, {"ioq", PROMO_IOQ}, {"ioc", PROMO_IOC},
             {"lastq", PROMO_LASTQ}, {"lastc", PROMO_LASTC},
+            {"oicu", PROMO_OICU}, {"oicp", PROMO_OICP},
+            {"iicu", PROMO_IICU}, {"iicp", PROMO_IICP},
+            {"iocu", PROMO_IOCU}, {"iocp", PROMO_IOCP},
+            {"lastcu", PROMO_LASTCU}, {"lastcp", PROMO_LASTCP},
             {"oi", PROMO_OI}, {"ii", PROMO_II}, {"io", PROMO_IO},
             {"all", PROMO_ALL}, {"last", PROMO_LAST}
         };
