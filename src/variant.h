@@ -172,6 +172,15 @@ struct Variant {
   uint16_t tradingRuleRowIndex[PIECE_TYPE_NB] = {}; // Stored index plus one; zero means no rule
   std::vector<TradingRuleRow> tradingRuleRows = {};
   uint64_t lionMoveMask[PIECE_TYPE_NB] = {};
+  bool lionMoveSpecified[PIECE_TYPE_NB] = {};
+  uint64_t lionDogMoveMask[PIECE_TYPE_NB] = {}; // 48 bits: six paths per direction
+  bool lionDogMoveSpecified[PIECE_TYPE_NB] = {};
+  bool hasLionDog = false;
+  bool lionDogConfigurationValid = true;
+  bool lionDogMasksCompatible = true;
+  uint32_t lionDogPathMask[COLOR_NB][PIECE_TYPE_NB] = {};
+  uint64_t combined_lion_mask(PieceType pt) const;
+  void resolve_lion_dog_masks();
   uint64_t lionEffectivePathMask[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB] = {};
   std::vector<HookMoveSpec> hookMoveSpecs[PIECE_TYPE_NB] = {};
   std::vector<DoubleMoveSpec> doubleMoveSpecs[PIECE_TYPE_NB] = {};

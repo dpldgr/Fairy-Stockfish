@@ -74,6 +74,10 @@ struct StateInfo {
   Square     lionCaptureSquare;
   Piece      lionUnpromotedCapturedPiece;
   bool       lionCapturedPromoted;
+  Piece      lionSecondCapturedPiece;
+  Square     lionSecondCaptureSquare;
+  Piece      lionSecondUnpromotedCapturedPiece;
+  bool       lionSecondCapturedPromoted;
   bool       tradingCounterstrike;
   PieceType  tradingCounterstrikeAttacker;
   Bitboard   tradingCounterstrikeSquares;
@@ -140,7 +144,7 @@ public:
   const std::string& piece_symbol_synonym(Piece pc) const;
   Bitboard promotion_zone(Color c, PieceType pt) const;
   Square promotion_square(Color c, Square s, PieceType pt) const;
-  Bitboard promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory = false) const;
+  Bitboard promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory = false, OptBool captureOverride = NO_VALUE) const;
   Bitboard promotion_last_squares(Color c, PieceType pt) const;
   PieceType main_promotion_pawn_type(Color c) const;
   PieceSet promotion_piece_types(Color c) const;
@@ -304,6 +308,10 @@ public:
   Square capture_square(Square to) const;
   uint64_t lion_move_mask(Color c, PieceType pt, Square from) const;
   bool has_lion_move(Color c, PieceType pt) const;
+  uint32_t lion_dog_mask(Color c, PieceType pt, Square from) const;
+  Bitboard multi_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE) const;
+  int move_path(Move m, Square (&squares)[3]) const;
+  Bitboard path_capture_squares(Move m) const;
   const std::vector<HookMoveSpec>& hook_move_specs(PieceType pt) const;
   bool has_hook_move(PieceType pt) const;
   const std::vector<DoubleMoveSpec>& double_move_specs(PieceType pt) const;
@@ -496,7 +504,7 @@ inline Square Position::promotion_square(Color c, Square s, PieceType pt) const 
   return !b ? SQ_NONE : c == WHITE ? lsb(b) : msb(b);
 }
 
-inline Bitboard Position::promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory) const {
+inline Bitboard Position::promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory, OptBool captureOverride) const {
     const auto& rule = var->promotionRules[mapped][c][pt];
     Bitboard zone = mandatory ? rule.mandatoryRegion : rule.optionalRegion;
     uint16_t cases = mandatory ? rule.mandatoryCases : rule.optionalCases;
@@ -521,6 +529,8 @@ inline Bitboard Position::promotion_targets(Color c, PieceType pt, Square from, 
         if (cases & PROMO_LASTQ) quiet |= last;
         if (cases & PROMO_LASTC) captures |= last;
     }
+    if (captureOverride != NO_VALUE)
+        return targets & (captureOverride == VALUE_TRUE ? captures : quiet);
     return targets & ((quiet & ~pieces()) | (captures & pieces(~c)));
 }
 
@@ -1511,17 +1521,12 @@ inline bool Position::is_chess960() const {
 
 inline bool Position::capture_or_promotion(Move m) const {
   assert(is_ok(m));
-  return type_of(m) == PROMOTION || type_of(m) == EN_PASSANT || ((type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE) && capture(m)) || (type_of(m) != CASTLING && !empty(to_sq(m)));
+  return type_of(m) == PROMOTION || is_path_promotion(m) || type_of(m) == EN_PASSANT || (is_multi_move(m) && capture(m)) || (type_of(m) != CASTLING && !empty(to_sq(m)));
 }
 
 inline bool Position::capture(Move m) const {
   assert(is_ok(m));
-  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
-  {
-      Square via = type_of(m) == LION ? LionVia[from_sq(m)][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
-      return (!empty(via) && color_of(piece_on(via)) != sideToMove)
-          || (!empty(to_sq(m)) && to_sq(m) != from_sq(m));
-  }
+  if (is_multi_move(m)) return bool(path_capture_squares(m));
   // Castling is encoded as "king captures rook"
   return (!empty(to_sq(m)) && type_of(m) != CASTLING && from_sq(m) != to_sq(m)) || type_of(m) == EN_PASSANT;
 }
@@ -1540,10 +1545,11 @@ inline bool Position::prohibited_capture(Move m) const {
       return !empty(s) && color_of(piece_on(s)) == ~us && (prohibited & type_of(piece_on(s)));
   };
 
-  if (type_of(m) == LION || type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE)
+  if (is_multi_move(m))
   {
-      Square via = type_of(m) == LION ? LionVia[from_sq(m)][lion_path_index(m)] : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
-      return prohibited_piece_on(via) || (to_sq(m) != from_sq(m) && prohibited_piece_on(to_sq(m)));
+      for (Bitboard victims = path_capture_squares(m); victims;)
+          if (prohibited & type_of(piece_on(pop_lsb(victims)))) return true;
+      return false;
   }
 
   Square capsq = type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m);
@@ -1575,7 +1581,35 @@ inline uint64_t Position::lion_move_mask(Color c, PieceType pt, Square from) con
 inline bool Position::has_lion_move(Color c, PieceType pt) const {
   assert(var != nullptr);
   (void)c;
-  return var->lionMoveMask[pt] != 0;
+  return var->combined_lion_mask(pt) != 0;
+}
+
+inline uint32_t Position::lion_dog_mask(Color c, PieceType pt, Square from) const {
+  return var->lionDogPathMask[c][pt] & LionDogValidPathMask[from];
+}
+
+inline int Position::move_path(Move m, Square (&squares)[3]) const {
+  if (type_of(m) == LION_DOG)
+  {
+      int path = lion_dog_path_index(m), count = lion_dog_legs(path);
+      for (int i = 0; i < count; ++i) squares[i] = LionDogSquares[from_sq(m)][path][i];
+      return count;
+  }
+  squares[0] = type_of(m) == LION ? LionVia[from_sq(m)][lion_path_index(m)]
+             : type_of(m) == HOOK ? hook_sq(m) : double_move_sq(m);
+  squares[1] = to_sq(m);
+  return 2;
+}
+
+inline Bitboard Position::path_capture_squares(Move m) const {
+  Square squares[3];
+  int n = move_path(m, squares);
+  Bitboard result = 0;
+  for (int i = 0; i < n; ++i)
+      if (squares[i] != from_sq(m) && !empty(squares[i])
+          && color_of(piece_on(squares[i])) != sideToMove)
+          result |= squares[i];
+  return result;
 }
 
 inline const std::vector<HookMoveSpec>& Position::hook_move_specs(PieceType pt) const {

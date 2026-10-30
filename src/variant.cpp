@@ -2703,6 +2703,15 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
             if ((area & LionVia[from][path]) && (area & LionTo[from][path]))
                 targets |= LionTo[from][path];
         }
+        uint64_t dog = lionDogPathMask[c][pt] & LionDogValidPathMask[from];
+        while (dog)
+        {
+            int p = __builtin_ctzll(dog); dog &= dog - 1;
+            Bitboard visited = 0;
+            int n = lion_dog_legs(p);
+            for (int i = 0; i < n; ++i) visited |= LionDogSquares[from][p][i];
+            if (!(visited & ~area)) targets |= LionDogSquares[from][p][n-1];
+        }
         for (const HookMoveSpec& spec : hookMoveSpecs[pt])
         {
             uint64_t pairs = spec.directionPairMask;
@@ -2884,7 +2893,46 @@ void Variant::resolve_drop_regions() {
     }
 }
 
+uint64_t Variant::combined_lion_mask(PieceType pt) const {
+    uint64_t mask = lionMoveMask[pt];
+    for (int d = 0; d < 8; ++d)
+        for (int kind = 0; kind < 2; ++kind)
+            if (lionDogMoveMask[pt] & (1ULL << (d * 6 + kind)))
+                mask |= 1ULL << lion_dog_shared_path(d, kind);
+    return mask;
+}
+
+void Variant::resolve_lion_dog_masks() {
+    hasLionDog = false;
+    lionDogMasksCompatible = true;
+    for (int pt = 0; pt < PIECE_TYPE_NB; ++pt)
+    {
+        lionDogPathMask[WHITE][pt] = lionDogPathMask[BLACK][pt] = 0;
+        if (!lionDogMoveSpecified[pt]) continue;
+        hasLionDog |= lionDogMoveMask[pt] != 0 || lionMoveMask[pt] != 0;
+        for (int d = 0; d < 8; ++d)
+        {
+            for (int kind = 0; kind < 2; ++kind)
+                if ((lionMoveSpecified[pt] || lionMoveMask[pt])
+                    && bool(lionMoveMask[pt] & (1ULL << lion_dog_shared_path(d, kind)))
+                    != bool(lionDogMoveMask[pt] & (1ULL << (d * 6 + kind))))
+                {
+                    lionDogMasksCompatible = false;
+                    std::cerr << "lionDogMovePieces - Conflicting shared path for " << piece_name(PieceType(pt))
+                              << ", direction " << d << ", path " << kind << std::endl;
+                }
+            for (int kind = 0; kind < 4; ++kind)
+                if (lionDogMoveMask[pt] & (1ULL << (d * 6 + 2 + kind)))
+                {
+                    lionDogPathMask[WHITE][pt] |= uint32_t(1) << (d * 4 + kind);
+                    lionDogPathMask[BLACK][pt] |= uint32_t(1) << (((d + 4) % 8) * 4 + kind);
+                }
+        }
+    }
+}
+
 Variant* Variant::conclude() {
+    resolve_lion_dog_masks();
     resolve_promotion_rules();
     resolve_drop_regions();
     // Enforce consistency to allow runtime optimizations
@@ -2901,8 +2949,8 @@ Variant* Variant::conclude() {
     for (PieceType pt = NO_PIECE_TYPE; pt < PIECE_TYPE_NB; ++pt)
     {
         uint64_t lionMaskByColor[COLOR_NB] = {
-          lionMoveMask[pt],
-          flip_lion_path_mask(lionMoveMask[pt])
+          combined_lion_mask(pt),
+          flip_lion_path_mask(combined_lion_mask(pt))
         };
 
         for (Color c : { WHITE, BLACK })
@@ -2925,12 +2973,12 @@ Variant* Variant::conclude() {
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines;
+                  && !diagonalLines && !hasLionDog;
     fastAttacks2 =  !(pieceTypes & ~(SHOGI_PIECES | COMMON_STEP_PIECES))
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines;
+                  && !diagonalLines && !hasLionDog;
 
     // Initialize calculated NNUE properties
     nnueKing =  pieceTypes & KING ? KING
@@ -3031,6 +3079,7 @@ Variant* Variant::conclude() {
                     && !twoBoards
                     && !restrictedMobility
                     && kingType == KING
+                    && !hasLionDog
                    )
                  ? endgameEval : NO_EG_EVAL;
 
@@ -3172,7 +3221,18 @@ void VariantMap::add(std::string s, Variant* v, bool configured) {
   }
 
   if (v->maxFile <= FILE_MAX && v->maxRank <= RANK_MAX)
-      insert(std::pair<std::string, const Variant*>(s, v->conclude()));
+  {
+      v->conclude();
+      if (!v->lionDogConfigurationValid || !v->lionDogMasksCompatible
+          || (v->hasLionDog && (v->gating || v->wallingRule || v->blastOnCapture || v->petrifyOnCaptureTypes || v->flipEnclosedPieces)))
+      {
+          if (v->lionDogConfigurationValid && v->lionDogMasksCompatible)
+              std::cerr << "lionDogMovePieces - Unsupported combination with gating, walling, blast, petrification or enclosure rules: " << s << std::endl;
+          delete v;
+      }
+      else
+          insert(std::pair<std::string, const Variant*>(s, v));
+  }
   else
       delete v;
 }
