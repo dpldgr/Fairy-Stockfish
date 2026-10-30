@@ -131,6 +131,32 @@ python3 tests/piece_slots_matrix.py
 PIECE_SLOTS=128 BOARD_SIZE=19 GATING=yes python3 ../tests/piece_slots.py
 ```
 
+## Universal leaper
+
+Custom piece definitions support `U` to leap directly to any other square on the
+board, ignoring intervening pieces. `mU` allows only quiet universal moves and
+`cU` only universal captures. These atoms can be combined with other movement,
+e.g. `mUcK` gives universal quiet moves and king-step captures.
+
+Friendly pieces, walls and mobility regions restrict destinations as usual.
+Prohibited captures and trading restrictions apply to universal captures through
+the ordinary move legality checks. For a Maka Dai Dai Shogi Emperor, with `k`
+and `pr` defined as the King and Prince symbols:
+
+```ini
+piece = em:U
+tradingRule = em:[any!,{k,pr,em}]
+```
+
+This blocks captures of a protected King, Prince or opposing Emperor, including
+adjacent captures. Protection uses geometric attacks in the resulting position.
+The variant's royal/extinction settings remain separately configurable. The
+default material estimate is approximate; explicit piece values can tune it.
+
+Run `STOCKFISH=src/stockfish python3 tests/universal_leaper.py` to test movement
+and capture restrictions. Set `BOARD_SIZE=17` to exercise a full 17x17 board in a
+large-board build.
+
 ## Hook movement capture modes
 
 Hook moves use `hookMovePieces = <piece>:<firstLeg>-<secondLeg>[:1|:2|:1!]`.
