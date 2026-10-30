@@ -266,6 +266,7 @@ struct Variant {
   bool extinctionPseudoRoyal = false;
   bool dupleCheck = false;
   PieceSet extinctionPieceTypes = NO_PIECE_SET;
+  bool extinctionPieceTypesAll = false;
   int extinctionPieceCount = 0;
   int extinctionOpponentPieceCount = 0;
   PieceType flagPiece[COLOR_NB] = {ALL_PIECES, ALL_PIECES};

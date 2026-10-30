@@ -732,7 +732,15 @@ void Position::set_check_info(StateInfo* si) const {
   {
       si->pseudoRoyalCandidates = 0;
       si->pseudoRoyals = 0;
-      for (PieceSet ps = extinction_piece_types(); ps;)
+      if (extinction_piece_types_all())
+      {
+          si->pseudoRoyalCandidates = extinction_group_pieces(WHITE) | extinction_group_pieces(BLACK);
+          if (extinction_group_count(WHITE) <= var->extinctionPieceCount + 1)
+              si->pseudoRoyals |= extinction_group_pieces(WHITE);
+          if (extinction_group_count(BLACK) <= var->extinctionPieceCount + 1)
+              si->pseudoRoyals |= extinction_group_pieces(BLACK);
+      }
+      else for (PieceSet ps = extinction_piece_types(); ps;)
       {
           PieceType pt = pop_lsb(ps);
           si->pseudoRoyalCandidates |= pieces(pt);
@@ -1509,13 +1517,48 @@ bool Position::legal(Move m) const {
       if (capture(m) && (var->petrifyOnCaptureTypes & type_of(moved_piece(m))) && (st->pseudoRoyals & from))
           return false;
       Bitboard pseudoRoyals = st->pseudoRoyals & pieces(sideToMove);
-      // Add dropped pseudo-royal
-      if (type_of(m) == DROP && (extinction_piece_types() & type_of(moved_piece(m))))
-          pseudoRoyals |= square_bb(to);
+      Bitboard extinctionGroupPieces = 0;
+      if (extinction_piece_types_all())
+      {
+          Bitboard groupPieces = extinction_group_pieces(sideToMove);
+          int groupCount = extinction_group_count(sideToMove);
+          PieceType fromType = type_of(moved_piece(m));
+          PieceType resultType = fromType;
+          if (type_of(m) == PROMOTION)
+              resultType = promotion_type(m);
+          else if (type_of(m) == PIECE_PROMOTION)
+              resultType = promoted_piece_type(fromType);
+          else if (is_path_promotion(m))
+              resultType = path_promotion_type(m);
+          else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m))
+              resultType = type_of(unpromoted_piece_on(from));
+          bool fromGroup = is_ok(from) && (extinction_piece_types() & fromType);
+          bool toGroup = bool(extinction_piece_types() & resultType);
+
+          if (type_of(m) == DROP)
+              groupPieces |= square_bb(to);
+          else
+          {
+              if (fromGroup)
+                  groupPieces &= ~square_bb(from);
+              if (toGroup)
+                  groupPieces |= kto;
+              if (resultType != fromType)
+                  groupCount += int(toGroup) - int(fromGroup);
+          }
+          extinctionGroupPieces = groupPieces;
+          pseudoRoyals = groupCount <= extinction_piece_count() + 1 ? groupPieces : Bitboard(0);
+      }
+      else
+      {
+          // Add dropped pseudo-royal
+          if (type_of(m) == DROP && (extinction_piece_types() & type_of(moved_piece(m))))
+              pseudoRoyals |= square_bb(to);
+      }
       Bitboard pseudoRoyalsTheirs = st->pseudoRoyals & pieces(~sideToMove);
-      if (is_ok(from) && (pseudoRoyals & from))
+      if (!extinction_piece_types_all() && is_ok(from) && (pseudoRoyals & from))
           pseudoRoyals ^= square_bb(from) ^ kto;
-      if (type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
+      if (!extinction_piece_types_all() && type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
       {
           if (count(sideToMove, promotion_type(m)) > extinction_piece_count())
               // increase in count leads to loss of pseudo-royalty
@@ -1544,11 +1587,16 @@ bool Position::legal(Move m) const {
       // Look for duple check
       if (var->dupleCheck)
       {
-          Bitboard pseudoRoyalCandidates = st->pseudoRoyalCandidates & pieces(sideToMove);
-          if (is_ok(from) && (pseudoRoyalCandidates & from))
-              pseudoRoyalCandidates ^= square_bb(from) ^ kto;
-          if (type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
-              pseudoRoyalCandidates |= kto;
+          Bitboard pseudoRoyalCandidates = extinction_piece_types_all()
+                                              ? extinctionGroupPieces
+                                              : st->pseudoRoyalCandidates & pieces(sideToMove);
+          if (!extinction_piece_types_all())
+          {
+              if (is_ok(from) && (pseudoRoyalCandidates & from))
+                  pseudoRoyalCandidates ^= square_bb(from) ^ kto;
+              if (type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
+                  pseudoRoyalCandidates |= kto;
+          }
           bool allCheck = bool(pseudoRoyalCandidates);
           while (allCheck && pseudoRoyalCandidates)
           {
@@ -3168,17 +3216,32 @@ Value Position::blast_see(Move m) const {
   // Sum up blast piece values
   bool extinctsUs = false;
   bool extinctsThem = false;
+  int removedExtinctionPiecesUs = 0;
+  int removedExtinctionPiecesThem = 0;
   while (blast)
   {
       Piece bpc = piece_on(pop_lsb(blast));
       if (extinction_piece_types() & type_of(bpc))
       {
-          if (color_of(bpc) == us)
+          if (extinction_piece_types_all())
+          {
+              if (color_of(bpc) == us)
+                  ++removedExtinctionPiecesUs;
+              else
+                  ++removedExtinctionPiecesThem;
+          }
+          else if (color_of(bpc) == us)
               extinctsUs = true;
           else
               extinctsThem = true;
       }
       result += color_of(bpc) == us ? -CapturePieceValue[MG][bpc] : CapturePieceValue[MG][bpc];
+  }
+
+  if (extinction_piece_types_all())
+  {
+      extinctsUs = extinction_group_count(us) - removedExtinctionPiecesUs <= extinction_piece_count();
+      extinctsThem = extinction_group_count(~us) - removedExtinctionPiecesThem <= extinction_piece_count();
   }
 
   // Evaluate extinctions
@@ -3231,7 +3294,9 @@ bool Position::see_ge(Move m, Value threshold) const {
   if (   extinction_value() != VALUE_NONE
       && piece_on(to)
       && (   (   (extinction_piece_types() & type_of(piece_on(to)))
-              && pieceCount[piece_on(to)] == extinction_piece_count() + 1)
+              && (extinction_piece_types_all()
+                    ? extinction_group_count(~sideToMove) == extinction_piece_count() + 1
+                    : pieceCount[piece_on(to)] == extinction_piece_count() + 1))
           || (   (extinction_piece_types() & ALL_PIECES)
               && count<ALL_PIECES>(~sideToMove) == extinction_piece_count() + 1)))
       return extinction_value() < VALUE_ZERO;
@@ -3508,7 +3573,17 @@ bool Position::is_immediate_game_end(Value& result, int ply) const {
   if (extinction_value() != VALUE_NONE && (!var->extinctionPseudoRoyal || blast_on_capture()))
   {
       for (Color c : { ~sideToMove, sideToMove })
-          for (PieceSet ps = extinction_piece_types(); ps;)
+      {
+          if (extinction_piece_types_all())
+          {
+              if (   extinction_group_count(c) <= var->extinctionPieceCount
+                  && extinction_group_count(~c) >= var->extinctionOpponentPieceCount + (extinction_claim() && c == sideToMove))
+              {
+                  result = c == sideToMove ? extinction_value(ply) : -extinction_value(ply);
+                  return true;
+              }
+          }
+          else for (PieceSet ps = extinction_piece_types(); ps;)
           {
               PieceType pt = pop_lsb(ps);
               if (   count_with_hand( c, pt) <= var->extinctionPieceCount
@@ -3518,6 +3593,7 @@ bool Position::is_immediate_game_end(Value& result, int ply) const {
                   return true;
               }
           }
+      }
   }
   // capture the flag
   // A flag win by the side to move is only possible if flagMove or flagPieceSafe are enabled

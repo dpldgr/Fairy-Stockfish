@@ -543,8 +543,16 @@ namespace {
             && parse_piece_symbol_list(v, token.substr(1, token.size() - 2), pieces);
     }
 
-    bool parse_extinction_piece_set(const Variant* v, const std::string& value, PieceSet& pieces) {
+    bool parse_extinction_piece_set(const Variant* v, const std::string& value, PieceSet& pieces, bool& all) {
         std::string token = trim(value);
+        all = false;
+        if (token.rfind("any:", 0) == 0 || token.rfind("all:", 0) == 0)
+        {
+            all = token.rfind("all:", 0) == 0;
+            token = trim(token.substr(4));
+            if (token.size() < 2 || token.front() != '{' || token.back() != '}')
+                return false;
+        }
         bool explicitList = token.size() >= 2 && token.front() == '{' && token.back() == '}';
         if (explicitList)
             token = trim(token.substr(1, token.size() - 2));
@@ -1481,8 +1489,12 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     if (extinctionTypes != config.end())
     {
         PieceSet parsed;
-        if (parse_extinction_piece_set(v, extinctionTypes->second, parsed))
+        bool all;
+        if (parse_extinction_piece_set(v, extinctionTypes->second, parsed, all))
+        {
             v->extinctionPieceTypes = parsed;
+            v->extinctionPieceTypesAll = all && bool(parsed);
+        }
         else if (DoCheck)
             std::cerr << "extinctionPieceTypes - Invalid piece set: " << extinctionTypes->second << std::endl;
     }
