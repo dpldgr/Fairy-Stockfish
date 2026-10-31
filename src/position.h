@@ -221,6 +221,7 @@ public:
   Value checkmate_value(int ply = 0) const;
   Value extinction_value(int ply = 0) const;
   bool extinction_claim() const;
+  bool baring_rule() const;
   PieceSet extinction_piece_types() const;
   bool has_extinction_condition() const;
   bool extinction_condition(Color c) const;
@@ -1117,6 +1118,10 @@ inline bool Position::extinction_claim() const {
 inline PieceSet Position::extinction_piece_types() const {
   assert(var != nullptr);
   return has_extinction_condition() ? var->extinctionConditionPieceTypes : var->extinctionPieceTypes;
+}
+
+inline bool Position::baring_rule() const {
+  return var->baringRule && bool(var->baringRoyalTypes);
 }
 
 inline bool Position::has_extinction_condition() const {

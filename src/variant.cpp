@@ -344,11 +344,7 @@ namespace {
             v->promotionPieceTypes[BLACK] = piece_set(FERS);
             v->doubleStep = false;
             v->castling = false;
-            v->extinctionValue = -VALUE_MATE;
-            v->extinctionClaim = true;
-            v->extinctionPieceTypes = piece_set(ALL_PIECES);
-            v->extinctionPieceCount = 1;
-            v->extinctionOpponentPieceCount = 2;
+            v->baringRule = true;
             v->stalemateValue = -VALUE_MATE;
             v->nMoveRule = 70;
         }
@@ -2044,11 +2040,7 @@ namespace {
             v->promotionPieceTypes[BLACK] = piece_set(FERS);
             v->doubleStep = false;
             v->castling = false;
-            v->extinctionValue = -VALUE_MATE;
-            v->extinctionClaim = true;
-            v->extinctionPieceTypes = piece_set(ALL_PIECES);
-            v->extinctionPieceCount = 1;
-            v->extinctionOpponentPieceCount = 2;
+            v->baringRule = true;
             v->stalemateValue = -VALUE_MATE;
         }
         return v;
@@ -2938,7 +2930,44 @@ void Variant::resolve_lion_dog_masks() {
     }
 }
 
+void Variant::resolve_baring_royal_types() {
+    baringRoyalTypes = baringRuleRoyalTypes;
+    if (!baringRuleRoyalTypesAuto)
+        return;
+
+    // A checkmate king is unambiguous; other extinction targets may be treasure
+    // or material objectives rather than royals. Mixed variants can override.
+    baringRoyalTypes = pieceTypes & KING;
+    if (baringRoyalTypes || (extinctionValue != -VALUE_MATE && extinctionValue != VALUE_MATE))
+        return;
+
+    if (extinctionCondition.type == EXTINCTION_CONDITION_NONE)
+    {
+        if (extinctionPieceCount == 0 && !(extinctionPieceTypes & ALL_PIECES))
+            baringRoyalTypes = extinctionPieceTypes & pieceTypes;
+        return;
+    }
+
+    // Only a conjunction of zero-count leaves describes one surviving group.
+    // Referenced types alone cannot identify royalty in an arbitrary expression.
+    std::function<bool(const ExtinctionCondition&)> collect = [&](const ExtinctionCondition& condition) {
+        if (condition.type == EXTINCTION_CONDITION_PIECE_COUNT)
+        {
+            if (condition.count != 0 || condition.pieceType == ALL_PIECES)
+                return false;
+            baringRoyalTypes |= condition.pieceType;
+            return true;
+        }
+        return condition.type == EXTINCTION_CONDITION_AND
+            && std::all_of(condition.children.begin(), condition.children.end(), collect);
+    };
+    if (!collect(extinctionCondition))
+        baringRoyalTypes = NO_PIECE_SET;
+    baringRoyalTypes &= pieceTypes;
+}
+
 Variant* Variant::conclude() {
+    resolve_baring_royal_types();
     resolve_lion_dog_masks();
     resolve_promotion_rules();
     resolve_drop_regions();
@@ -3090,6 +3119,8 @@ Variant* Variant::conclude() {
                     && !hasLionDog
                    )
                  ? endgameEval : NO_EG_EVAL;
+    if (baringRule)
+        endgameEval = NO_EG_EVAL;
 
     shogiStylePromotions = false;
     for (PieceType current: promotedPieceType)

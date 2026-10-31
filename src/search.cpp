@@ -921,8 +921,9 @@ namespace {
                ? ss->staticEval > (ss-4)->staticEval || (ss-4)->staticEval == VALUE_NONE
                : ss->staticEval > (ss-2)->staticEval;
 
-    // Skip early pruning in case of mandatory capture
-    if (pos.must_capture() && pos.has_capture())
+    // A bare player's reply must be searched, including quiet replies.
+    if (   (pos.baring_rule() && pos.count_with_hand(us, ALL_PIECES) == 1)
+        || (pos.must_capture() && pos.has_capture()))
         goto moves_loop;
 
     // Step 7. Futility pruning: child node (~50 Elo)
@@ -943,6 +944,7 @@ namespace {
         &&  pos.non_pawn_material(us)
         &&  pos.count<ALL_PIECES>(~us) != pos.count<PAWN>(~us)
         && !pos.flip_enclosed_pieces()
+        && !pos.baring_rule() // A null move must not consume the baring reply.
         && (ss->ply >= thisThread->nmpMinPly || us != thisThread->nmpColor))
     {
         assert(eval - beta >= 0);
@@ -1554,6 +1556,10 @@ moves_loop: // When in check, search starts from here
     if (ss->ply >= MAX_PLY)
         return !ss->inCheck ? evaluate(pos) : VALUE_DRAW;
 
+    // Standing pat would skip a bare player's mandatory reply.
+    if (pos.baring_rule() && pos.count_with_hand(pos.side_to_move(), ALL_PIECES) == 1)
+        return search<nodeType>(pos, ss, alpha, beta, 1, false);
+
     // Safeguard against too deep recursions in quiescence search
     if (depth < DEPTH_QS_MAX && !ss->inCheck)
         return evaluate(pos);
@@ -1654,6 +1660,7 @@ moves_loop: // When in check, search starts from here
                && pos.piece_on(to_sq(move))
                && (   (pos.extinction_piece_types() & ALL_PIECES)
                    || (pos.extinction_piece_types() & type_of(pos.piece_on(to_sq(move))))))
+          && !pos.baring_rule()
           &&  futilityBase > -VALUE_KNOWN_WIN
           &&  type_of(move) != PROMOTION)
       {
@@ -2114,6 +2121,10 @@ void Tablebases::rank_root_moves(Position& pos, Search::RootMoves& rootMoves) {
         Cardinality = MaxCardinality;
         ProbeDepth = 0;
     }
+
+    // Existing tablebases do not encode the bare-royal reply or its outcomes.
+    if (pos.baring_rule())
+        Cardinality = 0;
 
     if (Cardinality >= popcount(pos.pieces()) && !pos.can_castle(ANY_CASTLING))
     {
