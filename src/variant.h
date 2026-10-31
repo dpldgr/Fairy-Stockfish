@@ -290,6 +290,11 @@ struct Variant {
   PieceSet extinctionConditionPieceTypes = NO_PIECE_SET;
   int extinctionPieceCount = 0;
   int extinctionOpponentPieceCount = 0;
+  bool baringRule = false;
+  Value baringValue = -VALUE_MATE;
+  bool baringRuleRoyalTypesAuto = true;
+  PieceSet baringRuleRoyalTypes = NO_PIECE_SET;
+  PieceSet baringRoyalTypes = NO_PIECE_SET; // Resolved after inheritance
   PieceType flagPiece[COLOR_NB] = {ALL_PIECES, ALL_PIECES};
   Bitboard flagRegion[COLOR_NB] = {};
   int flagPieceCount = 1;
@@ -434,6 +439,7 @@ struct Variant {
   Variant* conclude();
   void resolve_promotion_rules();
   void resolve_drop_regions();
+  void resolve_baring_royal_types();
   void set_drop_region(Color c, Bitboard region, PieceType pt = NO_PIECE_TYPE) {
       if (pt == NO_PIECE_TYPE)
           dropRegion[c] = region;

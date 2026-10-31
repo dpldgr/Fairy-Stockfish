@@ -1640,6 +1640,35 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     }
     parse_attribute("extinctionPieceCount", v->extinctionPieceCount);
     parse_attribute("extinctionOpponentPieceCount", v->extinctionOpponentPieceCount);
+    parse_attribute("baringRule", v->baringRule);
+    const auto baringValue = config.find("baringValue");
+    if (baringValue != config.end())
+    {
+        Value parsed;
+        if (set(baringValue->second, parsed) && parsed != VALUE_NONE)
+            v->baringValue = parsed;
+        else if (DoCheck)
+            std::cerr << "baringValue - Expected win, loss, or draw: " << baringValue->second << std::endl;
+    }
+    const auto baringTypes = config.find("baringRuleRoyalTypes");
+    if (baringTypes != config.end())
+    {
+        PieceSet parsed;
+        if (trim(baringTypes->second) == "auto")
+            v->baringRuleRoyalTypesAuto = true;
+        else if (   parse_extinction_piece_set(v, baringTypes->second, parsed)
+                 && parsed && !(parsed & ALL_PIECES))
+        {
+            v->baringRuleRoyalTypesAuto = false;
+            v->baringRuleRoyalTypes = parsed;
+        }
+        else if (DoCheck)
+            std::cerr << "baringRuleRoyalTypes - Expected auto or a nonempty piece set: "
+                      << baringTypes->second << std::endl;
+    }
+    v->resolve_baring_royal_types();
+    if (DoCheck && v->baringRule && !v->baringRoyalTypes)
+        std::cerr << "baringRuleRoyalTypes - Cannot determine royal types; specify an explicit piece set." << std::endl;
     parse_attribute("flagPiece", v->flagPiece[WHITE], v->pieceToChar);
     parse_attribute("flagPiece", v->flagPiece[BLACK], v->pieceToChar);
     parse_attribute("flagPieceWhite", v->flagPiece[WHITE], v->pieceToChar);

@@ -3366,6 +3366,11 @@ bool Position::see_ge(Move m, Value threshold) const {
 
   assert(is_ok(m));
 
+  // Material alone cannot value royal capture or counter-baring, especially
+  // when the variant reverses the outcome of remaining bare.
+  if (baring_rule())
+      return true;
+
   // Only deal with normal moves, assume others pass a simple SEE
   if (type_of(m) != NORMAL && type_of(m) != DROP && type_of(m) != PIECE_PROMOTION)
       return VALUE_ZERO >= threshold;
@@ -3662,9 +3667,28 @@ bool Position::is_optional_game_end(Value& result, int ply, int countStarted) co
 
 /// Position::is_immediate_game_end() tests whether the position ends the game
 /// immediately by a variant rule, i.e., there are no more legal moves.
-/// It does not detect stalemates.
+/// Candidate baring outcomes also resolve checkmate/stalemate precedence.
 
 bool Position::is_immediate_game_end(Value& result, int ply) const {
+
+  // Baring is relative to the previous mover (~sideToMove). Royal capture
+  // takes precedence over mutual baring and overlapping extinction rules.
+  bool baring = baring_rule();
+  int royalCountUs = 0, royalCountThem = 0;
+  if (baring)
+  {
+      for (PieceSet ps = var->baringRoyalTypes; ps;)
+      {
+          PieceType pt = pop_lsb(ps);
+          royalCountUs += count_with_hand(sideToMove, pt);
+          royalCountThem += count_with_hand(~sideToMove, pt);
+      }
+      if (!royalCountUs)
+      {
+          result = convert_mate_value(var->baringValue, ply);
+          return true;
+      }
+  }
 
   // Extinction
   // Extinction does not apply for pseudo-royal pieces, because they can not be captured
@@ -3692,6 +3716,27 @@ bool Position::is_immediate_game_end(Value& result, int ply) const {
           }
       }
   }
+  // A bare player gets one reply. After that reply, counter-baring draws and
+  // remaining bare has the configured result. Unrelated extinction objectives
+  // (e.g. treasure) above retain their own result.
+  if (baring && royalCountThem == 1 && count_with_hand(~sideToMove, ALL_PIECES) == 1)
+  {
+      // Probe underlying moves: MoveList<LEGAL> calls this method recursively.
+      // Checkmate and stalemate retain precedence over a baring result.
+      auto findReply = [&](const auto& moves) {
+          for (const auto& m : moves)
+              if (legal(m) && !virtual_drop(m))
+                  return true;
+          return false;
+      };
+      bool hasReply = checkers() ? findReply(MoveList<EVASIONS>(*this))
+                                : findReply(MoveList<NON_EVASIONS>(*this));
+      result = !hasReply ? (checkers() ? checkmate_value(ply) : stalemate_value(ply))
+             : royalCountUs == 1 && count_with_hand(sideToMove, ALL_PIECES) == 1 ? VALUE_DRAW
+             : convert_mate_value(-var->baringValue, ply);
+      return true;
+  }
+
   // capture the flag
   // A flag win by the side to move is only possible if flagMove or flagPieceSafe are enabled
   // and they already reached the flag region the move before.
