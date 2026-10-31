@@ -689,7 +689,7 @@ string UCI::move(const Position& pos, Move m) {
               : is_double_move(m) ? UCI::square(pos, from) + UCI::square(pos, double_move_sq(m)) + UCI::square(pos, to)
                                    : UCI::square(pos, from) + UCI::square(pos, to);
 
-  if (type_of(m) == LION_DOG)
+  if (type_of(m) == LION_DOG || is_triple_move(m))
   {
       Square path[3];
       int n = pos.move_path(m, path);

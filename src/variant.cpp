@@ -2660,6 +2660,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
         Square from = pop_lsb(squares);
         PieceType movePt = pt == KING ? kingType : pt;
         Bitboard targets = potential(movePt, from);
+        if (tenjikuTripleStepPieceTypes & pt) targets |= PseudoAttacks[c][KING][from];
         if (doubleStepRegion[c] & from)
             targets |= walls ? moves_bb<true>(c, movePt, from, walls)
                              : PseudoMoves[1][c][movePt][from];
@@ -2997,6 +2998,8 @@ Variant* Variant::conclude() {
                         lionEffectivePathMask[c][pt][from] |= 1ULL << path;
     }
 
+    hasBurn = bool(burnActivePieceTypes || burnPassivePieceTypes);
+
     // Determine optimizations
     bool restrictedMobility = false;
     for (PieceSet ps = pieceTypes; !restrictedMobility && ps;)
@@ -3009,12 +3012,12 @@ Variant* Variant::conclude() {
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines && !hasLionDog;
+                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn;
     fastAttacks2 =  !(pieceTypes & ~(SHOGI_PIECES | COMMON_STEP_PIECES))
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines && !hasLionDog;
+                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn;
 
     // Initialize calculated NNUE properties
     nnueKing =  pieceTypes & KING ? KING
@@ -3119,7 +3122,7 @@ Variant* Variant::conclude() {
                     && !hasLionDog
                    )
                  ? endgameEval : NO_EG_EVAL;
-    if (baringRule)
+    if (baringRule || hasBurn || tenjikuTripleStepPieceTypes)
         endgameEval = NO_EG_EVAL;
 
     shogiStylePromotions = false;
@@ -3262,6 +3265,19 @@ void VariantMap::add(std::string s, Variant* v, bool configured) {
   if (v->maxFile <= FILE_MAX && v->maxRank <= RANK_MAX)
   {
       v->conclude();
+      if (!WIDE_MOVES && v->tenjikuTripleStepPieceTypes)
+      {
+          std::cerr << "tenjikuTripleStepPieceTypes - Requires a 64-bit move build (e.g. board_files=16 board_ranks=16): " << s << std::endl;
+          delete v;
+          return;
+      }
+      if ((v->hasBurn || v->tenjikuTripleStepPieceTypes)
+          && (v->gating || v->seirawanGating || v->wallingRule || v->blastOnCapture || v->petrifyOnCaptureTypes || v->flipEnclosedPieces))
+      {
+          std::cerr << "Burn/area moves - Unsupported combination with gating, walling, blast, petrification or enclosure rules: " << s << std::endl;
+          delete v;
+          return;
+      }
       if (!v->lionDogConfigurationValid || !v->lionDogMasksCompatible
           || (v->hasLionDog && (v->gating || v->wallingRule || v->blastOnCapture || v->petrifyOnCaptureTypes || v->flipEnclosedPieces)))
       {

@@ -86,6 +86,21 @@ int main() {
         }
         assert(is_path_demotion(with_path_promotion(m, NO_PIECE_TYPE)));
     }
+    if constexpr (WIDE_MOVES)
+    {
+        Move m = make_triple_move(SQ_MIN, SQ_MAX, Square(SQ_MAX - 1), SQ_MIN);
+        assert(is_triple_move(m) && is_multi_move(m));
+        for (bool mapped : {false, true})
+            for (PieceType pt : {KING, PieceType(PIECE_TYPE_NB - 1)})
+            {
+                Move promoted = with_path_promotion(m, pt, mapped);
+                assert(path_promotion_type(promoted) == pt && is_path_pawn_promotion(promoted) == !mapped);
+                assert(triple_move_sq(promoted, 0) == SQ_MAX && triple_move_sq(promoted, 1) == SQ_MAX - 1);
+                assert(from_sq(promoted) == SQ_MIN && to_sq(promoted) == SQ_MIN && is_triple_move(promoted));
+            }
+        assert(is_path_demotion(with_path_promotion(m, NO_PIECE_TYPE)));
+        assert(!is_path_promotion(m) && !is_path_demotion(m));
+    }
     assert(double_move_sq(make_double_move(SQ_MIN, SQ_MAX, SQ_MIN)) == SQ_MAX);
     assert(lion_path_index(make_lion(SQ_MIN, 63, SQ_MAX)) == 63);
     assert(sizeof(TTEntry) == (sizeof(MoveStorage) == 4 ? 12 : 16));

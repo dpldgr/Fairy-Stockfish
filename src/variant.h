@@ -215,6 +215,10 @@ struct Variant {
   uint64_t lionEffectivePathMask[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB] = {};
   std::vector<HookMoveSpec> hookMoveSpecs[PIECE_TYPE_NB] = {};
   std::vector<DoubleMoveSpec> doubleMoveSpecs[PIECE_TYPE_NB] = {};
+  PieceSet burnActivePieceTypes = NO_PIECE_SET;
+  PieceSet burnPassivePieceTypes = NO_PIECE_SET;
+  PieceSet tenjikuTripleStepPieceTypes = NO_PIECE_SET;
+  bool hasBurn = false;
   bool doubleStep = true;
   Bitboard doubleStepRegion[COLOR_NB] = {Rank2BB, Rank7BB};
   Bitboard tripleStepRegion[COLOR_NB] = {};
@@ -352,6 +356,7 @@ struct Variant {
   Bitboard dropRegions[COLOR_NB][PIECE_TYPE_NB] = {};
   int xboardDropRanks[PIECE_TYPE_NB] = {};
   bool xboardDropRegionsCompatible = true;
+  bool xboard_compatible() const { return xboardDropRegionsCompatible && !hasBurn && !tenjikuTripleStepPieceTypes; }
 
   Variant() {
       pieceToSymbol.resize(PIECE_NB);

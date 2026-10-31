@@ -79,7 +79,7 @@ namespace Eval {
     useNNUE = Options["Use NNUE"];
     const Variant* v = variants.find(string(Options["UCI_Variant"]))->second;
     // Wider type catalogues do not enlarge the network's feature storage.
-    useNNUE = useNNUE && v->nnueDimensions <= int(FeatureSet::Dimensions)
+    useNNUE = useNNUE && !v->hasBurn && v->nnueDimensions <= int(FeatureSet::Dimensions)
                       && v->nnueMaxPieces <= int(FeatureSet::MaxActiveDimensions);
     if (!useNNUE)
         return;

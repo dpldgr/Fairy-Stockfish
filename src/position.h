@@ -64,6 +64,7 @@ struct StateInfo {
   Piece      unpromotedBycatch[SQUARE_NB];
   Bitboard   promotedBycatch;
   Bitboard   demotedBycatch;
+  Bitboard   burnedPieces;
   StateInfo* previous;
   Bitboard   blockersForKing[COLOR_NB];
   Bitboard   pinners[COLOR_NB];
@@ -306,7 +307,15 @@ public:
   bool legal(Move m) const;
   bool pseudo_legal(const Move m) const;
   bool virtual_drop(Move m) const;
-  bool capture(Move m) const;
+  bool capture(Move m) const; // Direct captures only (including path captures).
+  Bitboard burn_squares(Move m) const;
+  bool capture_or_burn(Move m) const;
+  Value capture_value(Move m) const;
+  size_t area_move_capacity() const;
+  size_t move_capacity() const { return var->tenjikuTripleStepPieceTypes ? MAX_MOVES + area_move_capacity() : MAX_MOVES; }
+  Bitboard area_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE) const;
+  Bitboard burn_attackers_to(Square s, Bitboard occupied, Color c) const;
+  bool burn_attacks_square(Color c, PieceType pt, Square from, Square target, Bitboard occupied) const;
   bool prohibited_capture(Move m) const;
   bool trading_rule_legal(Move m) const;
   bool geometrically_recapturable_after(Move m) const;
@@ -511,6 +520,13 @@ inline Square Position::promotion_square(Color c, Square s, PieceType pt) const 
 }
 
 inline Bitboard Position::promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory, uint8_t captureKinds) const {
+    // Automatic classification is used for ordinary moves. A mover killed on
+    // arrival never reaches promotion. Multi-leg callers pass explicit capture
+    // facts and resolve passive burning against their complete route instead.
+    if (captureKinds == PROMO_CAPTURE_AUTO && var->hasBurn)
+        for (PieceSet ps = var->burnPassivePieceTypes; ps;)
+            for (Bitboard burners = pieces(~c, pop_lsb(ps)); burners;)
+                targets &= ~attacks_bb<KING>(pop_lsb(burners));
     const auto& rule = var->promotionRules[mapped][c][pt];
     Bitboard zone = mandatory ? rule.mandatoryRegion : rule.optionalRegion;
     uint16_t cases = mandatory ? rule.mandatoryCases : rule.optionalCases;
@@ -1543,7 +1559,7 @@ inline bool Position::is_chess960() const {
 
 inline bool Position::capture_or_promotion(Move m) const {
   assert(is_ok(m));
-  return type_of(m) == PROMOTION || is_path_promotion(m) || type_of(m) == EN_PASSANT || (is_multi_move(m) && capture(m)) || (type_of(m) != CASTLING && !empty(to_sq(m)));
+  return (var->hasBurn && burn_squares(m)) || type_of(m) == PROMOTION || is_path_promotion(m) || type_of(m) == EN_PASSANT || capture(m);
 }
 
 inline bool Position::capture(Move m) const {
@@ -1551,6 +1567,10 @@ inline bool Position::capture(Move m) const {
   if (is_multi_move(m)) return bool(path_capture_squares(m));
   // Castling is encoded as "king captures rook"
   return (!empty(to_sq(m)) && type_of(m) != CASTLING && from_sq(m) != to_sq(m)) || type_of(m) == EN_PASSANT;
+}
+
+inline bool Position::capture_or_burn(Move m) const {
+  return capture(m) || (var->hasBurn && bool(burn_squares(m)));
 }
 
 inline bool Position::prohibited_capture(Move m) const {
@@ -1616,6 +1636,13 @@ inline int Position::move_path(Move m, Square (&squares)[3]) const {
       int path = lion_dog_path_index(m), count = lion_dog_legs(path);
       for (int i = 0; i < count; ++i) squares[i] = LionDogSquares[from_sq(m)][path][i];
       return count;
+  }
+  if (is_triple_move(m))
+  {
+      squares[0] = triple_move_sq(m, 0);
+      squares[1] = triple_move_sq(m, 1);
+      squares[2] = to_sq(m);
+      return 3;
   }
   squares[0] = type_of(m) == LION ? LionVia[from_sq(m)][lion_path_index(m)]
              : is_hook(m) ? hook_sq(m) : double_move_sq(m);
