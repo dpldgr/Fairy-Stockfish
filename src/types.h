@@ -508,10 +508,11 @@ constexpr int PIECE_SET_WORDS = PIECE_TYPE_CAPACITY / 64;
 // Walling shares the extra-square payload with gating, even in gating=no
 // builds. Drops carry both the in-hand and placed type.
 constexpr int MOVE_TYPE_BITS = 4;
-constexpr int MOVE_PAYLOAD_BITS = std::max(2 * SQUARE_BITS + MOVE_TYPE_BITS + 2 * PIECE_TYPE_BITS,
-                                         3 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS);
 #define MOVE_SQUARE_BITS (BOARD_SQUARES <= 64 ? 6 : BOARD_SQUARES <= 128 ? 7 : BOARD_SQUARES <= 256 ? 8 : 9)
 #define WIDE_MOVES (3 * MOVE_SQUARE_BITS + 4 + PIECE_TYPE_ENCODING_BITS > 32 || 2 * MOVE_SQUARE_BITS + 4 + 2 * PIECE_TYPE_ENCODING_BITS > 32)
+constexpr int MOVE_PAYLOAD_BITS = std::max({2 * SQUARE_BITS + MOVE_TYPE_BITS + 2 * PIECE_TYPE_BITS,
+                                          3 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS,
+                                          WIDE_MOVES ? 4 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS + 1 : 0});
 using MoveStorage = std::conditional_t<MOVE_PAYLOAD_BITS <= 32, uint32_t, uint64_t>;
 
 enum Move : MoveStorage {
@@ -532,6 +533,7 @@ enum MoveType : MoveStorage {
   HOOK               = MoveStorage(9) << (2 * SQUARE_BITS),
   DOUBLE_MOVE        = MoveStorage(10) << (2 * SQUARE_BITS),
   LION_DOG           = MoveStorage(11) << (2 * SQUARE_BITS),
+  TRIPLE_MOVE        = MoveStorage(12) << (2 * SQUARE_BITS),
   HOOK_ALTERNATE     = MoveStorage(13) << (2 * SQUARE_BITS),
   DOUBLE_ALTERNATE   = MoveStorage(14) << (2 * SQUARE_BITS),
 };
@@ -1273,20 +1275,21 @@ constexpr bool is_hook(Move m) {
 constexpr bool is_double_move(Move m) {
   return (type_of(m) & ~(MoveStorage(4) << (2 * SQUARE_BITS))) == DOUBLE_MOVE;
 }
+constexpr bool is_triple_move(Move m) { return type_of(m) == TRIPLE_MOVE; }
 constexpr bool is_multi_move(Move m) {
-  return type_of(m) == LION || type_of(m) == LION_DOG || is_hook(m) || is_double_move(m);
+  return type_of(m) == LION || type_of(m) == LION_DOG || is_triple_move(m) || is_hook(m) || is_double_move(m);
 }
 constexpr int path_payload_bits(Move m) {
-  return is_hook(m) || is_double_move(m) ? SQUARE_BITS : 6;
+  return is_triple_move(m) ? 2 * SQUARE_BITS : is_hook(m) || is_double_move(m) ? SQUARE_BITS : 6;
 }
 constexpr PieceType path_promotion_type(Move m) {
   return is_multi_move(m)
-       ? PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m))) & PIECE_TYPE_MASK) : NO_PIECE_TYPE;
+       ? PieceType((uint64_t(m) >> (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m))) & PIECE_TYPE_MASK) : NO_PIECE_TYPE;
 }
 constexpr bool path_mapped_flag(Move m) {
   if (is_hook(m) || is_double_move(m))
       return type_of(m) == HOOK || type_of(m) == DOUBLE_MOVE;
-  return (m & (MoveStorage(1) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m) + PIECE_TYPE_BITS))) != 0;
+  return (m & (uint64_t(1) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m) + PIECE_TYPE_BITS))) != 0;
 }
 constexpr bool is_path_promotion(Move m) { return path_promotion_type(m) != NO_PIECE_TYPE; }
 constexpr bool is_path_pawn_promotion(Move m) { return is_path_promotion(m) && !path_mapped_flag(m); }
@@ -1305,8 +1308,8 @@ constexpr Move with_path_promotion(Move m, PieceType target, bool mapped = true)
       return Move((m & ~(MoveStorage(15) << (2 * SQUARE_BITS))) | kind
                   | (MoveStorage(target) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + SQUARE_BITS)));
   }
-  return Move(m | (MoveStorage(target) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m)))
-                | (MoveStorage(mapped) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m) + PIECE_TYPE_BITS)));
+  return Move(m | (uint64_t(target) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m)))
+                | (uint64_t(mapped) << (2 * SQUARE_BITS + MOVE_TYPE_BITS + path_payload_bits(m) + PIECE_TYPE_BITS)));
 }
 static_assert(2 * SQUARE_BITS + MOVE_TYPE_BITS + (SQUARE_BITS > 7 ? SQUARE_BITS : 7) + PIECE_TYPE_BITS <= 8 * sizeof(MoveStorage),
               "Path promotion exceeds move storage");
@@ -1318,6 +1321,19 @@ constexpr Move make_hook(Square from, Square hook, Square to) {
 constexpr Move make_double_move(Square from, Square intermediate, Square to) {
   return Move((MoveStorage(intermediate) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(DOUBLE_MOVE) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
+
+// Four explicit squares; promotion data follows the two intermediate squares.
+// These routes require a wide-move build. Ordinary 8x8 builds keep 32-bit moves.
+constexpr Move make_triple_move(Square from, Square first, Square second, Square to) {
+  return Move(uint64_t(make_move(from, to)) | uint64_t(TRIPLE_MOVE)
+            | (uint64_t(first) << (2 * SQUARE_BITS + MOVE_TYPE_BITS))
+            | (uint64_t(second) << (3 * SQUARE_BITS + MOVE_TYPE_BITS)));
+}
+constexpr Square triple_move_sq(Move m, int index) {
+  return Square((uint64_t(m) >> ((2 + index) * SQUARE_BITS + MOVE_TYPE_BITS)) & SQUARE_BIT_MASK);
+}
+static_assert(!WIDE_MOVES || 4 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS + 1 <= 64,
+              "Triple-route promotion exceeds move storage");
 
 constexpr PieceType dropped_piece_type(Move m) {
   return PieceType((m >> (2 * SQUARE_BITS + MOVE_TYPE_BITS)) & PIECE_TYPE_MASK);

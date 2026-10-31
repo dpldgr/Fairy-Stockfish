@@ -55,7 +55,7 @@ inline bool operator<(const ExtMove& f, const ExtMove& s) {
 template<GenType>
 ExtMove* generate(const Position& pos, ExtMove* moveList);
 
-constexpr size_t moveListSize = sizeof(ExtMove) * MAX_MOVES;
+size_t move_list_capacity(const Position& pos);
 
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.
@@ -66,7 +66,7 @@ struct MoveList {
 #ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
     explicit MoveList(const Position& pos)
     {
-        this->moveList = (ExtMove*)malloc(moveListSize);
+        this->moveList = (ExtMove*)malloc(sizeof(ExtMove) * move_list_capacity(pos));
         if (this->moveList == 0)
         {
             printf("Error: Failed to allocate memory in heap.");

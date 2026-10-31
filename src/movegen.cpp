@@ -473,7 +473,8 @@ namespace {
 
   ExtMove* append_path_promotion(const Position& pos, ExtMove* list, Move m, PieceType pt) {
     Color us = pos.side_to_move();
-    if (!pos.promoted_piece_type(pt) && !pos.piece_demotion() && !(pos.promotion_pawn_types(us) & pt))
+    if ((pos.variant()->hasBurn && (pos.burn_squares(m) & to_sq(m)))
+        || (!pos.promoted_piece_type(pt) && !pos.piece_demotion() && !(pos.promotion_pawn_types(us) & pt)))
     {
         *list++ = m;
         return list;
@@ -483,17 +484,23 @@ namespace {
                      ? type_of(pos.unpromoted_piece_on(from)) : pt;
     PieceType promotion = pos.is_promoted(from) ? NO_PIECE_TYPE : pos.promoted_piece_type(pt);
     bool demote = pos.piece_demotion() && pos.is_promoted(from);
-    Bitboard victims = pos.path_capture_squares(m);
+    Bitboard victims = is_multi_move(m) ? pos.path_capture_squares(m)
+                      : pos.capture(m) ? square_bb(to) : Bitboard(0);
     uint8_t captures = victims ? 0 : PROMO_CAPTURE_NONE;
     while (victims)
         captures |= pos.is_promoted(pop_lsb(victims)) ? PROMO_CAPTURE_PROMOTED : PROMO_CAPTURE_UNPROMOTED;
+    auto promote = [&](PieceType p, bool mapped) {
+        return is_multi_move(m) ? with_path_promotion(m, p, mapped)
+             : !mapped ? make<PROMOTION>(from, to, p)
+             : p ? make<PIECE_PROMOTION>(from, to) : make<PIECE_DEMOTION>(from, to);
+    };
     Bitboard target = square_bb(to);
     if ((promotion || demote) && (pos.promotion_targets(us, rulePt, from, target, true, false, captures)
                                 || pos.promotion_targets(us, rulePt, from, target, true, true, captures)))
     {
         if (promotion && (!pos.promotion_limit(promotion) || pos.count(us, promotion) < pos.promotion_limit(promotion)))
-            *list++ = with_path_promotion(m, promotion);
-        if (demote) *list++ = with_path_promotion(m, NO_PIECE_TYPE);
+            *list++ = promote(promotion, true);
+        if (demote) *list++ = promote(NO_PIECE_TYPE, true);
     }
     bool pawnStyle = bool(pos.promotion_pawn_types(us) & pt);
     if (pawnStyle && (pos.promotion_targets(us, pt, from, target, false, false, captures)
@@ -502,7 +509,7 @@ namespace {
         {
             PieceType p = pop_lsb(ps);
             if (!pos.promotion_limit(p) || pos.count(us, p) < pos.promotion_limit(p))
-                *list++ = with_path_promotion(m, p, false);
+                *list++ = promote(p, false);
         }
     bool mandatory = (promotion || demote) && bool(pos.promotion_targets(us, rulePt, from, target, true, true, captures));
     mandatory |= pawnStyle && bool(pos.promotion_targets(us, pt, from, target, false, true, captures));
@@ -537,6 +544,44 @@ namespace {
     {
         int path = pop_lsb64(dog);
         append(make_lion_dog(from, path, LionDogSquares[from][path][lion_dog_legs(path)-1]));
+    }
+    return list;
+  }
+
+  // Area routes end at the first capture. Vacated squares (including the
+  // origin) may be revisited; the full route, rather than its endpoint, is kept.
+  template<Color Us>
+  ExtMove* generate_area_moves(const Position& pos, ExtMove* list, ExtMove* ordinaryBegin, ExtMove* ordinaryEnd) {
+    for (PieceSet ps = pos.variant()->tenjikuTripleStepPieceTypes; ps;)
+    {
+        PieceType pt = pop_lsb(ps);
+        for (Bitboard pieces = pos.pieces(Us, pt); pieces;)
+        {
+            Square from = pop_lsb(pieces), route[3];
+            Bitboard friends = pos.pieces(Us) & ~square_bb(from);
+            Bitboard region = pos.board_bb(Us, pt);
+            auto visit = [&](auto&& self, Square current, int leg) -> void {
+                Bitboard next = attacks_bb<KING>(current) & region & ~friends;
+                while (next)
+                {
+                    Square to = pop_lsb(next);
+                    route[leg] = to;
+                    Move m = leg == 0 ? make_move(from, to)
+                           : leg == 1 ? make_double_move(from, route[0], to)
+                                      : make_triple_move(from, route[0], route[1], to);
+                    if (pos.prohibited_capture(m)) continue;
+                    ExtMove alternatives[PIECE_TYPE_CAPACITY + 2];
+                    ExtMove* end = append_path_promotion(pos, alternatives, m, pt);
+                    for (ExtMove* a = alternatives; a != end; ++a)
+                        // Ordinary definitions may already supply a one-step
+                        // move, or a configured DOUBLE_MOVE the same route.
+                        if (leg == 2 || std::find(ordinaryBegin, ordinaryEnd, Move(*a)) == ordinaryEnd)
+                            *list++ = Move(*a);
+                    if (leg < 2 && !pos.capture(m)) self(self, to, leg + 1);
+                }
+            };
+            visit(visit, from, 0);
+        }
     }
     return list;
   }
@@ -630,6 +675,7 @@ namespace {
 
     static_assert(Type != LEGAL, "Unsupported type in generate_all()");
 
+    ExtMove* ordinaryBegin = moveList;
     constexpr bool Checks = Type == QUIET_CHECKS; // Reduce template instantiations
     const Square ksq = pos.count<KING>(Us) ? pos.square<KING>(Us) : SQ_NONE;
     Bitboard target;
@@ -733,11 +779,17 @@ namespace {
                                                          Type == EVASIONS ? pos.board_bb() : target);
         }
 
+    if constexpr (Type == NON_EVASIONS)
+        if (pos.variant()->tenjikuTripleStepPieceTypes)
+            moveList = generate_area_moves<Us>(pos, moveList, ordinaryBegin, moveList);
+
     return moveList;
   }
 
 } // namespace
 
+
+size_t move_list_capacity(const Position& pos) { return pos.move_capacity(); }
 
 /// <CAPTURES>     Generates all pseudo-legal captures plus queen promotions
 /// <QUIETS>       Generates all pseudo-legal non-captures and underpromotions
@@ -754,6 +806,25 @@ ExtMove* generate(const Position& pos, ExtMove* moveList) {
   assert((Type == EVASIONS) == (bool)pos.checkers());
 
   Color us = pos.side_to_move();
+
+  if (pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes)
+  {
+      ExtMove* end = us == WHITE ? generate_all<WHITE, NON_EVASIONS>(pos, moveList)
+                                : generate_all<BLACK, NON_EVASIONS>(pos, moveList);
+      if constexpr (Type == CAPTURES || Type == QUIETS || Type == QUIET_CHECKS)
+      {
+          ExtMove* out = moveList;
+          for (ExtMove* cur = moveList; cur != end; ++cur)
+          {
+              bool tactical = pos.capture_or_promotion(*cur);
+              if ((Type == CAPTURES && tactical) || (Type == QUIETS && !tactical)
+                  || (Type == QUIET_CHECKS && !tactical && pos.gives_check(*cur)))
+                  *out++ = Move(*cur);
+          }
+          return out;
+      }
+      return end;
+  }
 
   return us == WHITE ? generate_all<WHITE, Type>(pos, moveList)
                      : generate_all<BLACK, Type>(pos, moveList);

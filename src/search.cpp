@@ -75,7 +75,7 @@ namespace {
   int Reductions[MAX_MOVES]; // [depth or moveNumber]
 
   Depth reduction(bool i, Depth d, int mn) {
-    int r = Reductions[d] * Reductions[mn];
+    int r = Reductions[d] * Reductions[(WIDE_MOVES ? std::min(mn, MAX_MOVES - 1) : mn)];
     return (r + 534) / 1024 + (!i && r > 904);
   }
 
@@ -1660,7 +1660,7 @@ moves_loop: // When in check, search starts from here
                && pos.piece_on(to_sq(move))
                && (   (pos.extinction_piece_types() & ALL_PIECES)
                    || (pos.extinction_piece_types() & type_of(pos.piece_on(to_sq(move))))))
-          && !pos.baring_rule()
+          && !pos.baring_rule() && !pos.variant()->hasBurn
           &&  futilityBase > -VALUE_KNOWN_WIN
           &&  type_of(move) != PROMOTION)
       {
@@ -2123,7 +2123,7 @@ void Tablebases::rank_root_moves(Position& pos, Search::RootMoves& rootMoves) {
     }
 
     // Existing tablebases do not encode the bare-royal reply or its outcomes.
-    if (pos.baring_rule())
+    if (pos.baring_rule() || pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes)
         Cardinality = 0;
 
     if (Cardinality >= popcount(pos.pieces()) && !pos.can_castle(ANY_CASTLING))

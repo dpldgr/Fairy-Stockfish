@@ -1246,6 +1246,24 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             });
     }
 
+    const std::pair<const char*, PieceSet*> arrivalOptions[] = {
+        {"burnActivePieceTypes", &v->burnActivePieceTypes},
+        {"burnPassivePieceTypes", &v->burnPassivePieceTypes},
+        {"tenjikuTripleStepPieceTypes", &v->tenjikuTripleStepPieceTypes}
+    };
+    for (const auto& setting : arrivalOptions)
+    {
+        auto option = config.find(setting.first);
+        if (option != config.end())
+        {
+            PieceSet parsed;
+            if (parse_extinction_piece_set(v, option->second, parsed))
+                *setting.second = (parsed & ALL_PIECES) ? v->pieceTypes : parsed;
+            else
+                std::cerr << setting.first << " - Invalid piece set: " << option->second << std::endl;
+        }
+    }
+
     const auto& it_double_pieces = config.find("doubleMovePieces");
     if (it_double_pieces != config.end())
     {

@@ -94,7 +94,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th, const GateHistory*
 
   assert(!pos.checkers());
 
-  stage = PROBCUT_TT + !(ttm && pos.capture(ttm)
+  stage = PROBCUT_TT + !(ttm && pos.capture_or_burn(ttm)
                              && pos.pseudo_legal(ttm)
                              && pos.see_ge(ttm, threshold));
 }
@@ -109,7 +109,7 @@ void MovePicker::score() {
 
   for (auto& m : *this)
       if constexpr (Type == CAPTURES)
-          m.value =  int(PieceValue[MG][pos.piece_on(to_sq(m))]) * 6
+          m.value =  int(pos.variant()->hasBurn ? pos.capture_value(m) : PieceValue[MG][pos.piece_on(to_sq(m))]) * 6
                    + (*gateHistory)[pos.side_to_move()][gating_square(m)]
                    + (*captureHistory)[pos.moved_piece(m)][to_sq(m)][type_of(pos.piece_on(to_sq(m)))];
 
@@ -124,8 +124,8 @@ void MovePicker::score() {
 
       else // Type == EVASIONS
       {
-          if (pos.capture(m))
-              m.value =  PieceValue[MG][pos.piece_on(to_sq(m))]
+          if (pos.capture_or_burn(m))
+              m.value =  (pos.variant()->hasBurn ? pos.capture_value(m) : PieceValue[MG][pos.piece_on(to_sq(m))])
                        - Value(type_of(pos.moved_piece(m)));
           else
               m.value =      (*mainHistory)[pos.side_to_move()][from_to(m)]
@@ -199,7 +199,7 @@ top:
 
   case REFUTATION:
       if (select<Next>([&](){ return    *cur != MOVE_NONE
-                                    && !pos.capture(*cur)
+                                    && !pos.capture_or_burn(*cur)
                                     &&  pos.pseudo_legal(*cur); }))
           return *(cur - 1);
       ++stage;

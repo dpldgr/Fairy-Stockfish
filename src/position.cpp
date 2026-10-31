@@ -1327,6 +1327,196 @@ Bitboard Position::multi_attack_targets(Color c, PieceType pt, Square from, Bitb
     return result;
 }
 
+// Capacity is positional: ordinary variants retain their existing allocation.
+// Each area mover has at most 584 routes, each with at most one mapped
+// promotion plus the configured pawn-style choices and an unpromoted move.
+size_t Position::area_move_capacity() const {
+    size_t extra = 0;
+    for (PieceSet ps = var->tenjikuTripleStepPieceTypes; ps;)
+    {
+        PieceType pt = pop_lsb(ps);
+        int choices = (promotion_pawn_types(sideToMove) & pt) ? popcount(promotion_piece_types(sideToMove)) : 0;
+        extra += size_t(count(sideToMove, pt)) * 584 * (choices + 2);
+    }
+    return extra;
+}
+
+Bitboard Position::area_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended) const {
+    Bitboard friends = pieces(c) & occupied & ~square_bb(from);
+    if (defended != SQ_NONE) friends &= ~square_bb(defended);
+    Bitboard frontier = square_bb(from), result = 0;
+    occupied &= ~square_bb(from);
+    for (int leg = 0; leg < 3; ++leg)
+    {
+        Bitboard next = 0;
+        while (frontier) next |= attacks_bb<KING>(pop_lsb(frontier));
+        next &= board_bb(c, pt) & ~friends;
+        result |= next;
+        frontier = next & ~occupied;
+    }
+    return result;
+}
+
+Bitboard Position::burn_squares(Move m) const {
+    if (!var->hasBurn || is_pass(m)) return 0;
+    Color us = sideToMove;
+    Square to = to_sq(m);
+    if (type_of(m) == CASTLING)
+        to = make_square(to > from_sq(m) ? castling_kingside_file() : castling_queenside_file(), castling_rank(us));
+    Bitboard direct = is_multi_move(m) ? path_capture_squares(m)
+                    : type_of(m) == EN_PASSANT ? square_bb(capture_square(to))
+                    : type_of(m) == CASTLING ? Bitboard(0) : square_bb(to);
+    Bitboard enemies = pieces(~us) & ~direct;
+    Bitboard neighbours = attacks_bb<KING>(to);
+    for (PieceSet ps = var->burnPassivePieceTypes; ps;)
+        if (neighbours & enemies & pieces(pop_lsb(ps))) return square_bb(to);
+    return (var->burnActivePieceTypes & type_of(moved_piece(m))) ? neighbours & enemies : Bitboard(0);
+}
+
+Value Position::capture_value(Move m) const {
+    Value value = VALUE_ZERO;
+    Bitboard victims = is_multi_move(m) ? path_capture_squares(m)
+                       : capture(m) ? square_bb(type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m)) : Bitboard(0);
+    while (victims) value += PieceValue[MG][piece_on(pop_lsb(victims))];
+    for (Bitboard burned = burn_squares(m); burned;)
+    {
+        Square sq = pop_lsb(burned);
+        value += sq == to_sq(m) ? -PieceValue[MG][moved_piece(m)] : PieceValue[MG][piece_on(sq)];
+    }
+    return value;
+}
+
+// Burning threatens a square only through a complete movement ending beside
+// it. Passive burners can prevent that movement from producing an active burn.
+bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square target, Bitboard occupied) const {
+    if (!(var->burnActivePieceTypes & pt)) return false;
+    bool result = false;
+    Bitboard enemies = pieces(~c) & occupied & ~square_bb(from);
+    Bitboard friends = (pieces(c) & occupied) & ~square_bb(target) & ~square_bb(from);
+    Bitboard passive = 0;
+    for (PieceSet ps = var->burnPassivePieceTypes; ps;) passive |= pieces(~c, pop_lsb(ps)) & enemies;
+    Bitboard prohibited = prohibited_capture_targets(c, pt);
+    auto landing = [&](Square to, Bitboard captures) {
+        if ((attacks_bb<KING>(target) & to) && !(attacks_bb<KING>(to) & passive & ~captures)) result = true;
+    };
+    PieceType moveType = pt == KING ? king_type() : pt;
+    Bitboard quiet = moves_bb(c, moveType, from, occupied);
+    if (double_step_region(c) & from)
+        quiet |= moves_bb<true>(c, moveType, from, occupied);
+    if (pt == PAWN)
+    {
+        quiet = 0;
+        Square next = from + pawn_push(c);
+        if (is_ok(next) && !(occupied & next))
+        {
+            quiet |= next;
+            next += pawn_push(c);
+            if (is_ok(next) && !(occupied & next))
+            {
+                if (double_step_region(c) & from) quiet |= next;
+                next += pawn_push(c);
+                if ((triple_step_region(c) & from) && is_ok(next) && !(occupied & next)) quiet |= next;
+            }
+        }
+    }
+    Bitboard ordinary = ((quiet & ~occupied)
+                        | (attacks_bb(c, moveType, from, occupied) & enemies & ~prohibited))
+                       & board_bb(c, pt) & ~friends;
+    while (ordinary) { Square to = pop_lsb(ordinary); landing(to, square_bb(to)); }
+    auto path = [&](Move m) {
+        Square route[3]; int n = move_path(m, route);
+        Bitboard visited = 0;
+        for (int i = 0; i < n; ++i) visited |= route[i];
+        Bitboard captures = visited & enemies;
+        if (!(visited & (friends | ~board_bb(c, pt))) && !(captures & prohibited)) landing(to_sq(m), captures);
+    };
+    uint64_t lion = lion_move_mask(c, pt, from);
+    while (lion) { int p = __builtin_ctzll(lion); lion &= lion - 1; path(make_lion(from, p, LionTo[from][p])); }
+    uint64_t dog = lion_dog_mask(c, pt, from);
+    while (dog) { int p = __builtin_ctzll(dog); dog &= dog - 1; path(make_lion_dog(from, p, LionDogSquares[from][p][lion_dog_legs(p)-1])); }
+    if (var->tenjikuTripleStepPieceTypes & pt)
+    {
+        Bitboard frontier = square_bb(from);
+        for (int leg = 0; leg < 3; ++leg)
+        {
+            Bitboard next = 0;
+            while (frontier) next |= attacks_bb<KING>(pop_lsb(frontier));
+            next &= board_bb(c, pt) & ~friends;
+            for (Bitboard b = next & ~(prohibited & enemies); b;) { Square to = pop_lsb(b); landing(to, square_bb(to)); }
+            frontier = next & (~occupied | from);
+        }
+    }
+    for (const DoubleMoveSpec& spec : double_move_specs(pt))
+    {
+        Bitboard first = ((moves_bb(c, spec.firstType, from, occupied) & ~occupied)
+                         | (attacks_bb(c, spec.firstType, from, occupied) & enemies & ~prohibited))
+                        & board_bb(c, spec.firstType);
+        while (first)
+        {
+            Square via = pop_lsb(first);
+            Bitboard captures = enemies & via;
+            Bitboard occ = occupied & ~square_bb(from) & ~captures;
+            Bitboard second = ((moves_bb(c, spec.secondType, via, occ) & ~occ)
+                              | (attacks_bb(c, spec.secondType, via, occ) & enemies & ~prohibited))
+                             & board_bb(c, spec.secondType) & ~friends & ~square_bb(from);
+            while (second)
+            {
+                Square to = pop_lsb(second);
+                int df1 = file_of(via) - file_of(from), dr1 = rank_of(via) - rank_of(from);
+                int df2 = file_of(to) - file_of(via), dr2 = rank_of(to) - rank_of(via);
+                if (spec.outwardOnly && df1 * df2 + dr1 * dr2 <= 0) continue;
+                Bitboard victims = captures | (enemies & to);
+                if (popcount(victims) <= spec.captureLimit) landing(to, victims);
+            }
+        }
+    }
+    constexpr int df[] = {0,1,1,1,0,-1,-1,-1}, dr[] = {1,1,0,-1,-1,-1,0,1};
+    auto step = [&](Square fromSquare, int direction) {
+        int f = file_of(fromSquare) + df[direction], r = rank_of(fromSquare) + dr[direction];
+        return f >= 0 && f <= FILE_MAX && r >= 0 && r <= RANK_MAX ? make_square(File(f), Rank(r)) : SQ_NONE;
+    };
+    for (const HookMoveSpec& spec : hook_move_specs(pt))
+        for (uint64_t mask = spec.directionPairMask; mask;)
+        {
+            int p = __builtin_ctzll(mask); mask &= mask - 1;
+            int first = (p / 8 + (c == BLACK ? 4 : 0)) % 8, second = (p % 8 + (c == BLACK ? 4 : 0)) % 8;
+            Square via = from;
+            for (int i = 0; i < (spec.firstRange ? spec.firstRange : SQUARE_NB); ++i)
+            {
+                via = step(via, first);
+                if (via == SQ_NONE || !(board_bb() & via) || (friends & via)) break;
+                Bitboard firstCapture = enemies & via;
+                if (firstCapture && (spec.stopOnCapture || (prohibited & via))) break;
+                Square to = via;
+                for (int j = 0; j < (spec.secondRange ? spec.secondRange : SQUARE_NB); ++j)
+                {
+                    to = step(to, second);
+                    if (to == SQ_NONE || !(board_bb() & to) || (friends & to) || (enemies & prohibited & to)) break;
+                    Bitboard captures = firstCapture | (enemies & to);
+                    if (popcount(captures) > spec.captureLimit) break;
+                    landing(to, captures);
+                    if (enemies & to) break;
+                }
+                if (firstCapture) break;
+            }
+        }
+    return result;
+}
+
+Bitboard Position::burn_attackers_to(Square s, Bitboard occupied, Color c) const {
+    Bitboard result = 0;
+    for (PieceSet ps = var->burnActivePieceTypes; ps;)
+    {
+        PieceType pt = pop_lsb(ps);
+        for (Bitboard candidates = pieces(c, pt) & occupied; candidates;)
+        {
+            Square from = pop_lsb(candidates);
+            if (burn_attacks_square(c, pt, from, s, occupied)) result |= from;
+        }
+    }
+    return result;
+}
+
 /// Position::attackers_to() computes a bitboard of all pieces which attack a
 /// given square. Slider attacks use the occupied bitboard to indicate occupancy.
 
@@ -1382,17 +1572,21 @@ Bitboard Position::attackers_to(Square s, Bitboard occupied, Color c, Bitboard j
       }
   }
 
-  if (var->hasLionDog)
+  if (var->hasLionDog || var->tenjikuTripleStepPieceTypes)
       for (PieceSet ps = piece_types(); ps;)
       {
           PieceType pt = pop_lsb(ps);
-          if (!var->lionDogMoveSpecified[pt]) continue;
+          if (!var->lionDogMoveSpecified[pt] && !(var->tenjikuTripleStepPieceTypes & pt)) continue;
           for (Bitboard candidates = pieces(c, pt) & occupied; candidates;)
           {
               Square from = pop_lsb(candidates);
-              if (multi_attack_targets(c, pt, from, occupied, s) & s) b |= from;
+              if ((var->lionDogMoveSpecified[pt] && (multi_attack_targets(c, pt, from, occupied, s) & s))
+                  || ((var->tenjikuTripleStepPieceTypes & pt) && !(prohibited_capture_types(c, pt) & type_of(piece_on(s)))
+                      && (area_attack_targets(c, pt, from, occupied, s) & s))) b |= from;
           }
       }
+
+  if (var->hasBurn) b |= burn_attackers_to(s, occupied, c);
 
   // Janggi palace moves
   if (diagonal_lines() & s)
@@ -1544,7 +1738,9 @@ bool Position::legal(Move m) const {
   }
 
   // No legal moves from target square
-  if (immobility_illegal() && (type_of(m) == DROP || type_of(m) == NORMAL) && !(PseudoMoves[0][us][type_of(moved_piece(m))][to] & board_bb()))
+  if (immobility_illegal() && (type_of(m) == DROP || type_of(m) == NORMAL) && !(PseudoMoves[0][us][type_of(moved_piece(m))][to] & board_bb())
+      && !((var->tenjikuTripleStepPieceTypes & type_of(moved_piece(m))) && (attacks_bb<KING>(to) & board_bb(us, type_of(moved_piece(m)))))
+      && !(var->hasBurn && (burn_squares(m) & to)))
       return false;
 
   // Illegal king passing move
@@ -1588,12 +1784,15 @@ bool Position::legal(Move m) const {
           occupied &= ~square_bb(capture_square(kto));
       if (capture(m) && blast_on_capture())
           occupied &= ~((attacks_bb<KING>(kto) & ((pieces(WHITE) | pieces(BLACK)) ^ pieces(PAWN))) | kto);
+      Bitboard burned = burn_squares(m);
+      if ((burned & kto) && (st->pseudoRoyals & from)) return false;
+      occupied &= ~burned;
       // Petrifying a pseudo-royal piece is illegal
       if (capture(m) && (var->petrifyOnCaptureTypes & type_of(moved_piece(m))) && (st->pseudoRoyals & from))
           return false;
       Bitboard pseudoRoyals = st->pseudoRoyals & pieces(sideToMove);
       Bitboard pseudoRoyalCandidatesAfter = st->pseudoRoyalCandidates & pieces(sideToMove);
-      if (has_extinction_condition())
+      if (has_extinction_condition() || var->hasBurn)
       {
           std::array<int, PIECE_TYPE_CAPACITY> adjustments = {};
           PieceType fromType = type_of(moved_piece(m));
@@ -1606,13 +1805,28 @@ bool Position::legal(Move m) const {
               resultType = path_promotion_type(m);
           else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m))
               resultType = type_of(unpromoted_piece_on(from));
+          if (burned & kto) resultType = NO_PIECE_TYPE;
           if (type_of(m) != DROP && resultType != fromType)
           {
               --adjustments[fromType];
-              ++adjustments[resultType];
+              if (resultType != NO_PIECE_TYPE) ++adjustments[resultType];
+              else if (var->extinctionConditionPieceTypes & ALL_PIECES) --adjustments[ALL_PIECES];
           }
 
-          PieceSet criticalTypes = extinction_critical_piece_types(sideToMove, adjustments);
+          PieceSet criticalTypes = NO_PIECE_SET;
+          if (has_extinction_condition()) criticalTypes = extinction_critical_piece_types(sideToMove, adjustments);
+          else if (extinction_piece_types() & ALL_PIECES)
+          {
+              int after = count<ALL_PIECES>(us);
+              for (PieceSet ps = piece_types(); ps;) after += adjustments[pop_lsb(ps)];
+              if (after <= extinction_piece_count() + 1) criticalTypes = piece_types();
+          }
+          else
+              for (PieceSet ps = extinction_piece_types(); ps;)
+              {
+                  PieceType pt = pop_lsb(ps);
+                  if (count(us, pt) + adjustments[pt] <= extinction_piece_count() + 1) criticalTypes |= pt;
+              }
           PieceSet boardTypes = extinction_piece_types();
           if (boardTypes & ALL_PIECES)
               boardTypes = piece_types();
@@ -1646,9 +1860,9 @@ bool Position::legal(Move m) const {
               pseudoRoyals |= square_bb(to);
       }
       Bitboard pseudoRoyalsTheirs = st->pseudoRoyals & pieces(~sideToMove);
-      if (!has_extinction_condition() && is_ok(from) && (pseudoRoyals & from))
+      if (!has_extinction_condition() && !var->hasBurn && is_ok(from) && (pseudoRoyals & from))
           pseudoRoyals ^= square_bb(from) ^ kto;
-      if (!has_extinction_condition() && type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
+      if (!has_extinction_condition() && !var->hasBurn && type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
       {
           if (count(sideToMove, promotion_type(m)) > extinction_piece_count())
               // increase in count leads to loss of pseudo-royalty
@@ -1681,9 +1895,9 @@ bool Position::legal(Move m) const {
       if (var->dupleCheck)
       {
           Bitboard pseudoRoyalCandidates = pseudoRoyalCandidatesAfter;
-          if (!has_extinction_condition() && is_ok(from) && (pseudoRoyalCandidates & from))
+          if (!has_extinction_condition() && !var->hasBurn && is_ok(from) && (pseudoRoyalCandidates & from))
               pseudoRoyalCandidates ^= square_bb(from) ^ kto;
-          if (!has_extinction_condition() && type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
+          if (!has_extinction_condition() && !var->hasBurn && type_of(m) == PROMOTION && (extinction_piece_types() & promotion_type(m)))
               pseudoRoyalCandidates |= kto;
           bool allCheck = bool(pseudoRoyalCandidates);
           while (allCheck && pseudoRoyalCandidates)
@@ -1714,6 +1928,18 @@ bool Position::legal(Move m) const {
           if (type_of(piece_on(pop_lsb(victims))) == type_of(moved_piece(m))) return false;
   }
 
+  if ((var->hasBurn || var->tenjikuTripleStepPieceTypes) && count<KING>(us) && type_of(m) != CASTLING)
+  {
+      Square king = type_of(moved_piece(m)) == KING ? to : square<KING>(us);
+      Bitboard occupied = type_of(m) == DROP ? pieces() : pieces() & ~square_bb(from);
+      Bitboard captures = is_multi_move(m) ? path_capture_squares(m)
+                        : type_of(m) == EN_PASSANT ? square_bb(capture_square(to)) : square_bb(to);
+      Bitboard burned = burn_squares(m);
+      if (type_of(moved_piece(m)) == KING && (burned & to)) return false;
+      occupied = ((occupied & ~captures) | to) & ~burned;
+      return !(attackers_to(king, occupied, ~us) & occupied & ~square_bb(to));
+  }
+
   // En passant captures are a tricky special case. Because they are rather
   // uncommon, we do it simply by testing whether the king is attacked after
   // the move is made.
@@ -1727,6 +1953,12 @@ bool Position::legal(Move m) const {
       assert(piece_on(to) == NO_PIECE);
 
       return !(attackers_to(ksq, occupied, ~us) & occupied);
+  }
+
+  if (type_of(m) == CASTLING && var->hasBurn)
+  {
+      Square destination = make_square(to > from ? castling_kingside_file() : castling_queenside_file(), castling_rank(us));
+      if ((burn_squares(m) & destination) && type_of(moved_piece(m)) == KING) return false;
   }
 
   // Castling moves generation does not check if the castling path is clear of
@@ -1859,7 +2091,7 @@ bool Position::trading_rule_legal(Move m) const {
   facts.doubleMove = is_multi_move(m);
   facts.finalAdjacent = bool(attacks_bb<KING>(from) & to);
 
-  if (type_of(m) == LION_DOG)
+  if (type_of(m) == LION_DOG || is_triple_move(m))
   {
       Square path[3];
       int n = move_path(m, path), capture = 0;
@@ -1905,7 +2137,7 @@ bool Position::trading_rule_legal(Move m) const {
 
   Bitboard checkingPieces = checkers();
   auto category_for = [&](PieceSet targets) {
-      if (type_of(m) == LION_DOG)
+      if (type_of(m) == LION_DOG || is_triple_move(m))
       {
           PieceType types[] = {facts.firstCapture, facts.secondCapture, facts.thirdCapture};
           Square squares[] = {facts.firstCaptureSquare, facts.secondCaptureSquare, facts.thirdCaptureSquare};
@@ -2003,10 +2235,15 @@ bool Position::geometrically_recapturable_after(Move m) const {
   else
       capturedSquares |= type_of(m) == EN_PASSANT ? capture_square(to) : to;
 
+  Bitboard burned = burn_squares(m);
+  if (burned & to) return false;
+  capturedSquares |= burned;
   Bitboard occupied = (pieces() ^ from) & ~capturedSquares;
   occupied |= to;
   Bitboard recapturers = attackers_to(to, occupied, ~sideToMove)
                        & pieces(~sideToMove) & ~capturedSquares;
+  for (PieceSet ps = var->burnPassivePieceTypes; ps;)
+      if (attacks_bb<KING>(to) & pieces(~sideToMove, pop_lsb(ps)) & ~capturedSquares) return true;
   return bool(recapturers);
 }
 
@@ -2047,7 +2284,7 @@ bool Position::pseudo_legal(const Move m) const {
 
   // Use a slower but simpler function for uncommon cases
   // yet we skip the legality check of MoveList<LEGAL>().
-  if (type_of(m) != NORMAL || is_gating(m))
+  if (type_of(m) != NORMAL || is_gating(m) || var->hasBurn || var->tenjikuTripleStepPieceTypes)
       return checkers() ? MoveList<    EVASIONS>(*this).contains(m)
                         : MoveList<NON_EVASIONS>(*this).contains(m);
 
@@ -2167,20 +2404,28 @@ bool Position::gives_check(Move m) const {
   if (!count<KING>(~sideToMove))
       return false;
 
-  if ((var->hasLionDog || is_path_promotion(m) || is_path_demotion(m)) && type_of(m) != CASTLING)
+  if ((var->hasLionDog || var->hasBurn || var->tenjikuTripleStepPieceTypes || is_path_promotion(m) || is_path_demotion(m)) && type_of(m) != CASTLING)
   {
       Bitboard occupied = (type_of(m) == DROP ? pieces() : pieces() & ~square_bb(from));
       if (is_multi_move(m)) occupied &= ~path_capture_squares(m);
       if (type_of(m) == EN_PASSANT) occupied &= ~square_bb(capture_square(to));
       occupied |= to;
+      Bitboard burned = burn_squares(m);
+      occupied &= ~burned;
       PieceType result = type_of(moved_piece(m));
       if (type_of(m) == PROMOTION) result = promotion_type(m);
       else if (is_path_promotion(m)) result = path_promotion_type(m);
       else if (type_of(m) == PIECE_PROMOTION) result = promoted_piece_type(result);
       else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)) result = type_of(unpromoted_piece_on(from));
       Square king = square<KING>(~sideToMove);
-      bool direct = bool(attacks_bb(sideToMove, result == KING ? king_type() : result, to, occupied) & king);
-      direct |= bool(multi_attack_targets(sideToMove, result, to, occupied) & king);
+      bool direct = !(burned & to) && bool(attacks_bb(sideToMove, result == KING ? king_type() : result, to, occupied) & king);
+      if (!(burned & to))
+      {
+          direct |= bool(multi_attack_targets(sideToMove, result, to, occupied) & king);
+          if (var->tenjikuTripleStepPieceTypes & result)
+              direct |= bool(area_attack_targets(sideToMove, result, to, occupied) & king);
+          direct |= burn_attacks_square(sideToMove, result, to, king, occupied);
+      }
       return direct || (attackers_to(king, occupied, sideToMove) & occupied & ~square_bb(to));
   }
 
@@ -2328,24 +2573,26 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Piece pc = moved_piece(m);
   Bitboard allPathCaptures = is_multi_move(m) ? path_capture_squares(m) : Bitboard(0);
   Piece captured = (is_multi_move(m)) && to == from ? NO_PIECE : piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
-  Square lionCapsq = type_of(m) == LION_DOG ? LionDogSquares[from][lion_dog_path_index(m)][0] : type_of(m) == LION ? LionVia[from][lion_path_index(m)] : is_hook(m) ? hook_sq(m) : is_double_move(m) ? double_move_sq(m) : SQ_NONE;
-  Piece lionCaptured = (is_multi_move(m)) && !empty(lionCapsq) && color_of(piece_on(lionCapsq)) == them ? piece_on(lionCapsq) : NO_PIECE;
-  Square secondLionCapsq = SQ_NONE;
-  Piece secondLionCaptured = NO_PIECE;
-  if (type_of(m) == LION_DOG)
+  Square lionCapsq = SQ_NONE, secondLionCapsq = SQ_NONE;
+  Piece lionCaptured = NO_PIECE, secondLionCaptured = NO_PIECE;
+  if (is_multi_move(m))
   {
       Square path[3];
       int n = move_path(m, path);
       lionCapsq = path[0];
-      lionCaptured = !empty(lionCapsq) && color_of(piece_on(lionCapsq)) == them ? piece_on(lionCapsq) : NO_PIECE;
+      lionCaptured = (allPathCaptures & lionCapsq) ? piece_on(lionCapsq) : NO_PIECE;
       if (n == 3)
       {
           secondLionCapsq = path[1];
-          secondLionCaptured = !empty(secondLionCapsq) && color_of(piece_on(secondLionCapsq)) == them ? piece_on(secondLionCapsq) : NO_PIECE;
+          secondLionCaptured = secondLionCapsq != lionCapsq && (allPathCaptures & secondLionCapsq) ? piece_on(secondLionCapsq) : NO_PIECE;
       }
-      // The returning route already captured its final square on the first leg.
       if (to == lionCapsq || to == secondLionCapsq) captured = NO_PIECE;
   }
+  Bitboard burned = var->hasBurn ? burn_squares(m) : Bitboard(0);
+  st->burnedPieces = burned;
+  if (burned) st->promotedBycatch = st->demotedBycatch = 0;
+  bool moverBurned = bool(burned & (type_of(m) == CASTLING
+                           ? make_square(to > from ? castling_kingside_file() : castling_queenside_file(), castling_rank(us)) : to));
   st->lionSecondCaptureSquare = secondLionCapsq;
   st->lionSecondCapturedPiece = secondLionCaptured;
   st->lionSecondCapturedPromoted = secondLionCaptured && is_promoted(secondLionCapsq);
@@ -2644,10 +2891,37 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       move_piece(from, to);
   }
 
+  // Arrival effects use the moving type before promotion. A dead mover cannot
+  // burn back or promote. Burn victims never enter a hand and never trigger
+  // capture-based promotion; those policies were decided from direct captures.
+  for (Bitboard b = burned; b;)
+  {
+      Square sq = pop_lsb(b);
+      Piece victim = piece_on(sq);
+      assert(victim);
+      Piece unpromoted = unpromoted_piece_on(sq);
+      st->unpromotedBycatch[sq] = unpromoted ? unpromoted : victim;
+      if (unpromoted) st->demotedBycatch |= sq;
+      else if (is_promoted(sq)) st->promotedBycatch |= sq;
+      remove_piece(sq);
+      board[sq] = NO_PIECE;
+      k ^= Zobrist::psq[victim][sq];
+      st->materialKey ^= Zobrist::psq[victim][pieceCount[victim]];
+      if (type_of(victim) == PAWN) st->pawnKey ^= Zobrist::psq[victim][sq];
+      else st->nonPawnMaterial[color_of(victim)] -= PieceValue[MG][victim];
+      st->rule50 = 0;
+      if (st->castlingRights & castlingRightsMask[sq])
+      {
+          k ^= Zobrist::castling[st->castlingRights];
+          st->castlingRights &= ~castlingRightsMask[sq];
+          k ^= Zobrist::castling[st->castlingRights];
+      }
+  }
+
   // If the moving piece is a pawn do some special extra work
   if (type_of(pc) == PAWN)
   {
-      if (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m))
+      if (!moverBurned && (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m)))
       {
           Piece promotion = make_piece(us, is_path_promotion(m) ? path_promotion_type(m) : type_of(m) == PROMOTION ? promotion_type(m) : promoted_piece_type(PAWN));
 
@@ -2681,7 +2955,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       }
 
       // Set en passant square(s) if the moved pawn can be captured
-      else if (   type_of(m) != DROP
+      else if (   !moverBurned && type_of(m) != DROP
           && (   std::abs(int(to) - int(from)) == 2 * NORTH
               || std::abs(int(to) - int(from)) == 3 * NORTH))
       {
@@ -2705,7 +2979,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       // Update pawn hash key
       st->pawnKey ^= (type_of(m) != DROP ? Zobrist::psq[pc][from] : 0) ^ Zobrist::psq[pc][to];
   }
-  else if (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m))
+  else if (!moverBurned && (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m)))
   {
       Piece promotion = make_piece(us, is_path_promotion(m) ? path_promotion_type(m) : type_of(m) == PROMOTION ? promotion_type(m) : promoted_piece_type(type_of(pc)));
 
@@ -2733,7 +3007,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       // Update material
       st->nonPawnMaterial[us] += PieceValue[MG][promotion] - PieceValue[MG][pc];
   }
-  else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m))
+  else if (!moverBurned && (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)))
   {
       Piece demotion = unpromoted_piece_on(to);
 
@@ -2761,7 +3035,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       st->nonPawnMaterial[us] += PieceValue[MG][demotion] - PieceValue[MG][pc];
   }
   // Set en passant square(s) if the moved piece can be captured
-  else if (   type_of(m) != DROP
+  else if (   !moverBurned && type_of(m) != DROP
            && ((PseudoMoves[1][us][type_of(pc)][from] & ~PseudoMoves[0][us][type_of(pc)][from]) & to))
   {
       assert(type_of(pc) != PAWN);
@@ -2950,6 +3224,8 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           k ^= Zobrist::promoted[pop_lsb(b)];
   st->key = k;
   // Calculate checkers bitboard (if move gives check)
+  if (var->hasBurn || var->tenjikuTripleStepPieceTypes)
+      givesCheck = count<KING>(them) && bool(attackers_to(square<KING>(them), us) & pieces(us));
   st->checkersBB = givesCheck ? attackers_to(square<KING>(them), us) & pieces(us) : Bitboard(0);
   assert(givesCheck == bool(st->checkersBB));
 
@@ -3044,6 +3320,19 @@ void Position::undo_move(Move m) {
       pc = piece_on(to);
   }
 
+  // Burning and blast rules are mutually exclusive. Reuse the existing
+  // bycatch provenance storage, while the burn mask identifies exact victims.
+  for (Bitboard b = st->burnedPieces; b;)
+  {
+      Square sq = pop_lsb(b);
+      Piece unpromoted = st->unpromotedBycatch[sq];
+      bool mapped = bool(st->demotedBycatch & sq);
+      Piece victim = mapped ? make_piece(color_of(unpromoted), promoted_piece_type(type_of(unpromoted))) : unpromoted;
+      put_piece(victim, sq, bool((st->promotedBycatch | st->demotedBycatch) & sq), mapped ? unpromoted : NO_PIECE);
+  }
+  bool moverBurned = bool(st->burnedPieces & to);
+  pc = piece_on(to);
+
   // Remove gated piece
   if (is_gating(m))
   {
@@ -3054,7 +3343,7 @@ void Position::undo_move(Move m) {
       st->gatesBB[us] |= gating_square(m);
   }
 
-  if (type_of(m) == PROMOTION || is_path_pawn_promotion(m))
+  if (!moverBurned && (type_of(m) == PROMOTION || is_path_pawn_promotion(m)))
   {
       assert((promotion_zone(us, is_path_pawn_promotion(m) ? type_of(st->promotionPawn) : PAWN)
               & (square_bb(from) | to)) || sittuyin_promotion());
@@ -3066,14 +3355,14 @@ void Position::undo_move(Move m) {
       pc = st->promotionPawn;
       put_piece(pc, to);
   }
-  else if (type_of(m) == PIECE_PROMOTION || is_path_promotion(m))
+  else if (!moverBurned && (type_of(m) == PIECE_PROMOTION || is_path_promotion(m)))
   {
       Piece unpromotedPiece = unpromoted_piece_on(to);
       remove_piece(to);
       pc = unpromotedPiece;
       put_piece(pc, to);
   }
-  else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m))
+  else if (!moverBurned && (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)))
   {
       remove_piece(to);
       Piece unpromotedPc = pc;
@@ -3368,7 +3657,9 @@ bool Position::see_ge(Move m, Value threshold) const {
 
   // Material alone cannot value royal capture or counter-baring, especially
   // when the variant reverses the outcome of remaining bare.
-  if (baring_rule())
+  if (baring_rule() || var->hasBurn)
+      // Conventional one-victim SEE cannot safely prune burning moves or their
+      // replies. Search them instead of treating burn bycatch as a quiet move.
       return true;
 
   // Only deal with normal moves, assume others pass a simple SEE
