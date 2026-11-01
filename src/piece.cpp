@@ -190,6 +190,20 @@ namespace {
   }
 }
 
+bool range_jump_directions(const std::string& betza, uint8_t& directions) {
+  if (betza.empty() || std::string("RBQ").find(betza.back()) == std::string::npos
+      || betza.find_first_not_of("RBQfbrlvs") != std::string::npos)
+      return false;
+  const PieceInfo* p = from_betza(betza, "rangeJump");
+  constexpr Direction compass[] = {NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST};
+  directions = 0;
+  for (const auto& entry : p->slider[0][MODALITY_CAPTURE])
+      for (int d = 0; d < 8; ++d)
+          if (entry.first == compass[d]) directions |= uint8_t(1 << d);
+  delete p;
+  return directions != 0;
+}
+
 void PieceMap::init(const Variant* v) {
   clear_all();
   add(PAWN, from_betza("fmWfceF", "pawn"));

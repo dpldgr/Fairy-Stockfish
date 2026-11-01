@@ -2637,6 +2637,66 @@ void Variant::init_promotion_masks() const {
         }
 }
 
+Bitboard RangeJumpGeometry::attacks(Color c, Square from, Bitboard blockers) const {
+    Bitboard result = 0;
+    for (RiderType r = riders; r;) result |= rider_attacks_bb(pop_rider(&r), from, blockers);
+    return result & rays[c][from];
+}
+
+void Variant::resolve_range_jumps() {
+    rangeJumpTypes = NO_PIECE_SET;
+    rangeJumpGeometries.clear();
+    rangeJumpGroups.clear();
+    constexpr int df[] = {0,1,1,1,0,-1,-1,-1}, dr[] = {1,1,0,-1,-1,-1,0,1};
+    for (PieceSet ps = pieceTypes; ps;)
+    {
+        PieceType pt = pop_lsb(ps);
+        auto& spec = rangeJump[pt];
+        if (!spec.directions) { spec.group = spec.geometry = 0; continue; }
+        rangeJumpTypes |= pt;
+        size_t g = 0;
+        while (g < rangeJumpGeometries.size() && rangeJumpGeometries[g].directions != spec.directions) ++g;
+        if (g == rangeJumpGeometries.size())
+        {
+            RangeJumpGeometry geometry;
+            geometry.directions = spec.directions;
+            if (spec.directions & 0xAA) geometry.riders |= RIDER_BISHOP;
+            if (spec.directions & 0x11) geometry.riders |= RIDER_ROOK_V;
+            if (spec.directions & 0x44) geometry.riders |= RIDER_ROOK_H;
+            for (Color c : {WHITE, BLACK})
+                for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+                {
+                    Bitboard mask = 0;
+                    for (int d = 0; d < 8; ++d)
+                        if (spec.directions & (1 << d))
+                        {
+                            int actual = (d + (c == BLACK ? 4 : 0)) % 8;
+                            for (int f = file_of(from) + df[actual], r = rank_of(from) + dr[actual];
+                                 f >= 0 && f <= maxFile && r >= 0 && r <= maxRank; f += df[actual], r += dr[actual])
+                                mask |= Bitboard(1) << int(make_square(File(f), Rank(r)));
+                        }
+                    geometry.rays[c][from] = mask;
+                }
+            rangeJumpGeometries.push_back(geometry);
+        }
+        spec.geometry = uint16_t(g + 1);
+        PieceSet blockers = spec.blockers & ALL_PIECES ? pieceTypes : spec.blockers;
+        g = 0;
+        while (g < rangeJumpGroups.size() && rangeJumpGroups[g].blockers != blockers) ++g;
+        if (g == rangeJumpGroups.size())
+        {
+            RangeJumpGroup group;
+            group.blockers = blockers;
+            for (PieceSet remaining = blockers; remaining;) group.blockerTypes.push_back(pop_lsb(remaining));
+            rangeJumpGroups.push_back(group);
+        }
+        rangeJumpGroups[g].sources |= pt;
+        rangeJumpGroups[g].sourceTypes.push_back(pt);
+        spec.group = uint16_t(g + 1);
+    }
+    hasRangeJump = bool(rangeJumpTypes);
+}
+
 Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard walls) const {
     Bitboard board = board_size_bb(maxFile, maxRank) & ~walls;
     Bitboard area = mobilityRegion[c][pt] ? board & mobilityRegion[c][pt] : board;
@@ -2661,6 +2721,8 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
         PieceType movePt = pt == KING ? kingType : pt;
         Bitboard targets = potential(movePt, from);
         if (tenjikuTripleStepPieceTypes & pt) targets |= PseudoAttacks[c][KING][from];
+        if (rangeJump[pt].geometry)
+            targets |= rangeJumpGeometries[rangeJump[pt].geometry - 1].attacks(c, from, walls);
         if (doubleStepRegion[c] & from)
             targets |= walls ? moves_bb<true>(c, movePt, from, walls)
                              : PseudoMoves[1][c][movePt][from];
@@ -2998,6 +3060,7 @@ Variant* Variant::conclude() {
                         lionEffectivePathMask[c][pt][from] |= 1ULL << path;
     }
 
+    resolve_range_jumps();
     hasBurn = bool(burnActivePieceTypes || burnPassivePieceTypes);
 
     // Determine optimizations
@@ -3012,12 +3075,12 @@ Variant* Variant::conclude() {
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn;
+                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasRangeJump;
     fastAttacks2 =  !(pieceTypes & ~(SHOGI_PIECES | COMMON_STEP_PIECES))
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn;
+                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasRangeJump;
 
     // Initialize calculated NNUE properties
     nnueKing =  pieceTypes & KING ? KING
@@ -3122,7 +3185,7 @@ Variant* Variant::conclude() {
                     && !hasLionDog
                    )
                  ? endgameEval : NO_EG_EVAL;
-    if (baringRule || hasBurn || tenjikuTripleStepPieceTypes)
+    if (baringRule || hasBurn || tenjikuTripleStepPieceTypes || hasRangeJump)
         endgameEval = NO_EG_EVAL;
 
     shogiStylePromotions = false;
@@ -3265,6 +3328,7 @@ void VariantMap::add(std::string s, Variant* v, bool configured) {
   if (v->maxFile <= FILE_MAX && v->maxRank <= RANK_MAX)
   {
       v->conclude();
+      if (!v->rangeJumpConfigurationValid) { delete v; return; }
       if (!WIDE_MOVES && v->tenjikuTripleStepPieceTypes)
       {
           std::cerr << "tenjikuTripleStepPieceTypes - Requires a 64-bit move build (e.g. board_files=16 board_ranks=16): " << s << std::endl;

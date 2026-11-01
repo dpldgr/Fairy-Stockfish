@@ -48,6 +48,9 @@ struct PieceMap : public std::map<PieceType, const PieceInfo*> {
 
 extern PieceMap pieceMap;
 
+// Validate the ray-only subset accepted by rangeJumpPieces.
+bool range_jump_directions(const std::string& betza, uint8_t& directions);
+
 inline std::string piece_name(PieceType pt) {
   return is_custom(pt) ? "customPiece" + std::to_string(pt - CUSTOM_PIECES + 1)
                        : pieceMap.find(pt)->second->name;

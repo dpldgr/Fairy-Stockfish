@@ -79,7 +79,7 @@ namespace Eval {
     useNNUE = Options["Use NNUE"];
     const Variant* v = variants.find(string(Options["UCI_Variant"]))->second;
     // Wider type catalogues do not enlarge the network's feature storage.
-    useNNUE = useNNUE && !v->hasBurn && v->nnueDimensions <= int(FeatureSet::Dimensions)
+    useNNUE = useNNUE && !v->hasBurn && !v->hasRangeJump && v->nnueDimensions <= int(FeatureSet::Dimensions)
                       && v->nnueMaxPieces <= int(FeatureSet::MaxActiveDimensions);
     if (!useNNUE)
         return;
@@ -462,7 +462,8 @@ namespace {
         Square s = pop_lsb(b1);
 
         // Find attacked squares, including x-ray attacks for bishops and rooks
-        b = Pt == BISHOP ? attacks_bb<BISHOP>(s, pos.pieces() ^ pos.pieces(QUEEN))
+        b = pos.variant()->hasRangeJump && pos.variant()->rangeJump[Pt].geometry ? pos.attacks_from(Us, Pt, s)
+          : Pt == BISHOP ? attacks_bb<BISHOP>(s, pos.pieces() ^ pos.pieces(QUEEN))
           : Pt ==   ROOK && !pos.diagonal_lines() ? attacks_bb<  ROOK>(s, pos.pieces() ^ pos.pieces(QUEEN) ^ pos.pieces(Us, ROOK))
                          : pos.attacks_from(Us, Pt, s);
 

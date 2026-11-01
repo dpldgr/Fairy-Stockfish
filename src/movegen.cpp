@@ -587,7 +587,7 @@ namespace {
   }
 
   template<Color Us, GenType Type>
-  ExtMove* generate_moves(const Position& pos, ExtMove* moveList, PieceType Pt, Bitboard target) {
+  ExtMove* generate_moves(const Position& pos, ExtMove* moveList, PieceType Pt, Bitboard target, const RangeJumpContext* range) {
 
     assert(Pt != KING && Pt != PAWN);
 
@@ -597,7 +597,7 @@ namespace {
     {
         Square from = pop_lsb(bb);
 
-        Bitboard attacks = pos.attacks_from(Us, Pt, from) & ~pos.prohibited_capture_targets(Us, Pt);
+        Bitboard attacks = pos.attacks_from(Us, Pt, from, range) & ~pos.prohibited_capture_targets(Us, Pt);
         Bitboard quiets = pos.moves_from(Us, Pt, from);
         Bitboard b = (  (attacks & pos.pieces())
                        | (quiets & ~pos.pieces()));
@@ -671,7 +671,7 @@ namespace {
 
 
   template<Color Us, GenType Type>
-  ExtMove* generate_all(const Position& pos, ExtMove* moveList) {
+  ExtMove* generate_all(const Position& pos, ExtMove* moveList, const RangeJumpContext* range = nullptr) {
 
     static_assert(Type != LEGAL, "Unsupported type in generate_all()");
 
@@ -703,7 +703,7 @@ namespace {
 
         moveList = generate_pawn_moves<Us, Type>(pos, moveList, target);
         for (PieceSet ps = pos.piece_types() & ~(piece_set(PAWN) | KING); ps;)
-            moveList = generate_moves<Us, Type>(pos, moveList, pop_lsb(ps), target);
+            moveList = generate_moves<Us, Type>(pos, moveList, pop_lsb(ps), target, range);
         // generate drops
         if (pos.piece_drops() && Type != CAPTURES && (pos.can_drop(Us, ALL_PIECES) || pos.two_boards()))
             for (PieceSet ps = pos.piece_types(); ps;)
@@ -754,7 +754,7 @@ namespace {
     // King moves
     if (pos.count<KING>(Us) && (!Checks || pos.blockers_for_king(~Us) & ksq))
     {
-        Bitboard b = (  ((pos.attacks_from(Us, KING, ksq) & ~pos.prohibited_capture_targets(Us, KING)) & pos.pieces())
+        Bitboard b = (  ((pos.attacks_from(Us, KING, ksq, range) & ~pos.prohibited_capture_targets(Us, KING)) & pos.pieces())
                       | (pos.moves_from(Us, KING, ksq) & ~pos.pieces())) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
         while (b)
             moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, ksq, pop_lsb(b));
@@ -779,11 +779,48 @@ namespace {
                                                          Type == EVASIONS ? pos.board_bb() : target);
         }
 
+    // Native pawns have a specialised generator; add their extra capture rays
+    // here and reuse the ordinary promotion pipeline. Other types merged the
+    // additional targets into their capture bitboards above.
+    if constexpr (Type == NON_EVASIONS)
+        if (range && pos.variant()->rangeJump[PAWN].geometry)
+            for (Bitboard pawns = pos.pieces(Us, PAWN); pawns;)
+            {
+                Square from = pop_lsb(pawns);
+                Bitboard targets = pos.range_jump_attacks(Us, PAWN, from, range) & pos.pieces(~Us)
+                                 & ~pawn_attacks_bb(Us, from) & ~pos.prohibited_capture_targets(Us, PAWN);
+                while (targets)
+                {
+                    Square to = pop_lsb(targets);
+                    ExtMove alternatives[PIECE_TYPE_NB + 3];
+                    ExtMove* end = append_path_promotion(pos, alternatives, make_move(from, to), PAWN);
+                    for (ExtMove* cur = alternatives; cur != end; ++cur)
+                        switch (type_of(*cur))
+                        {
+                        case PROMOTION:
+                            moveList = make_move_and_gating<PROMOTION>(pos, moveList, Us, from, to, promotion_type(*cur)); break;
+                        case PIECE_PROMOTION:
+                            moveList = make_move_and_gating<PIECE_PROMOTION>(pos, moveList, Us, from, to); break;
+                        case PIECE_DEMOTION:
+                            moveList = make_move_and_gating<PIECE_DEMOTION>(pos, moveList, Us, from, to); break;
+                        default:
+                            moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, from, to); break;
+                        }
+                }
+            }
+
     if constexpr (Type == NON_EVASIONS)
         if (pos.variant()->tenjikuTripleStepPieceTypes)
             moveList = generate_area_moves<Us>(pos, moveList, ordinaryBegin, moveList);
 
     return moveList;
+  }
+
+  template<Color Us>
+  ExtMove* generate_range_moves(const Position& pos, ExtMove* list) {
+    AttackView view(pos);
+    RangeJumpContext range(view);
+    return generate_all<Us, NON_EVASIONS>(pos, list, &range);
   }
 
 } // namespace
@@ -807,10 +844,11 @@ ExtMove* generate(const Position& pos, ExtMove* moveList) {
 
   Color us = pos.side_to_move();
 
-  if (pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes)
+  if (pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes || pos.variant()->hasRangeJump)
   {
-      ExtMove* end = us == WHITE ? generate_all<WHITE, NON_EVASIONS>(pos, moveList)
-                                : generate_all<BLACK, NON_EVASIONS>(pos, moveList);
+      ExtMove* end = pos.variant()->hasRangeJump
+                   ? (us == WHITE ? generate_range_moves<WHITE>(pos, moveList) : generate_range_moves<BLACK>(pos, moveList))
+                   : (us == WHITE ? generate_all<WHITE, NON_EVASIONS>(pos, moveList) : generate_all<BLACK, NON_EVASIONS>(pos, moveList));
       if constexpr (Type == CAPTURES || Type == QUIETS || Type == QUIET_CHECKS)
       {
           ExtMove* out = moveList;

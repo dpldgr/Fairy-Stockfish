@@ -114,6 +114,8 @@ typedef std::unique_ptr<std::deque<StateInfo>> StateListPtr;
 /// do_move() and undo_move(), used by the search to update node info when
 /// traversing the search tree.
 class Thread;
+struct AttackView;
+struct RangeJumpContext;
 
 class Position {
 public:
@@ -299,7 +301,10 @@ public:
   Bitboard attackers_to(Square s, Bitboard occupied) const;
   Bitboard attackers_to(Square s, Bitboard occupied, Color c) const;
   Bitboard attackers_to(Square s, Bitboard occupied, Color c, Bitboard janggiCannons) const;
-  Bitboard attacks_from(Color c, PieceType pt, Square s) const;
+  Bitboard attacks_from(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
+  Bitboard range_jump_attacks(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
+  Bitboard attackers_to_view(Square s, Color c, const AttackView& view) const;
+  AttackView move_attack_view(Move m) const;
   Bitboard moves_from(Color c, PieceType pt, Square s) const;
   Bitboard slider_blockers(Bitboard sliders, Square s, Bitboard& pinners, Color c) const;
 
@@ -313,9 +318,9 @@ public:
   Value capture_value(Move m) const;
   size_t area_move_capacity() const;
   size_t move_capacity() const { return var->tenjikuTripleStepPieceTypes ? MAX_MOVES + area_move_capacity() : MAX_MOVES; }
-  Bitboard area_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE) const;
+  Bitboard area_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE, const AttackView* view = nullptr) const;
   Bitboard burn_attackers_to(Square s, Bitboard occupied, Color c) const;
-  bool burn_attacks_square(Color c, PieceType pt, Square from, Square target, Bitboard occupied) const;
+  bool burn_attacks_square(Color c, PieceType pt, Square from, Square target, Bitboard occupied, const AttackView* view = nullptr) const;
   bool prohibited_capture(Move m) const;
   bool trading_rule_legal(Move m) const;
   bool geometrically_recapturable_after(Move m) const;
@@ -324,7 +329,7 @@ public:
   uint64_t lion_move_mask(Color c, PieceType pt, Square from) const;
   bool has_lion_move(Color c, PieceType pt) const;
   uint32_t lion_dog_mask(Color c, PieceType pt, Square from) const;
-  Bitboard multi_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE) const;
+  Bitboard multi_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE, const AttackView* view = nullptr) const;
   int move_path(Move m, Square (&squares)[3]) const;
   Bitboard path_capture_squares(Move m) const;
   const std::vector<HookMoveSpec>& hook_move_specs(PieceType pt) const;
@@ -435,6 +440,36 @@ private:
   void drop_piece(Piece pc_hand, Piece pc_drop, Square s);
   void undrop_piece(Piece pc_hand, Square s);
   Bitboard find_drop_region(Direction dir, Square s, Bitboard occupied) const;
+};
+
+// A local typed overlay for attack queries. It does not mutate Position or
+// retain cached information across moves. Only added squares need array values.
+struct AttackView {
+  const Position& pos;
+  Bitboard occupied, walls, removed = 0, added = 0;
+  Piece placements[SQUARE_NB];
+  explicit AttackView(const Position& p) : pos(p), occupied(p.pieces()), walls(p.state()->wallSquares) {}
+  AttackView(const AttackView& other) : pos(other.pos), occupied(other.occupied), walls(other.walls), removed(other.removed), added(other.added) {
+    for (Bitboard b = added; b;) { Square s = pop_lsb(b); placements[s] = other.placements[s]; }
+  }
+  void erase(Square s) { removed |= s; added -= s; occupied -= s; }
+  void put(Piece pc, Square s) { erase(s); placements[s] = pc; added |= s; occupied |= s; }
+  Piece piece_on(Square s) const;
+  Bitboard pieces(PieceType pt) const;
+  Bitboard pieces(Color c) const;
+  Bitboard pieces(Color c, PieceType pt) const { return pieces(c) & pieces(pt); }
+  Bitboard board_bb(Color c, PieceType pt) const;
+};
+
+// Scratch maps for one generation/attack operation. No arrays are initialized
+// for absent groups, and ordinary variants never construct this object.
+struct RangeJumpContext {
+  const AttackView& view;
+  Bitboard masks[PIECE_TYPE_NB];
+  uint64_t ready[PIECE_SET_WORDS] = {};
+  explicit RangeJumpContext(const AttackView& board);
+  Bitboard blockers(size_t group) const;
+  Bitboard attacks(Color c, PieceType pt, Square from) const;
 };
 
 std::string shuffle_position(const Variant* v, uint64_t seed, Thread* th);
@@ -1395,7 +1430,7 @@ inline Square Position::castling_rook_square(CastlingRights cr) const {
   return castlingRookSquare[cr];
 }
 
-inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s) const {
+inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s, const RangeJumpContext* range) const {
   if (var->fastAttacks || var->fastAttacks2)
       return attacks_bb(c, pt, s, byTypeBB[ALL_PIECES]) & board_bb();
 
@@ -1422,6 +1457,7 @@ inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s) const {
               & ~pieces(pt)
               & diagonal_lines();
   }
+  if (var->hasRangeJump && var->rangeJump[pt].geometry) b |= range_jump_attacks(c, pt, s, range);
   return b & board_bb(c, pt);
 }
 
