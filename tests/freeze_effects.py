@@ -72,7 +72,7 @@ extinctionCondition = and(fk=0,ik=0)
 pieceDrops = true
 capturesToHand = true
 [range:freeze]
-rangeJumpPieces = r:R:{v}
+rangeJumpPieces = r:cR:{v}
 [trading:mutual]
 tradingRule = fk:[any!,{v}]
 [promote:freeze]

@@ -928,7 +928,7 @@ namespace {
 
     // Step 7. Futility pruning: child node (~50 Elo)
     if (   !PvNode
-        && !pos.variant()->hasFreeze
+        && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
         &&  depth < 9 - 3 * pos.blast_on_capture()
         &&  eval - futility_margin(depth, improving) * (1 + pos.check_counting() + 2 * pos.must_capture() + pos.extinction_single_piece() + !pos.checking_permitted()) >= beta
         &&  eval < VALUE_KNOWN_WIN) // Do not return unproven wins
@@ -945,7 +945,7 @@ namespace {
         &&  pos.non_pawn_material(us)
         &&  pos.count<ALL_PIECES>(~us) != pos.count<PAWN>(~us)
         && !pos.flip_enclosed_pieces()
-        && !pos.baring_rule() && !pos.variant()->hasFreeze // A null move must not consume the baring reply.
+        && !pos.baring_rule() && !pos.variant()->hasFreeze && !pos.variant()->hasMissile // A null move must not consume the baring reply.
         && (ss->ply >= thisThread->nmpMinPly || us != thisThread->nmpColor))
     {
         assert(eval - beta >= 0);
@@ -993,7 +993,7 @@ namespace {
     // If we have a good enough capture and a reduced search returns a value
     // much above beta, we can (almost) safely prune the previous move.
     if (   !PvNode
-        && !pos.variant()->hasFreeze
+        && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
         &&  depth > 4
         &&  abs(beta) < VALUE_TB_WIN_IN_MAX_PLY
         // if value from transposition table is lower than probCutBeta, don't attempt probCut
@@ -1145,7 +1145,7 @@ moves_loop: // When in check, search starts from here
 
       // Step 13. Pruning at shallow depth (~200 Elo)
       if (  !rootNode
-          && !pos.variant()->hasFreeze
+          && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
           && (pos.non_pawn_material(us) || pos.count<ALL_PIECES>(us) == pos.count<PAWN>(us))
           && bestValue > VALUE_TB_LOSS_IN_MAX_PLY)
       {
@@ -1663,7 +1663,7 @@ moves_loop: // When in check, search starts from here
                && pos.piece_on(to_sq(move))
                && (   (pos.extinction_piece_types() & ALL_PIECES)
                    || (pos.extinction_piece_types() & type_of(pos.piece_on(to_sq(move))))))
-          && !pos.baring_rule() && !pos.variant()->hasBurn && !pos.variant()->hasRangeJump && !pos.variant()->hasFreeze
+          && !pos.baring_rule() && !pos.variant()->hasBurn && !pos.variant()->hasRangeJump && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
           &&  futilityBase > -VALUE_KNOWN_WIN
           &&  type_of(move) != PROMOTION)
       {

@@ -2,7 +2,7 @@
 
 The Python tests use the engine's parser, legal move lists, search, notation and
 perft. A separate square-by-square oracle checks both colours and all four
-Tenjiku General configurations on randomized boards. Other cases cover
+capture-only Tenjiku General configurations on randomized boards. Other cases cover
 independent blocker sets and directions, inheritance, Shields, terrain,
 mobility, promotions, trading, native kings and pseudo royals. In particular,
 they check two same-ray checks that can both be stopped by one blocker, and
@@ -48,3 +48,7 @@ g++ -std=c++17 -O2 -g -DIS_64BIT -DUSE_SSE2 -DUSE_PEXT -DUSE_POPCNT \
 For 8×8, change both board dimensions to 8 and omit PEXT/POPCNT defines and
 flags. For the 19×19 portable build, also use `PIECE_TYPE_CAPACITY=512` and
 `ENABLE_GATING=0`.
+
+Jump rows now require an actual intervening piece. Use `cR/cB/cQ` for
+Tenjiku captures only; `R/B/Q` includes quiet jumps, while `mR/mB/mQ`
+permits quiet jumps only. Base piece movement remains independent.

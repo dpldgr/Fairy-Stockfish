@@ -102,7 +102,9 @@ struct DoubleMoveSpec {
 // Geometry and passage restrictions are independent for every configured type.
 struct RangeJumpSpec {
   uint8_t directions = 0;
-  PieceSet blockers = NO_PIECE_SET;
+  bool quiet = true, capture = true;
+  PieceSet friendBlockers = NO_PIECE_SET;
+  PieceSet enemyBlockers = NO_PIECE_SET;
   uint16_t geometry = 0; // Resolved indices plus one, zero disables jumping.
   uint16_t group = 0;
 };
@@ -113,9 +115,11 @@ struct RangeJumpGeometry {
   Bitboard attacks(Color c, Square from, Bitboard blockers) const;
 };
 struct RangeJumpGroup {
-  PieceSet blockers = NO_PIECE_SET;
+  PieceSet friendBlockers = NO_PIECE_SET;
+  PieceSet enemyBlockers = NO_PIECE_SET;
   PieceSet sources = NO_PIECE_SET;
-  std::vector<PieceType> blockerTypes;
+  std::vector<PieceType> blockerTypes, friendBlockerTypes, enemyBlockerTypes;
+  bool colourSpecific = false;
   std::vector<PieceType> sourceTypes;
 };
 
@@ -239,6 +243,9 @@ struct Variant {
   PieceSet burnPassivePieceTypes = NO_PIECE_SET;
   PieceSet tenjikuTripleStepPieceTypes = NO_PIECE_SET;
   bool hasBurn = false;
+  PieceSet missileEffectPieces = NO_PIECE_SET;
+  bool hasMissile = false;
+  bool hasArrivalEffects = false;
   PieceSet freezeEffectPieces = NO_PIECE_SET;
   PieceSet freezeImmunePieces = NO_PIECE_SET;
   PieceSet burnImmunePieces = NO_PIECE_SET;
@@ -388,7 +395,7 @@ struct Variant {
   Bitboard dropRegions[COLOR_NB][PIECE_TYPE_NB] = {};
   int xboardDropRanks[PIECE_TYPE_NB] = {};
   bool xboardDropRegionsCompatible = true;
-  bool xboard_compatible() const { return xboardDropRegionsCompatible && !hasBurn && !tenjikuTripleStepPieceTypes && !hasRangeJump && !hasFreeze; }
+  bool xboard_compatible() const { return xboardDropRegionsCompatible && !hasBurn && !tenjikuTripleStepPieceTypes && !hasRangeJump && !hasFreeze && !hasMissile; }
 
   Variant() {
       pieceToSymbol.resize(PIECE_NB);
@@ -485,6 +492,7 @@ struct Variant {
   }
   void init_promotion_masks() const;
   Bitboard promotion_immobility_mask(Color c, PieceType pt, Bitboard walls) const;
+  Bitboard range_jump_potential(Color c, PieceType pt, Square from, Bitboard walls) const;
   void set_optional_promotion_region(Color c, Bitboard region, PieceType pt = NO_PIECE_TYPE) {
       optionalPromotionRegions[c][pt] = {region, true, true};
       if (pt == NO_PIECE_TYPE)

@@ -14,6 +14,8 @@
 #include "../src/thread.h"
 #include "../src/uci.h"
 #include "../src/variant.h"
+#include "../src/tt.h"
+#include "../src/apiutil.h"
 
 using namespace Stockfish;
 
@@ -61,7 +63,7 @@ static void exercise(const std::string& name, const std::string& fen) {
     MoveList<LEGAL> moves(*p);
     for (Move move : moves)
     {
-        if (!notation && p->capture(move))
+        if ((!notation && p->capture(move)) || type_of(move) == MISSILE)
         {
             for (Protocol protocol : {UCI_GENERAL, USI})
             {
@@ -71,6 +73,15 @@ static void exercise(const std::string& name, const std::string& fen) {
             }
             CurrentProtocol = UCI_GENERAL;
             notation = true;
+        }
+        if (type_of(move) == MISSILE)
+        {
+            assert(p->capture_or_burn(move) && p->capture_or_promotion(move));
+            assert(UCI::move(*p, move).find('!') == std::string::npos);
+            assert(SAN::move_to_san(*p, move, NOTATION_SAN).find('!') == std::string::npos);
+            TTEntry entry{};
+            entry.save(p->key(), VALUE_ZERO, true, BOUND_EXACT, 4, move, VALUE_ZERO);
+            assert(entry.move() == move);
         }
         captures += p->capture(move);
         promotions += type_of(move) == PIECE_PROMOTION || type_of(move) == PROMOTION;
@@ -133,6 +144,45 @@ static void verify_cycle(const std::string& name, bool expected) {
     std::cout << name << ": reversible-move cycle prediction " << expected << std::endl;
 }
 
+static void verify_missile_notation() {
+    const Variant* v = variants.at("state-missile-notation");
+    UCI::init_variant(v); PSQT::init(v);
+    auto p = std::make_unique<Position>(); auto state = std::make_unique<StateInfo>();
+    for (bool capture : {false, true})
+    {
+        p->set(v, capture ? "7k/M2p4/8/3P4/3M4/8/8/7K w - - 0 1"
+                          : "7k/M7/8/3P4/3M4/8/8/7K w - - 0 1", false, state.get(), Threads.main());
+        std::string jumpText = "d4d7", ordinaryText = "a7d7";
+        Move jump = UCI::to_move(*p, jumpText), ordinary = UCI::to_move(*p, ordinaryText);
+        assert(type_of(jump) == MISSILE && type_of(ordinary) == NORMAL);
+        assert(SAN::disambiguation_level(*p, jump, NOTATION_SAN) == SAN::FILE_DISAMBIGUATION);
+        assert(SAN::disambiguation_level(*p, ordinary, NOTATION_SAN) == SAN::FILE_DISAMBIGUATION);
+        assert(SAN::move_to_san(*p, jump, NOTATION_SAN) == (capture ? "Mdxd7" : "Mdd7"));
+        assert(SAN::move_to_san(*p, ordinary, NOTATION_SAN) == (capture ? "Maxd7" : "Mad7"));
+    }
+    std::cout << "Missile and ordinary moves share standard notation with SAN disambiguation" << std::endl;
+}
+
+static void verify_screen_dependent_pins() {
+    const Variant* v = variants.at("state-hybrid");
+    UCI::init_variant(v); PSQT::init(v);
+    auto p = std::make_unique<Position>(); auto state = std::make_unique<StateInfo>();
+    for (bool extraScreen : {false, true})
+    {
+        p->set(v, extraScreen ? "7k/8/8/8/3m4/2n5/1P6/K7 w - - 0 1"
+                              : "7k/8/8/8/3m4/8/1P6/K7 w - - 0 1", false, state.get(), Threads.main());
+        Square b2 = make_square(FILE_B, RANK_2);
+        assert(bool(p->blockers_for_king(WHITE) & b2) == extraScreen);
+        std::string text = "b2b3";
+        assert((UCI::to_move(*p, text) != MOVE_NONE) == !extraScreen);
+    }
+    p->set(v, "7k/8/8/8/N2m4/8/8/K7 w - - 0 1", false, state.get(), Threads.main());
+    assert(!p->checkers());
+    std::string addsScreen = "a4b2";
+    assert(UCI::to_move(*p, addsScreen) == MOVE_NONE); // Would enable a jump against our own king.
+    std::cout << "Pins distinguish removing a hard blocker from removing the last screen" << std::endl;
+}
+
 int main(int argc, char** argv) {
     pieceMap.init(); variants.init(); CommandLine::init(argc, argv); UCI::init(Options);
     PSQT::init(variants.at("chess")); Bitboards::init(); Position::init(); Bitbases::init(); Endgames::init();
@@ -147,7 +197,7 @@ piece = b:B +b:<v>
 piece = p:W
 piece = s:<immobile>
 castling = false
-rangeJumpPieces = g:Q:{k,g} r:R:{k,g,v,r,b,s} v:B:{k,g,v} b:B:{k,g,v,r,b}
+rangeJumpPieces = g:cQ:{k,g} r:cR:{k,g,v,r,b,s} v:cB:{k,g,v} b:cB:{k,g,v,r,b}
 prohibitedCaptures = r:s
 pieceDrops = true
 capturesToHand = true
@@ -161,21 +211,26 @@ promotionPolicy = optional:{iic} mandatory:{}
 commoner = -
 king = k
 extinctionValue = none
-rangeJumpPieces = g:Q:{k,g} r:R:{k,g,v,r,b,s} v:B:{k,g,v} b:B:{k,g,v,r,b}
+rangeJumpPieces = g:cQ:{k,g} r:cR:{k,g,v,r,b,s} v:cB:{k,g,v} b:cB:{k,g,v,r,b}
 [state-native:chess]
-rangeJumpPieces = r:R:{k,r,p}
+rangeJumpPieces = r:cR:{k,r,p}
+[state-hybrid:chess]
+piece = m:R
+rangeJumpPieces = m:cB:{p}
+[state-quiet-pawn:chess]
+rangeJumpPieces = p:mR:{r}
 [state-atomic:nocheckatomic]
-rangeJumpPieces = r:R:{k,r}
+rangeJumpPieces = r:cR:{k,r}
 [state-atomic-check:atomic]
-rangeJumpPieces = r:R:{k,r}
+rangeJumpPieces = r:cR:{k,r}
 [state-petrify:chess]
-rangeJumpPieces = r:R:{k,r}
+rangeJumpPieces = r:cR:{k,r}
 petrifyOnCaptureTypes = r
 [state-wall:chess]
 wallingRule = duck
-rangeJumpPieces = r:R:{k,r}
+rangeJumpPieces = r:cR:{k,r}
 [state-pawn-wall:state-wall]
-rangeJumpPieces = p:R:{k,r}
+rangeJumpPieces = p:cR:{k,r}
 [state-freeze:state]
 piece = i:K
 piece = f:K
@@ -208,11 +263,41 @@ extinctionValue = loss
 extinctionPieceTypes = k
 [cycle-control:freeze-cycle]
 freezeEffectPieces = -
+[state-missile:state]
+rangeJumpPieces = r:cR:{p=enemy,s=friend}
+missileEffectPieces = {r}
+[state-missile-promoted:state-missile]
+missileEffectPieces = {r,g}
+[state-missile-promoted-quiet:state-missile-promoted]
+rangeJumpPieces = g:mQ:{k,g}
+[state-missile-effects:state-missile]
+piece = i:K
+piece = f:K
+freezeEffectPieces = {i}
+freezeImmunePieces = {r,i}
+burnActivePieceTypes = {f}
+burnPassivePieceTypes = {f}
+burnImmunePieces = {r,i,f,p}
+[state-missile-native:chess]
+piece = m:K
+rangeJumpPieces = m:cR:{p=enemy}
+missileEffectPieces = {m}
+[state-missile-pawn:state-native]
+rangeJumpPieces = p:cR:{r=enemy}
+missileEffectPieces = {p}
+[state-missile-quiet:state-missile-native]
+rangeJumpPieces = m:mR:{p=enemy}
+[state-missile-notation:state-missile-native]
+piece = m:R
+rangeJumpPieces = m:R:{p=enemy}
+[state-relative-royal:state-royal]
+rangeJumpPieces = r:cR:{s=enemy}
+
 
 )ini");
     variants.parse_istream<false>(configuration);
 #if ENABLE_GATING
-    std::istringstream gated("[state-gate:seirawan]\nrangeJumpPieces = r:R:{k,r}\n");
+    std::istringstream gated("[state-gate:seirawan]\nrangeJumpPieces = r:cR:{k,r}\n");
     variants.parse_istream<false>(gated);
 #endif
     exercise("state", "7,k/3,p,4/3,P,4/3,p,4/3,R,2,b,1/8/8/7,K w - - 0 1");
@@ -234,6 +319,17 @@ freezeEffectPieces = -
     exercise("state-freeze-royal", "k6r/6,I,1/8/8/8/8/8/7K w - - 0 1");
     exercise("state-freeze-promote", "7,k/8/8/3,P,r,3/8/8/8/7,K w - - 0 1");
     exercise("state-freeze-promote-immune", "7,k/8/4,f,3/3,p,4/3,P,4/8/8/7,K w - - 0 1");
+    exercise("state-missile", "7,k/3,p,P,3/3,p,4/3,P,4/3,R,4/8/8/7,K w - - 0 1");
+    exercise("state-missile-promoted", "7,k/3,p,4/3,+b,4/4,+b,3/3,+R,4/8/8/7,K w - - 0 1");
+    exercise("state-missile-promoted-quiet", "7,k/4,+b,3/3,+b,4/3,P,4/3,+R,4/8/8/7,K w - - 0 1");
+    exercise("state-missile-effects", "7,k/8/3,p,f,3/2,*,1,i,P,2/3,R,4/8/8/7,K w - - 0 1");
+    exercise("state-missile-native", "4k3/8/8/8/1,M,6/1,P,6/8/R,n,2,K,2,R w KQ - 0 1");
+    exercise("state-missile-pawn", "2,p,b,3,k/3,P,P,3/3,P,4/8/8/8/8/7,K w - - 0 1");
+    exercise("state-relative-royal", "7,k/8/8/8/8/8/3,S,4/K,2,v,2,r,1 w - - 0 1");
+    exercise("state-missile-quiet", "4k3/8/3,b,4/8/1,M,P,5/8/8/R,3,K,2,R w KQ - 0 1");
+    exercise("state-quiet-pawn", "7k/8/8/8/2p5/3P4/3P4/7K w - - 0 1");
+    verify_missile_notation();
+    verify_screen_dependent_pins();
     verify_cycle("freeze-cycle", false);
     verify_cycle("cycle-control", true);
     Threads.set(0); variants.clear_all(); pieceMap.clear_all();

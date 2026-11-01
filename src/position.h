@@ -301,13 +301,14 @@ public:
   Bitboard attackers_to(Square s, Bitboard occupied) const;
   Bitboard attackers_to(Square s, Bitboard occupied, Color c) const;
   Bitboard attackers_to(Square s, Bitboard occupied, Color c, Bitboard janggiCannons) const;
-  Bitboard attacks_from(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
+  Bitboard attacks_from(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr, bool includeRange = true) const;
   Bitboard frozen_pieces(Color c) const;
   bool freezing_changed(Move m) const;
   Bitboard range_jump_attacks(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
+  Bitboard range_jump_targets(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
   Bitboard attackers_to_view(Square s, Color c, const AttackView& view) const;
   AttackView move_attack_view(Move m) const;
-  Bitboard moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
+  Bitboard moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr, bool includeRange = true) const;
   Bitboard slider_blockers(Bitboard sliders, Square s, Bitboard& pinners, Color c) const;
 
   // Properties of moves
@@ -316,6 +317,8 @@ public:
   bool virtual_drop(Move m) const;
   bool capture(Move m) const; // Direct captures only (including path captures).
   Bitboard burn_squares(Move m) const;
+  Bitboard removal_squares(Move m) const;
+  bool missile_attacks_square(Color c, PieceType pt, Square from, Square target, const RangeJumpContext& range) const;
   bool capture_or_burn(Move m) const;
   Value capture_value(Move m) const;
   size_t area_move_capacity() const;
@@ -470,11 +473,11 @@ struct AttackView {
 // for absent groups, and ordinary variants never construct this object.
 struct RangeJumpContext {
   const AttackView& view;
-  Bitboard masks[PIECE_TYPE_NB];
-  uint64_t ready[PIECE_SET_WORDS] = {};
+  Bitboard masks[COLOR_NB][PIECE_TYPE_NB];
+  uint64_t ready[COLOR_NB][PIECE_SET_WORDS] = {};
   explicit RangeJumpContext(const AttackView& board);
-  Bitboard blockers(size_t group) const;
-  Bitboard attacks(Color c, PieceType pt, Square from) const;
+  Bitboard blockers(size_t group, Color c) const;
+  Bitboard attacks(Color c, PieceType pt, Square from, bool reverse = false) const;
 };
 
 std::string shuffle_position(const Variant* v, uint64_t seed, Thread* th);
@@ -1436,7 +1439,7 @@ inline Square Position::castling_rook_square(CastlingRights cr) const {
   return castlingRookSquare[cr];
 }
 
-inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s, const RangeJumpContext* range) const {
+inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s, const RangeJumpContext* range, bool includeRange) const {
   if (var->hasFreeze && ((range ? range->view.frozen_pieces(c) : frozen_pieces(c)) & s)) return 0;
   if (var->fastAttacks || var->fastAttacks2)
       return attacks_bb(c, pt, s, byTypeBB[ALL_PIECES]) & board_bb();
@@ -1464,11 +1467,11 @@ inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s, const Ra
               & ~pieces(pt)
               & diagonal_lines();
   }
-  if (var->hasRangeJump && var->rangeJump[pt].geometry) b |= range_jump_attacks(c, pt, s, range);
+  if (includeRange && var->hasRangeJump && var->rangeJump[pt].geometry) b |= range_jump_attacks(c, pt, s, range);
   return b & board_bb(c, pt);
 }
 
-inline Bitboard Position::moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range) const {
+inline Bitboard Position::moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range, bool includeRange) const {
   if (var->hasFreeze && ((range ? range->view.frozen_pieces(c) : frozen_pieces(c)) & s)) return 0;
   if (var->fastAttacks || var->fastAttacks2)
       return moves_bb(c, pt, s, byTypeBB[ALL_PIECES]) & board_bb();
@@ -1499,6 +1502,8 @@ inline Bitboard Position::moves_from(Color c, PieceType pt, Square s, const Rang
               & ~pieces(pt)
               & diagonal_lines();
   }
+  if (includeRange && var->hasRangeJump && var->rangeJump[pt].geometry && var->rangeJump[pt].quiet)
+      b |= range_jump_targets(c, pt, s, range);
   return b & board_bb(c, pt);
 }
 
@@ -1603,7 +1608,7 @@ inline bool Position::is_chess960() const {
 
 inline bool Position::capture_or_promotion(Move m) const {
   assert(is_ok(m));
-  return (var->hasBurn && burn_squares(m)) || type_of(m) == PROMOTION || is_path_promotion(m) || type_of(m) == EN_PASSANT || capture(m);
+  return type_of(m) == MISSILE || (var->hasBurn && burn_squares(m)) || type_of(m) == PROMOTION || is_path_promotion(m) || type_of(m) == EN_PASSANT || capture(m);
 }
 
 inline bool Position::capture(Move m) const {
@@ -1614,7 +1619,7 @@ inline bool Position::capture(Move m) const {
 }
 
 inline bool Position::capture_or_burn(Move m) const {
-  return capture(m) || (var->hasBurn && bool(burn_squares(m)));
+  return capture(m) || type_of(m) == MISSILE || (var->hasBurn && bool(burn_squares(m)));
 }
 
 inline bool Position::prohibited_capture(Move m) const {

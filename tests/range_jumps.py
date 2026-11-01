@@ -13,7 +13,7 @@ DIRECTIONS = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 
 ORDINARY = {'gg': range(8), 'vg': (1, 3, 5, 7), 'rg': (0, 2, 4, 6), 'bg': (1, 3, 5, 7)}
 BLOCKERS = {'gg': {'k', 'gg'}, 'vg': {'k', 'gg', 'vg'},
             'rg': {'k', 'gg', 'vg', 'rg', 'bg'}, 'bg': {'k', 'gg', 'vg', 'rg', 'bg'}}
-SPECS = 'gg:Q:{k,gg} vg:B:{k,gg,vg} rg:R:{k,gg,vg,rg,bg} bg:B:{k,gg,vg,rg,bg}'
+SPECS = 'gg:cQ:{k,gg} vg:cB:{k,gg,vg} rg:cR:{k,gg,vg,rg,bg} bg:cB:{k,gg,vg,rg,bg}'
 
 
 def fen(board, side='w', size=8):
@@ -53,7 +53,7 @@ def oracle(board, mover, side, blockers, jumping=None, prohibited=()):
                 break
             if piece:
                 enemy = piece.isupper() != (side == 'w')
-                if enemy and piece.lower() not in prohibited and ((d in ordinary and ordinary_open) or d in jumping):
+                if enemy and piece.lower() not in prohibited and ((d in ordinary and ordinary_open) or (d in jumping and not ordinary_open)):
                     result.add(origin + to)
                 ordinary_open = False
                 if piece.lower() in blockers and d in jumping:
@@ -96,19 +96,19 @@ startFen = 7,k/8/8/8/3,RG,4/8/8/7,K w - - 0 1
 [clear:generals]
 rangeJumpPieces = -
 [arbitrary:generals]
-rangeJumpPieces = rg:R:{{sh}} bg:B:{{lo}}
+rangeJumpPieces = rg:cR:{{sh}} bg:cB:{{lo}}
 [shield:generals]
-rangeJumpPieces = rg:R:{{sh}}
+rangeJumpPieces = rg:cR:{{sh}}
 prohibitedCaptures = rg:sh
 [transparent-shield:shield]
-rangeJumpPieces = rg:R:{{}}
+rangeJumpPieces = rg:cR:{{}}
 [forward:generals]
-rangeJumpPieces = rg:fR:{{k,gg}}
+rangeJumpPieces = rg:cfR:{{k,gg}}
 [hybrid:generals]
-rangeJumpPieces = rg:B:{{sh}}
+rangeJumpPieces = rg:cB:{{sh}}
 [capture-only:generals]
 piece = rg:cR
-rangeJumpPieces = rg:R:{{sh}}
+rangeJumpPieces = rg:cR:{{sh}}
 [promote:generals]
 promotionRegionMandatoryWhite = *
 promotionRegionMandatoryBlack = *
@@ -119,7 +119,7 @@ king = k
 extinctionValue = none
 rangeJumpPieces = {SPECS}
 [royal-shield:royal]
-rangeJumpPieces = rg:R:{{k,sh,gg}} gg:Q:{{k,gg}}
+rangeJumpPieces = rg:cR:{{k,sh,gg}} gg:cQ:{{k,gg}}
 [royal-promote:royal]
 promotedPieceType = lo:gg
 promotionRegionMandatoryWhite = *
@@ -130,9 +130,9 @@ burnActivePieceTypes = {{fd}}
 prohibitedCaptures = fd:k
 mobilityRegionWhiteCustomPiece6 = d4 d5
 [castle:chess]
-rangeJumpPieces = r:R:{{k,r}}
+rangeJumpPieces = r:cR:{{k,r}}
 [trading:generals]
-rangeJumpPieces = rg:R:{{k,sh,gg,vg,rg,bg}}
+rangeJumpPieces = rg:cR:{{k,sh,gg,vg,rg,bg}}
 tradingRule = lo:[any!,{{sh}}]
 [no-trade:generals]
 tradingRule = lo:[any,{{sh}}]
@@ -143,7 +143,7 @@ promotionPawnTypes = p
 promotionPieceTypes = q
 promotionRegionMandatoryWhite = *8
 promotionPolicy = optional:{{}} mandatory:{{oi}}
-rangeJumpPieces = p:R:{{sh}}
+rangeJumpPieces = p:cR:{{sh}}
 [pseudo:generals]
 extinctionPseudoRoyal = true
 [pseudo-expression:pseudo]
@@ -168,17 +168,17 @@ extinctionCondition = k=0
         self.assertIn('Nodes searched:', out)
         return re.findall(r'^(\S+): \d+$', out, re.M)
 
-    def final(self, variant, board, move):
-        out = self.output(variant, board, moves=move, depth=2)
+    def final(self, variant, board, move, config=None):
+        out = self.output(variant, board, moves=move, depth=2, config=config)
         position = re.search(r'^Fen: (.+)', out, re.M).group(1)
         key = re.search(r'^Key: (\S+)', out, re.M).group(1)
-        fresh = self.output(variant, position)
+        fresh = self.output(variant, position, config=config)
         self.assertEqual(key, re.search(r'^Key: (\S+)', fresh, re.M).group(1))
         return position
 
     def test_valid_parser_and_whitespace(self):
         path = Path(self.temp.name) / 'spaces.ini'
-        path.write_text(self.config.read_text() + '\n[spaces:generals]\nrangeJumpPieces = rg : R : { k, sh, gg }   bg:B:{}\n')
+        path.write_text(self.config.read_text() + '\n[spaces:generals]\nrangeJumpPieces = rg : R : { k, sh, gg }   bg:cB:{}\n')
         out = subprocess.run([self.engine, 'check', str(path)], input='quit\n', text=True, capture_output=True, timeout=120)
         self.assertEqual(out.returncode, 0)
         self.assertNotIn(' - ', out.stderr)
@@ -245,7 +245,7 @@ extinctionCondition = k=0
 
     def test_jump_geometry_is_independent_of_base_movement(self):
         self.assertNotIn('d4e5', self.moves('hybrid', {'d4': 'RG'}))
-        self.assertIn('d4e5', self.moves('hybrid', {'d4': 'RG', 'e5': 'lo'}))
+        self.assertNotIn('d4e5', self.moves('hybrid', {'d4': 'RG', 'e5': 'lo'})) # No screen for the added diagonal jump.
         self.assertIn('d4f6', self.moves('hybrid', {'d4': 'RG', 'e5': 'LO', 'f6': 'lo'}))
         self.assertNotIn('d4f4', self.moves('capture-only', {'d4': 'RG'}))
         self.assertIn('d4f4', self.moves('capture-only', {'d4': 'RG', 'e4': 'lo', 'f4': 'lo'}))
@@ -352,7 +352,7 @@ customPiece1 = lo:W
 customPiece{slots - 40} = sh:K
 customPiece{slots - 39} = hx:R
 castling = false
-rangeJumpPieces = hx:R:{{sh}}
+rangeJumpPieces = hx:cR:{{sh}}
 prohibitedCaptures = hx:sh
 extinctionValue = loss
 extinctionPseudoRoyal = false
@@ -376,7 +376,7 @@ extinctionPieceTypes = k
         self.assertNotIn('j10j18', self.moves('high', fen(board, size=19), config=path))
         # Full-width diagonal traverses all six bitboard words, with the
         # high-slot blocker added only in the second position.
-        path.write_text(path.read_text() + '\n[diagonal:high]\nrangeJumpPieces = hx:B:{sh}\n')
+        path.write_text(path.read_text() + '\n[diagonal:high]\nrangeJumpPieces = hx:cB:{sh}\n')
         board = {'s1': 'K', 's19': 'k', 'a1': 'HX', 'b2': 'LO', 'r18': 'lo'}
         self.assertIn('a1r18', self.moves('diagonal', fen(board, size=19), config=path))
         board['q17'] = 'sh'
