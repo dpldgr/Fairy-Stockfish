@@ -414,6 +414,48 @@ extinctionPieceTypes = k
             finally:
                 timer.cancel()
 
+    def test_search_keeps_quiet_general_extinction_threat(self):
+        if (int(os.environ.get('BOARD_SIZE', '8')) < 16
+                or int(os.environ.get('PIECE_SLOTS', '64')) < 128):
+            self.skipTest('Tenjiku search fixture needs 16x16 and at least 128 slots')
+
+        config = Path(__file__).with_name('fixtures') / 'tenjiku-range-search.ini'
+        cases = (
+            ('c3b2 l11l10', 'depth 4 searchmoves h4h14', -2, 'h4h14 i13h14'),
+            ('c3b2 l11l10 h4h14', 'depth 3', 2, 'i13h14'),
+        )
+        for moves, go, mate, pv in cases:
+            with self.subTest(moves=moves):
+                with subprocess.Popen([self.engine, 'load', str(config)], stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as engine:
+                    timer = threading.Timer(90, engine.kill)
+                    timer.start()
+                    try:
+                        engine.stdin.write('setoption name Threads value 1\n'
+                                           'setoption name Hash value 16\n'
+                                           'setoption name Use NNUE value false\n'
+                                           'setoption name UCI_Variant value tenjiku-search\n'
+                                           f'position startpos moves {moves}\ngo {go}\n')
+                        engine.stdin.flush()
+                        output = []
+                        for line in engine.stdout:
+                            output.append(line)
+                            if line.startswith('bestmove'):
+                                break
+                        if engine.poll() is None:
+                            engine.stdin.write('quit\n')
+                            engine.stdin.flush()
+                        engine.wait(timeout=10)
+                        text = ''.join(output)
+                        self.assertEqual(engine.returncode, 0, text)
+                        self.assertIn('bestmove ', text)
+                        info = [line for line in output if line.startswith('info depth')][-1]
+                        self.assertIn(f' score mate {mate} ', info)
+                        self.assertIn(f' pv {pv} ', info)
+                        self.assertIn('h14h1', info)
+                    finally:
+                        timer.cancel()
+
 
 if __name__ == '__main__':
     unittest.main()
