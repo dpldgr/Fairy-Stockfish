@@ -598,7 +598,7 @@ namespace {
         Square from = pop_lsb(bb);
 
         Bitboard attacks = pos.attacks_from(Us, Pt, from, range) & ~pos.prohibited_capture_targets(Us, Pt);
-        Bitboard quiets = pos.moves_from(Us, Pt, from);
+        Bitboard quiets = pos.moves_from(Us, Pt, from, range);
         Bitboard b = (  (attacks & pos.pieces())
                        | (quiets & ~pos.pieces()));
         Bitboard b1 = b & target;
@@ -755,7 +755,7 @@ namespace {
     if (pos.count<KING>(Us) && (!Checks || pos.blockers_for_king(~Us) & ksq))
     {
         Bitboard b = (  ((pos.attacks_from(Us, KING, ksq, range) & ~pos.prohibited_capture_targets(Us, KING)) & pos.pieces())
-                      | (pos.moves_from(Us, KING, ksq) & ~pos.pieces())) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
+                      | (pos.moves_from(Us, KING, ksq, range) & ~pos.pieces())) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
         while (b)
             moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, ksq, pop_lsb(b));
 
@@ -844,11 +844,21 @@ ExtMove* generate(const Position& pos, ExtMove* moveList) {
 
   Color us = pos.side_to_move();
 
-  if (pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes || pos.variant()->hasRangeJump)
+  if (pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes || pos.variant()->hasRangeJump || pos.variant()->hasFreeze)
   {
-      ExtMove* end = pos.variant()->hasRangeJump
+      ExtMove* end = (pos.variant()->hasRangeJump || pos.variant()->hasFreeze)
                    ? (us == WHITE ? generate_range_moves<WHITE>(pos, moveList) : generate_range_moves<BLACK>(pos, moveList))
                    : (us == WHITE ? generate_all<WHITE, NON_EVASIONS>(pos, moveList) : generate_all<BLACK, NON_EVASIONS>(pos, moveList));
+      if (pos.variant()->hasFreeze)
+      {
+          Bitboard frozen = pos.frozen_pieces(us);
+          ExtMove* out = moveList;
+          for (ExtMove* cur = moveList; cur != end; ++cur)
+              if (type_of(*cur) == DROP || (!(frozen & from_sq(*cur))
+                  && !(type_of(*cur) == CASTLING && (frozen & to_sq(*cur)))))
+                  *out++ = Move(*cur);
+          end = out;
+      }
       if constexpr (Type == CAPTURES || Type == QUIETS || Type == QUIET_CHECKS)
       {
           ExtMove* out = moveList;
@@ -856,7 +866,7 @@ ExtMove* generate(const Position& pos, ExtMove* moveList) {
           {
               bool tactical = pos.capture_or_promotion(*cur);
               if ((Type == CAPTURES && tactical) || (Type == QUIETS && !tactical)
-                  || (Type == QUIET_CHECKS && !tactical && pos.gives_check(*cur)))
+                  || (Type == QUIET_CHECKS && !tactical && (pos.gives_check(*cur) || pos.freezing_changed(*cur))))
                   *out++ = Move(*cur);
           }
           return out;

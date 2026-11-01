@@ -28,6 +28,7 @@ static void verify_fresh(const Position& p) {
     if (!p.seirawan_gating()) assert(p.material_key() == fresh->material_key());
     assert(p.psq_score() == fresh->psq_score());
     assert(p.checkers() == fresh->checkers());
+    for (Color c : {WHITE, BLACK}) assert(p.frozen_pieces(c) == fresh->frozen_pieces(c));
     for (Color c : {WHITE, BLACK})
     {
         assert(p.non_pawn_material(c) == fresh->non_pawn_material(c));
@@ -78,6 +79,7 @@ static void exercise(const std::string& name, const std::string& fen) {
         assert(p->pseudo_legal(move));
         AttackView expected = p->move_attack_view(move);
         Bitboard expectedAttacks[COLOR_NB][SQUARE_NB];
+        Bitboard expectedFrozen[COLOR_NB] = {expected.frozen_pieces(WHITE), expected.frozen_pieces(BLACK)};
         // Compute all queries while the base board is still the original one.
         for (Color c : {WHITE, BLACK})
             for (Bitboard targets = board_size_bb(v->maxFile, v->maxRank); targets;)
@@ -89,6 +91,7 @@ static void exercise(const std::string& name, const std::string& fen) {
         p->do_move(move, *next);
         assert(check == bool(p->checkers()));
         assert(expected.occupied == p->pieces());
+        for (Color c : {WHITE, BLACK}) assert(expectedFrozen[c] == p->frozen_pieces(c));
         assert(expected.walls == p->state()->wallSquares);
         // After making the move, inspect stored placements/removals directly;
         // expected.pos now refers to the changed board and is not queried again.
@@ -110,6 +113,24 @@ static void exercise(const std::string& name, const std::string& fen) {
     }
     std::cout << name << ": " << moves.size() << " moves, " << captures << " captures, " << promotions
               << " promotions, " << castles << " castles, " << drops << " drops" << std::endl;
+}
+
+static void verify_cycle(const std::string& name, bool expected) {
+    const Variant* v = variants.at(name);
+    UCI::init_variant(v); PSQT::init(v);
+    auto p = std::make_unique<Position>();
+    std::deque<StateInfo> states(1);
+    p->set(v, "7,k/7,l/8/1,i,6/8/8/8/R,6,K b - - 0 1", false, &states.back(), Threads.main());
+    for (std::string text : {"h7h6h7", "a1a4", "h7h6h7"})
+    {
+        Move move = UCI::to_move(*p, text);
+        assert(move != MOVE_NONE);
+        states.emplace_back(); p->do_move(move, states.back());
+    }
+    assert(p->has_game_cycle(4) == expected);
+    std::string reverse = "a4a1";
+    assert((UCI::to_move(*p, reverse) != MOVE_NONE) == expected);
+    std::cout << name << ": reversible-move cycle prediction " << expected << std::endl;
 }
 
 int main(int argc, char** argv) {
@@ -155,6 +176,39 @@ wallingRule = duck
 rangeJumpPieces = r:R:{k,r}
 [state-pawn-wall:state-wall]
 rangeJumpPieces = p:R:{k,r}
+[state-freeze:state]
+piece = i:K
+piece = f:K
+freezeEffectPieces = {i}
+freezeImmunePieces = {i}
+burnActivePieceTypes = {f}
+burnPassivePieceTypes = {f}
+burnImmunePieces = {i}
+[state-freeze-royal:state-native]
+piece = i:K
+freezeEffectPieces = {i}
+[state-freeze-mutual:state-freeze]
+freezeImmunePieces = {}
+[state-freeze-promote:state-freeze]
+promotedPieceType = p:i
+promotionRegionMandatoryWhite<p> = *
+promotionPolicy = optional:{} mandatory:{oi,iiq,iic}
+[state-freeze-promote-immune:state-freeze-promote]
+burnImmunePieces = {p}
+[freeze-cycle:chess]
+king = -
+commoner = k
+piece = i:K
+piece = l:KNAD
+lionMovePieces = l:FFFFFFFFFFFFFFFF
+freezeEffectPieces = {i}
+freezeImmunePieces = {i}
+castling = false
+extinctionValue = loss
+extinctionPieceTypes = k
+[cycle-control:freeze-cycle]
+freezeEffectPieces = -
+
 )ini");
     variants.parse_istream<false>(configuration);
 #if ENABLE_GATING
@@ -175,6 +229,13 @@ rangeJumpPieces = p:R:{k,r}
 #endif
     exercise("state-wall", variants.at("state-wall")->startFen);
     exercise("state-pawn-wall", "7k/8/8/8/3Pp1p1/8/8/7K w - - 0 1");
+    exercise("state-freeze", "7,k/8/4,f,3/3,R,4/3,I,4/8/8/7,K[P] w - - 0 1");
+    exercise("state-freeze-mutual", "7,k/8/8/3,i,4/2,r,I,4/8/8/7,K w - - 0 1");
+    exercise("state-freeze-royal", "k6r/6,I,1/8/8/8/8/8/7K w - - 0 1");
+    exercise("state-freeze-promote", "7,k/8/8/3,P,r,3/8/8/8/7,K w - - 0 1");
+    exercise("state-freeze-promote-immune", "7,k/8/4,f,3/3,p,4/3,P,4/8/8/7,K w - - 0 1");
+    verify_cycle("freeze-cycle", false);
+    verify_cycle("cycle-control", true);
     Threads.set(0); variants.clear_all(); pieceMap.clear_all();
     std::cout << "Range-jump hypothetical geometry, state and undo passed" << std::endl;
 }
