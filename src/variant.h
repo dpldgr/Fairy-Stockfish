@@ -99,6 +99,26 @@ struct DoubleMoveSpec {
   bool outwardOnly = false;
 };
 
+// Geometry and passage restrictions are independent for every configured type.
+struct RangeJumpSpec {
+  uint8_t directions = 0;
+  PieceSet blockers = NO_PIECE_SET;
+  uint16_t geometry = 0; // Resolved indices plus one, zero disables jumping.
+  uint16_t group = 0;
+};
+struct RangeJumpGeometry {
+  uint8_t directions = 0;
+  RiderType riders = NO_RIDER;
+  Bitboard rays[COLOR_NB][SQUARE_NB];
+  Bitboard attacks(Color c, Square from, Bitboard blockers) const;
+};
+struct RangeJumpGroup {
+  PieceSet blockers = NO_PIECE_SET;
+  PieceSet sources = NO_PIECE_SET;
+  std::vector<PieceType> blockerTypes;
+  std::vector<PieceType> sourceTypes;
+};
+
 enum ExtinctionConditionType {
   EXTINCTION_CONDITION_NONE,
   EXTINCTION_CONDITION_PIECE_COUNT,
@@ -219,6 +239,13 @@ struct Variant {
   PieceSet burnPassivePieceTypes = NO_PIECE_SET;
   PieceSet tenjikuTripleStepPieceTypes = NO_PIECE_SET;
   bool hasBurn = false;
+  RangeJumpSpec rangeJump[PIECE_TYPE_NB] = {};
+  PieceSet rangeJumpTypes = NO_PIECE_SET;
+  std::vector<RangeJumpGeometry> rangeJumpGeometries;
+  std::vector<RangeJumpGroup> rangeJumpGroups;
+  bool rangeJumpConfigurationValid = true;
+  bool hasRangeJump = false;
+  void resolve_range_jumps();
   bool doubleStep = true;
   Bitboard doubleStepRegion[COLOR_NB] = {Rank2BB, Rank7BB};
   Bitboard tripleStepRegion[COLOR_NB] = {};
@@ -356,7 +383,7 @@ struct Variant {
   Bitboard dropRegions[COLOR_NB][PIECE_TYPE_NB] = {};
   int xboardDropRanks[PIECE_TYPE_NB] = {};
   bool xboardDropRegionsCompatible = true;
-  bool xboard_compatible() const { return xboardDropRegionsCompatible && !hasBurn && !tenjikuTripleStepPieceTypes; }
+  bool xboard_compatible() const { return xboardDropRegionsCompatible && !hasBurn && !tenjikuTripleStepPieceTypes && !hasRangeJump; }
 
   Variant() {
       pieceToSymbol.resize(PIECE_NB);

@@ -1246,6 +1246,47 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             });
     }
 
+    auto rangeJumpOption = config.find("rangeJumpPieces");
+    if (rangeJumpOption != config.end())
+    {
+        std::string value = trim(rangeJumpOption->second);
+        if (value == "-")
+            for (auto& spec : v->rangeJump) spec = {};
+        else
+        {
+            PieceSet specified = NO_PIECE_SET;
+            size_t cursor = 0;
+            bool valid = !value.empty();
+            while (valid && cursor < value.size())
+            {
+                size_t first = value.find(':', cursor), second = first == std::string::npos ? first : value.find(':', first + 1);
+                size_t open = second == std::string::npos ? second : value.find_first_not_of(" \t", second + 1);
+                size_t close = open == std::string::npos ? open : value.find('}', open + 1);
+                if (first == std::string::npos || second == std::string::npos || open == std::string::npos
+                    || value[open] != '{' || close == std::string::npos
+                    || (close + 1 < value.size() && !std::isspace(static_cast<unsigned char>(value[close + 1]))))
+                { valid = false; break; }
+                PieceType pt = piece_type_by_symbol(v, trim(value.substr(cursor, first - cursor)));
+                RangeJumpSpec spec;
+                valid = pt != NO_PIECE_TYPE && !(specified & pt)
+                     && range_jump_directions(trim(value.substr(first + 1, second - first - 1)), spec.directions)
+                     && parse_extinction_piece_set(v, value.substr(open, close - open + 1), spec.blockers);
+                if (valid)
+                {
+                    specified |= pt;
+                    v->rangeJump[pt] = spec;
+                    cursor = value.find_first_not_of(" \t", close + 1);
+                    if (cursor == std::string::npos) break;
+                }
+            }
+            if (!valid)
+            {
+                v->rangeJumpConfigurationValid = false;
+                std::cerr << "rangeJumpPieces - Expected unique piece:ray-directions:{blocker-types} entries: " << value << std::endl;
+            }
+        }
+    }
+
     const std::pair<const char*, PieceSet*> arrivalOptions[] = {
         {"burnActivePieceTypes", &v->burnActivePieceTypes},
         {"burnPassivePieceTypes", &v->burnPassivePieceTypes},
