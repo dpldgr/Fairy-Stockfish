@@ -713,6 +713,8 @@ string UCI::move(const Position& pos, Move m) {
           move += UCI::square(pos, gating_square(m));
   }
 
+  if (type_of(m) == MISSILE) move += '!';
+
   // Wall square
   if (pos.walling() && CurrentProtocol != XBOARD)
       move += "," + UCI::square(pos, to) + UCI::square(pos, gating_square(m));

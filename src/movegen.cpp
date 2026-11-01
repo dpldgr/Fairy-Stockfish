@@ -597,7 +597,7 @@ namespace {
     {
         Square from = pop_lsb(bb);
 
-        Bitboard attacks = pos.attacks_from(Us, Pt, from, range) & ~pos.prohibited_capture_targets(Us, Pt);
+        Bitboard attacks = pos.attacks_from(Us, Pt, from, range, !(pos.variant()->missileEffectPieces & Pt)) & ~pos.prohibited_capture_targets(Us, Pt);
         Bitboard quiets = pos.moves_from(Us, Pt, from, range);
         Bitboard b = (  (attacks & pos.pieces())
                        | (quiets & ~pos.pieces()));
@@ -754,7 +754,7 @@ namespace {
     // King moves
     if (pos.count<KING>(Us) && (!Checks || pos.blockers_for_king(~Us) & ksq))
     {
-        Bitboard b = (  ((pos.attacks_from(Us, KING, ksq, range) & ~pos.prohibited_capture_targets(Us, KING)) & pos.pieces())
+        Bitboard b = (  ((pos.attacks_from(Us, KING, ksq, range, !(pos.variant()->missileEffectPieces & KING)) & ~pos.prohibited_capture_targets(Us, KING)) & pos.pieces())
                       | (pos.moves_from(Us, KING, ksq, range) & ~pos.pieces())) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
         while (b)
             moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, ksq, pop_lsb(b));
@@ -783,7 +783,7 @@ namespace {
     // here and reuse the ordinary promotion pipeline. Other types merged the
     // additional targets into their capture bitboards above.
     if constexpr (Type == NON_EVASIONS)
-        if (range && pos.variant()->rangeJump[PAWN].geometry)
+        if (range && pos.variant()->rangeJump[PAWN].geometry && !(pos.variant()->missileEffectPieces & PAWN))
             for (Bitboard pawns = pos.pieces(Us, PAWN); pawns;)
             {
                 Square from = pop_lsb(pawns);
@@ -806,6 +806,20 @@ namespace {
                         default:
                             moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, from, to); break;
                         }
+                }
+            }
+
+    if constexpr (Type == NON_EVASIONS)
+        if (range && pos.variant()->hasMissile)
+            for (PieceSet ps = pos.variant()->missileEffectPieces; ps;)
+            {
+                PieceType pt = pop_lsb(ps);
+                for (Bitboard sources = pos.pieces(Us, pt) & ~range->view.frozen_pieces(Us); sources;)
+                {
+                    Square from = pop_lsb(sources);
+                    Bitboard targets = pos.range_jump_attacks(Us, pt, from, range) & pos.pieces(~Us)
+                                     & ~pos.prohibited_capture_targets(Us, pt);
+                    while (targets) *moveList++ = make<MISSILE>(from, pop_lsb(targets));
                 }
             }
 

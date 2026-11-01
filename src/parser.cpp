@@ -544,6 +544,33 @@ namespace {
             && parse_piece_symbol_list(v, token.substr(1, token.size() - 2), pieces);
     }
 
+    // Both colours are the legacy default. Qualifiers refer to the source's
+    // colour, never to White/Black or the side currently making a query.
+    bool parse_range_jump_blockers(const Variant* v, const std::string& value, PieceSet& friends, PieceSet& enemies) {
+        std::string body = trim(value);
+        if (body.size() < 2 || body.front() != '{' || body.back() != '}') return false;
+        body = trim(body.substr(1, body.size() - 2));
+        friends = enemies = NO_PIECE_SET;
+        if (body.empty() || body == "-") return true;
+        if (body.back() == ',') return false;
+        std::stringstream input(body);
+        std::string token;
+        while (std::getline(input, token, ','))
+        {
+            size_t eq = token.find('=');
+            std::string name = trim(token.substr(0, eq));
+            std::string qualifier = eq == std::string::npos ? "both" : trim(token.substr(eq + 1));
+            PieceType pt = name == "*" ? ALL_PIECES : piece_type_by_symbol(v, name);
+            if (name.empty() || (name != "*" && pt == NO_PIECE_TYPE)
+                || (qualifier != "both" && qualifier != "friend" && qualifier != "enemy")) return false;
+            bool f = qualifier != "enemy", e = qualifier != "friend";
+            if (((friends | enemies) & pt) && (bool(friends & pt) != f || bool(enemies & pt) != e)) return false;
+            if (f) friends |= pt;
+            if (e) enemies |= pt;
+        }
+        return true;
+    }
+
     bool parse_extinction_piece_set(const Variant* v, const std::string& value, PieceSet& pieces) {
         std::string token = trim(value);
         bool explicitList = token.size() >= 2 && token.front() == '{' && token.back() == '}';
@@ -1270,7 +1297,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
                 RangeJumpSpec spec;
                 valid = pt != NO_PIECE_TYPE && !(specified & pt)
                      && range_jump_directions(trim(value.substr(first + 1, second - first - 1)), spec.directions)
-                     && parse_extinction_piece_set(v, value.substr(open, close - open + 1), spec.blockers);
+                     && parse_range_jump_blockers(v, value.substr(open, close - open + 1), spec.friendBlockers, spec.enemyBlockers);
                 if (valid)
                 {
                     specified |= pt;
@@ -1293,6 +1320,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         {"freezeEffectPieces", &v->freezeEffectPieces},
         {"freezeImmunePieces", &v->freezeImmunePieces},
         {"burnImmunePieces", &v->burnImmunePieces},
+        {"missileEffectPieces", &v->missileEffectPieces},
         {"tenjikuTripleStepPieceTypes", &v->tenjikuTripleStepPieceTypes}
     };
     for (const auto& setting : arrivalOptions)
@@ -1304,7 +1332,10 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             if (parse_extinction_piece_set(v, option->second, parsed))
                 *setting.second = (parsed & ALL_PIECES) ? v->pieceTypes : parsed;
             else
+            {
+                if (std::string(setting.first) == "missileEffectPieces") v->rangeJumpConfigurationValid = false;
                 std::cerr << setting.first << " - Invalid piece set: " << option->second << std::endl;
+            }
         }
     }
 

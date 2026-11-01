@@ -345,6 +345,8 @@ inline const std::string move_to_san(Position& pos, Move m, Notation n) {
             san += std::string("/") + (char)toupper(pos.piece_to_char()[make_piece(us, gating_type(m))]);
     }
 
+    if (type_of(m) == MISSILE) san += '!';
+
     // Wall square
     if (pos.walling())
         san += "," + square(pos, gating_square(m), n);

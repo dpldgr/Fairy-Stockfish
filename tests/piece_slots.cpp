@@ -50,6 +50,11 @@ int main() {
             assert(from_sq(gate) == SQ_MIN && to_sq(gate) == square && type_of(gate) == CASTLING);
         }
     }
+    Move missile = make<MISSILE>(SQ_MIN, SQ_MAX);
+    assert(type_of(missile) == MISSILE && from_sq(missile) == SQ_MIN && to_sq(missile) == SQ_MAX);
+    assert(!is_multi_move(missile) && !is_gating(missile) && !is_path_promotion(missile));
+    assert(!is_hook(missile) && !is_double_move(missile) && !is_triple_move(missile));
+    assert(promotion_type(missile) == NO_PIECE_TYPE);
     assert(all == ~NO_PIECE_SET);
     assert(popcount(all) == PIECE_TYPE_NB);
     auto descending = all;

@@ -1255,7 +1255,7 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
               Square source = pop_lsb(candidates);
               sliders &= ~square_bb(source);
               Bitboard between = between_bb(s, source) & ~(square_bb(s) | source);
-              Bitboard hard = between & range.blockers(spec.group - 1);
+              Bitboard hard = between & range.blockers(spec.group - 1, c);
               if (hard && !more_than_one(hard) && (hard & pieces(color_of(piece_on(s)))))
               { jumpBlockers |= hard; jumpPinners |= source; }
           }
@@ -1385,28 +1385,35 @@ bool Position::freezing_changed(Move m) const {
 RangeJumpContext::RangeJumpContext(const AttackView& board) : view(board) {
     const auto& groups = view.pos.variant()->rangeJumpGroups;
     for (size_t i = 0; i < groups.size(); ++i)
-    {
-        bool present = false;
-        for (PieceType type : groups[i].sourceTypes)
-            if (view.pieces(type)) { present = true; break; }
-        if (present)
+        for (Color c : {WHITE, BLACK})
         {
-            masks[i] = blockers(i);
-            ready[i / 64] |= uint64_t(1) << (i % 64);
+            Color cache = groups[i].colourSpecific ? c : WHITE;
+            if (ready[cache][i / 64] & (uint64_t(1) << (i % 64))) continue;
+            bool present = false;
+            for (PieceType type : groups[i].sourceTypes)
+                if (view.pieces(c, type)) { present = true; break; }
+            if (present)
+            {
+                masks[cache][i] = blockers(i, c);
+                ready[cache][i / 64] |= uint64_t(1) << (i % 64);
+            }
         }
-    }
 }
-Bitboard RangeJumpContext::blockers(size_t group) const {
-    if (ready[group / 64] & (uint64_t(1) << (group % 64))) return masks[group];
+Bitboard RangeJumpContext::blockers(size_t group, Color c) const {
+    const auto& spec = view.pos.variant()->rangeJumpGroups[group];
+    Color cache = spec.colourSpecific ? c : WHITE;
+    if (ready[cache][group / 64] & (uint64_t(1) << (group % 64))) return masks[cache][group];
     Bitboard result = view.walls;
-    for (PieceType type : view.pos.variant()->rangeJumpGroups[group].blockerTypes) result |= view.pieces(type);
+    for (PieceType type : spec.blockerTypes) result |= view.pieces(type);
+    for (PieceType type : spec.friendBlockerTypes) result |= view.pieces(c, type);
+    for (PieceType type : spec.enemyBlockerTypes) result |= view.pieces(~c, type);
     return result;
 }
-Bitboard RangeJumpContext::attacks(Color c, PieceType pt, Square from) const {
+Bitboard RangeJumpContext::attacks(Color c, PieceType pt, Square from, bool reverse) const {
     const Variant* v = view.pos.variant();
     const auto& spec = v->rangeJump[pt];
     if (!spec.geometry) return 0;
-    return v->rangeJumpGeometries[spec.geometry - 1].attacks(c, from, blockers(spec.group - 1));
+    return v->rangeJumpGeometries[spec.geometry - 1].attacks(reverse ? ~c : c, from, blockers(spec.group - 1, c));
 }
 Bitboard Position::range_jump_attacks(Color c, PieceType pt, Square from, const RangeJumpContext* range) const {
     if (!var->rangeJump[pt].geometry) return 0;
@@ -1415,7 +1422,10 @@ Bitboard Position::range_jump_attacks(Color c, PieceType pt, Square from, const 
     AttackView view(*this);
     // A standalone query needs only this type's blocker set.
     Bitboard blockers = view.walls;
-    for (PieceType type : var->rangeJumpGroups[var->rangeJump[pt].group - 1].blockerTypes) blockers |= pieces(type);
+    const auto& group = var->rangeJumpGroups[var->rangeJump[pt].group - 1];
+    for (PieceType type : group.blockerTypes) blockers |= pieces(type);
+    for (PieceType type : group.friendBlockerTypes) blockers |= pieces(c, type);
+    for (PieceType type : group.enemyBlockerTypes) blockers |= pieces(~c, type);
     return var->rangeJumpGeometries[var->rangeJump[pt].geometry - 1].attacks(c, from, blockers) & board_bb(c, pt);
 }
 
@@ -1454,7 +1464,7 @@ AttackView Position::move_attack_view(Move m) const {
             flipped = PseudoAttacks[us][KING][to] & pieces(~us);
         while (flipped) { Square s = pop_lsb(flipped); view.put(~piece_on(s), s); }
     }
-    Bitboard burned = var->hasBurn ? burn_squares(m) : Bitboard(0);
+    Bitboard burned = var->hasArrivalEffects ? removal_squares(m) : Bitboard(0);
     for (Bitboard b = burned; b;) view.erase(pop_lsb(b));
     if (!(burned & to))
     {
@@ -1520,7 +1530,7 @@ Bitboard Position::attackers_to_view(Square target, Color c, const AttackView& v
         if (pt == SOLDIER && relative_rank(c, target, max_rank()) < var->soldierPromotionRank)
             ordinary &= PseudoAttacks[~c][SHOGI_PAWN][target];
         result |= ordinary;
-        if (directAllowed && (var->hasRangeJump && var->rangeJump[pt].geometry)) result |= range.attacks(~c, pt, target) & sources;
+        if (directAllowed && (var->hasRangeJump && var->rangeJump[pt].geometry)) result |= range.attacks(c, pt, target, true) & sources;
         if (directAllowed && (diagonal_lines() & target))
         {
             PieceType diagonal = moveType == WAZIR ? FERS : moveType == SOLDIER ? PAWN : moveType == ROOK ? BISHOP : NO_PIECE_TYPE;
@@ -1529,6 +1539,12 @@ Bitboard Position::attackers_to_view(Square target, Color c, const AttackView& v
                 result |= rider_attacks_bb<RIDER_CANNON_DIAG>(target, view.occupied)
                         & rider_attacks_bb<RIDER_CANNON_DIAG>(target, view.occupied & ~cannons) & diagonal_lines() & sources;
         }
+        if (var->hasMissile && (var->missileEffectPieces & pt))
+            for (Bitboard b = sources; b;)
+            {
+                Square from = pop_lsb(b);
+                if (missile_attacks_square(c, pt, from, target, range)) result |= from;
+            }
         bool special = directAllowed && (has_lion_move(c, pt) || var->lionDogMoveSpecified[pt] || (var->tenjikuTripleStepPieceTypes & pt));
         if (special || (var->burnActivePieceTypes & pt))
             for (Bitboard b = sources; b;)
@@ -1614,15 +1630,35 @@ Bitboard Position::burn_squares(Move m) const {
     return (var->burnActivePieceTypes & type_of(moved_piece(m))) ? neighbours & enemies & ~immune : Bitboard(0);
 }
 
+// A strike detonates after its direct capture, before passive burning. There
+// is no cascade, pawn exemption, allegiance exemption or elemental immunity.
+Bitboard Position::removal_squares(Move m) const {
+    if (type_of(m) == MISSILE)
+        return (((attacks_bb<KING>(to_sq(m)) | to_sq(m)) & (pieces(WHITE) | pieces(BLACK)))
+                & ~square_bb(from_sq(m))) | to_sq(m);
+    return var->hasBurn ? burn_squares(m) : Bitboard(0);
+}
+
+bool Position::missile_attacks_square(Color c, PieceType pt, Square from, Square target, const RangeJumpContext& range) const {
+    if (!(var->missileEffectPieces & pt)) return false;
+    const AttackView& view = range.view;
+    Bitboard prohibited = 0;
+    for (PieceSet ps = prohibited_capture_types(c, pt); ps;) prohibited |= view.pieces(pop_lsb(ps));
+    if (mutually_immune_types() & pt) prohibited |= view.pieces(pt);
+    Bitboard destinations = range.attacks(c, pt, from) & view.board_bb(c, pt) & view.pieces(~c) & ~prohibited;
+    return bool(destinations & (attacks_bb<KING>(target) | target));
+}
+
 Value Position::capture_value(Move m) const {
     Value value = VALUE_ZERO;
     Bitboard victims = is_multi_move(m) ? path_capture_squares(m)
                        : capture(m) ? square_bb(type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m)) : Bitboard(0);
     while (victims) value += PieceValue[MG][piece_on(pop_lsb(victims))];
-    for (Bitboard burned = burn_squares(m); burned;)
+    for (Bitboard burned = removal_squares(m); burned;)
     {
         Square sq = pop_lsb(burned);
-        value += sq == to_sq(m) ? -PieceValue[MG][moved_piece(m)] : PieceValue[MG][piece_on(sq)];
+        value += sq == to_sq(m) ? -PieceValue[MG][moved_piece(m)]
+               : color_of(piece_on(sq)) == sideToMove ? -PieceValue[MG][piece_on(sq)] : PieceValue[MG][piece_on(sq)];
     }
     return value;
 }
@@ -2127,7 +2163,7 @@ bool Position::legal(Move m) const {
           occupied &= ~square_bb(capture_square(kto));
       if (capture(m) && blast_on_capture())
           occupied &= ~((attacks_bb<KING>(kto) & ((pieces(WHITE) | pieces(BLACK)) ^ pieces(PAWN))) | kto);
-      Bitboard burned = burn_squares(m);
+      Bitboard burned = removal_squares(m);
       if ((burned & kto) && (st->pseudoRoyals & from)) return false;
       occupied &= ~burned;
       // Petrifying a pseudo-royal piece is illegal
@@ -2277,7 +2313,7 @@ bool Position::legal(Move m) const {
       Bitboard occupied = type_of(m) == DROP ? pieces() : pieces() & ~square_bb(from);
       Bitboard captures = is_multi_move(m) ? path_capture_squares(m)
                         : type_of(m) == EN_PASSANT ? square_bb(capture_square(to)) : square_bb(to);
-      Bitboard burned = burn_squares(m);
+      Bitboard burned = removal_squares(m);
       if (type_of(moved_piece(m)) == KING && (burned & to)) return false;
       occupied = ((occupied & ~captures) | to) & ~burned;
       return !(attackers_to(king, occupied, ~us) & occupied & ~square_bb(to));
@@ -2609,7 +2645,7 @@ bool Position::geometrically_recapturable_after(Move m) const {
   else
       capturedSquares |= type_of(m) == EN_PASSANT ? capture_square(to) : to;
 
-  Bitboard burned = burn_squares(m);
+  Bitboard burned = removal_squares(m);
   if (burned & to) return false;
   capturedSquares |= burned;
   Bitboard occupied = (pieces() ^ from) & ~capturedSquares;
@@ -2659,7 +2695,7 @@ bool Position::pseudo_legal(const Move m) const {
 
   // Use a slower but simpler function for uncommon cases
   // yet we skip the legality check of MoveList<LEGAL>().
-  if (type_of(m) != NORMAL || is_gating(m) || var->hasBurn || var->tenjikuTripleStepPieceTypes || var->hasFreeze)
+  if (type_of(m) != NORMAL || is_gating(m) || var->hasBurn || var->tenjikuTripleStepPieceTypes || var->hasFreeze || var->hasMissile)
       return checkers() ? MoveList<    EVASIONS>(*this).contains(m)
                         : MoveList<NON_EVASIONS>(*this).contains(m);
 
@@ -2792,7 +2828,7 @@ bool Position::gives_check(Move m) const {
       if (is_multi_move(m)) occupied &= ~path_capture_squares(m);
       if (type_of(m) == EN_PASSANT) occupied &= ~square_bb(capture_square(to));
       occupied |= to;
-      Bitboard burned = burn_squares(m);
+      Bitboard burned = removal_squares(m);
       occupied &= ~burned;
       PieceType result = type_of(moved_piece(m));
       if (type_of(m) == PROMOTION) result = promotion_type(m);
@@ -2970,7 +3006,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       }
       if (to == lionCapsq || to == secondLionCapsq) captured = NO_PIECE;
   }
-  Bitboard burned = var->hasBurn ? burn_squares(m) : Bitboard(0);
+  Bitboard burned = var->hasArrivalEffects ? removal_squares(m) : Bitboard(0);
   st->burnedPieces = burned;
   if (burned) st->promotedBycatch = st->demotedBycatch = 0;
   bool moverBurned = bool(burned & (type_of(m) == CASTLING

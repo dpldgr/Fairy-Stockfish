@@ -14,6 +14,8 @@
 #include "../src/thread.h"
 #include "../src/uci.h"
 #include "../src/variant.h"
+#include "../src/tt.h"
+#include "../src/apiutil.h"
 
 using namespace Stockfish;
 
@@ -61,7 +63,7 @@ static void exercise(const std::string& name, const std::string& fen) {
     MoveList<LEGAL> moves(*p);
     for (Move move : moves)
     {
-        if (!notation && p->capture(move))
+        if ((!notation && p->capture(move)) || type_of(move) == MISSILE)
         {
             for (Protocol protocol : {UCI_GENERAL, USI})
             {
@@ -71,6 +73,13 @@ static void exercise(const std::string& name, const std::string& fen) {
             }
             CurrentProtocol = UCI_GENERAL;
             notation = true;
+        }
+        if (type_of(move) == MISSILE)
+        {
+            assert(SAN::move_to_san(*p, move, NOTATION_SAN).find('!') != std::string::npos);
+            TTEntry entry{};
+            entry.save(p->key(), VALUE_ZERO, true, BOUND_EXACT, 4, move, VALUE_ZERO);
+            assert(entry.move() == move);
         }
         captures += p->capture(move);
         promotions += type_of(move) == PIECE_PROMOTION || type_of(move) == PROMOTION;
@@ -208,6 +217,29 @@ extinctionValue = loss
 extinctionPieceTypes = k
 [cycle-control:freeze-cycle]
 freezeEffectPieces = -
+[state-missile:state]
+rangeJumpPieces = r:R:{p=enemy,s=friend}
+missileEffectPieces = {r}
+[state-missile-promoted:state-missile]
+missileEffectPieces = {r,g}
+[state-missile-effects:state-missile]
+piece = i:K
+piece = f:K
+freezeEffectPieces = {i}
+freezeImmunePieces = {r,i}
+burnActivePieceTypes = {f}
+burnPassivePieceTypes = {f}
+burnImmunePieces = {r,i,f,p}
+[state-missile-native:chess]
+piece = m:K
+rangeJumpPieces = m:R:{p=enemy}
+missileEffectPieces = {m}
+[state-missile-pawn:state-native]
+rangeJumpPieces = p:R:{r=enemy}
+missileEffectPieces = {p}
+[state-relative-royal:state-royal]
+rangeJumpPieces = r:R:{s=enemy}
+
 
 )ini");
     variants.parse_istream<false>(configuration);
@@ -234,6 +266,12 @@ freezeEffectPieces = -
     exercise("state-freeze-royal", "k6r/6,I,1/8/8/8/8/8/7K w - - 0 1");
     exercise("state-freeze-promote", "7,k/8/8/3,P,r,3/8/8/8/7,K w - - 0 1");
     exercise("state-freeze-promote-immune", "7,k/8/4,f,3/3,p,4/3,P,4/8/8/7,K w - - 0 1");
+    exercise("state-missile", "7,k/3,p,P,3/3,p,4/3,P,4/3,R,4/8/8/7,K w - - 0 1");
+    exercise("state-missile-promoted", "7,k/8/3,+b,4/4,+b,3/3,+R,4/8/8/7,K w - - 0 1");
+    exercise("state-missile-effects", "7,k/8/3,p,f,3/2,*,1,i,P,2/3,R,4/8/8/7,K w - - 0 1");
+    exercise("state-missile-native", "4k3/8/8/8/1,M,6/8/8/R,n,2,K,2,R w KQ - 0 1");
+    exercise("state-missile-pawn", "2,p,b,3,k/4,P,3/3,P,4/8/8/8/8/7,K w - - 0 1");
+    exercise("state-relative-royal", "7,k/8/8/8/8/8/3,S,4/K,2,v,2,r,1 w - - 0 1");
     verify_cycle("freeze-cycle", false);
     verify_cycle("cycle-control", true);
     Threads.set(0); variants.clear_all(); pieceMap.clear_all();

@@ -536,6 +536,7 @@ enum MoveType : MoveStorage {
   TRIPLE_MOVE        = MoveStorage(12) << (2 * SQUARE_BITS),
   HOOK_ALTERNATE     = MoveStorage(13) << (2 * SQUARE_BITS),
   DOUBLE_ALTERNATE   = MoveStorage(14) << (2 * SQUARE_BITS),
+  MISSILE            = MoveStorage(15) << (2 * SQUARE_BITS),
 };
 
 enum Color {

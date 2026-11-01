@@ -2680,14 +2680,19 @@ void Variant::resolve_range_jumps() {
             rangeJumpGeometries.push_back(geometry);
         }
         spec.geometry = uint16_t(g + 1);
-        PieceSet blockers = spec.blockers & ALL_PIECES ? pieceTypes : spec.blockers;
+        PieceSet friends = spec.friendBlockers & ALL_PIECES ? pieceTypes : spec.friendBlockers;
+        PieceSet enemies = spec.enemyBlockers & ALL_PIECES ? pieceTypes : spec.enemyBlockers;
         g = 0;
-        while (g < rangeJumpGroups.size() && rangeJumpGroups[g].blockers != blockers) ++g;
+        while (g < rangeJumpGroups.size() && (rangeJumpGroups[g].friendBlockers != friends
+                                         || rangeJumpGroups[g].enemyBlockers != enemies)) ++g;
         if (g == rangeJumpGroups.size())
         {
             RangeJumpGroup group;
-            group.blockers = blockers;
-            for (PieceSet remaining = blockers; remaining;) group.blockerTypes.push_back(pop_lsb(remaining));
+            group.friendBlockers = friends; group.enemyBlockers = enemies;
+            for (PieceSet remaining = friends & enemies; remaining;) group.blockerTypes.push_back(pop_lsb(remaining));
+            for (PieceSet remaining = friends & ~enemies; remaining;) group.friendBlockerTypes.push_back(pop_lsb(remaining));
+            for (PieceSet remaining = enemies & ~friends; remaining;) group.enemyBlockerTypes.push_back(pop_lsb(remaining));
+            group.colourSpecific = friends != enemies;
             rangeJumpGroups.push_back(group);
         }
         rangeJumpGroups[g].sources |= pt;
@@ -3062,6 +3067,18 @@ Variant* Variant::conclude() {
 
     resolve_range_jumps();
     hasBurn = bool(burnActivePieceTypes || burnPassivePieceTypes);
+    hasMissile = bool(missileEffectPieces & pieceTypes);
+    hasArrivalEffects = hasBurn || hasMissile;
+    for (PieceSet ps = missileEffectPieces & pieceTypes; ps;)
+    {
+        PieceType pt = pop_lsb(ps);
+        if (!rangeJump[pt].geometry)
+        {
+            rangeJumpConfigurationValid = false;
+            std::cerr << "missileEffectPieces - Piece requires a rangeJumpPieces definition: "
+                      << pieceToSymbol[make_piece(WHITE, pt)] << std::endl;
+        }
+    }
     hasFreeze = bool(freezeEffectPieces & pieceTypes);
     freezeEmitterTypes.clear(); freezeImmuneTypes.clear();
     for (PieceSet ps = freezeEffectPieces & pieceTypes; ps;) freezeEmitterTypes.push_back(pop_lsb(ps));
@@ -3339,10 +3356,10 @@ void VariantMap::add(std::string s, Variant* v, bool configured) {
           delete v;
           return;
       }
-      if ((v->hasBurn || v->tenjikuTripleStepPieceTypes)
+      if ((v->hasArrivalEffects || v->tenjikuTripleStepPieceTypes)
           && (v->gating || v->seirawanGating || v->wallingRule || v->blastOnCapture || v->petrifyOnCaptureTypes || v->flipEnclosedPieces))
       {
-          std::cerr << "Burn/area moves - Unsupported combination with gating, walling, blast, petrification or enclosure rules: " << s << std::endl;
+          std::cerr << "Burn/missile/area moves - Unsupported combination with gating, walling, blast, petrification or enclosure rules: " << s << std::endl;
           delete v;
           return;
       }
