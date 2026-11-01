@@ -25,6 +25,12 @@ STOCKFISH=./src/stockfish BOARD_SIZE=19 PIECE_SLOTS=512 python3 tests/range_jump
 The last command also exercises the two highest custom slots and rays spanning
 all six bitboard words on the full 19×19 board.
 
+With at least 16×16 and 128 piece slots, the suite also searches the Tenjiku
+fixture in `fixtures/tenjiku-range-search.ini`. It verifies that the ordinary
+quiet GG move `i13h14` is searched after White's GG is passively burned on h14:
+the preceding `h4h14` must score mate -2 at depth 4, and Black must select
+`i13h14` with mate 2 at depth 3. Smaller builds skip this fixture.
+
 `range_jump_state.cpp` compares typed hypothetical attack queries with queries
 after actually making every legal move. It checks promotion provenance,
 material, pockets, PSQT, hashes and exact undo against fresh positions, and

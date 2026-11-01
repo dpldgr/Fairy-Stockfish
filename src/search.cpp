@@ -1098,6 +1098,16 @@ moves_loop: // When in check, search starts from here
     singularQuietLMR = moveCountPruning = false;
     bool doubleExtension = false;
 
+    // Keep quiet moves available while either side has a range jumper on board.
+    bool activeRangeJumpers = false;
+    if (pos.variant()->hasRangeJump)
+        for (PieceSet types = pos.variant()->rangeJumpTypes; types;)
+            if (pos.pieces(pop_lsb(types)))
+            {
+                activeRangeJumpers = true;
+                break;
+            }
+
     // Indicate PvNodes that will probably fail low if the node was searched
     // at a depth equal or greater than the current depth, and the result of this search was a fail low.
     bool likelyFailLow =    PvNode
@@ -1150,7 +1160,8 @@ moves_loop: // When in check, search starts from here
           && bestValue > VALUE_TB_LOSS_IN_MAX_PLY)
       {
           // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold
-          moveCountPruning = moveCount >= futility_move_count(improving, depth, pos);
+          moveCountPruning = !activeRangeJumpers
+                         && moveCount >= futility_move_count(improving, depth, pos);
 
           // Reduced depth of the next LMR search
           int lmrDepth = std::max(newDepth - reduction(improving, depth, moveCount), 0);
