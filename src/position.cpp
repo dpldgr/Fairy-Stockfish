@@ -1247,6 +1247,7 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
           PieceType pt = pop_lsb(ps);
           const auto& spec = var->rangeJump[pt];
           const auto& geometry = var->rangeJumpGeometries[spec.geometry - 1];
+          if (!spec.capture) continue;
           if (prohibited_capture_types(c, pt) & type_of(piece_on(s)))
           { sliders &= ~pieces(c, pt); continue; }
           Bitboard candidates = sliders & pieces(c, pt) & geometry.rays[~c][s];
@@ -1257,7 +1258,16 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
               Bitboard between = between_bb(s, source) & ~(square_bb(s) | source);
               Bitboard hard = between & range.blockers(spec.group - 1, c);
               if (hard && !more_than_one(hard) && (hard & pieces(color_of(piece_on(s)))))
-              { jumpBlockers |= hard; jumpPinners |= source; }
+              {
+                  Bitboard occupied = pieces() & ~hard;
+                  Bitboard jumps = geometry.attacks(c, source, range.blockers(spec.group - 1, c) & ~hard)
+                                 & ~geometry.attacks(c, source, occupied);
+                  PieceType moveType = pt == KING ? king_type() : pt;
+                  // Removing the only intervening piece can also remove the
+                  // screen required by a jump. Base sliding may still attack.
+                  if ((jumps | attacks_bb(c, moveType, source, occupied)) & s)
+                  { jumpBlockers |= hard; jumpPinners |= source; }
+              }
           }
       }
   }
@@ -1413,9 +1423,17 @@ Bitboard RangeJumpContext::attacks(Color c, PieceType pt, Square from, bool reve
     const Variant* v = view.pos.variant();
     const auto& spec = v->rangeJump[pt];
     if (!spec.geometry) return 0;
-    return v->rangeJumpGeometries[spec.geometry - 1].attacks(reverse ? ~c : c, from, blockers(spec.group - 1, c));
+    const auto& geometry = v->rangeJumpGeometries[spec.geometry - 1];
+    Color direction = reverse ? ~c : c;
+    // Only destinations beyond the first occupied square are jumps. The
+    // ordinary ray includes that square, so subtract it along with its prefix.
+    return geometry.attacks(direction, from, blockers(spec.group - 1, c))
+         & ~geometry.attacks(direction, from, view.occupied);
 }
 Bitboard Position::range_jump_attacks(Color c, PieceType pt, Square from, const RangeJumpContext* range) const {
+    return var->rangeJump[pt].capture ? range_jump_targets(c, pt, from, range) : Bitboard(0);
+}
+Bitboard Position::range_jump_targets(Color c, PieceType pt, Square from, const RangeJumpContext* range) const {
     if (!var->rangeJump[pt].geometry) return 0;
     if (var->hasFreeze && ((range ? range->view.frozen_pieces(c) : frozen_pieces(c)) & from)) return 0;
     if (range) return range->attacks(c, pt, from) & range->view.board_bb(c, pt);
@@ -1426,7 +1444,8 @@ Bitboard Position::range_jump_attacks(Color c, PieceType pt, Square from, const 
     for (PieceType type : group.blockerTypes) blockers |= pieces(type);
     for (PieceType type : group.friendBlockerTypes) blockers |= pieces(c, type);
     for (PieceType type : group.enemyBlockerTypes) blockers |= pieces(~c, type);
-    return var->rangeJumpGeometries[var->rangeJump[pt].geometry - 1].attacks(c, from, blockers) & board_bb(c, pt);
+    const auto& geometry = var->rangeJumpGeometries[var->rangeJump[pt].geometry - 1];
+    return geometry.attacks(c, from, blockers) & ~geometry.attacks(c, from, view.occupied) & board_bb(c, pt);
 }
 
 // Exact post-move geometry for legality, checking and recapture queries. Hashes,
@@ -1530,7 +1549,8 @@ Bitboard Position::attackers_to_view(Square target, Color c, const AttackView& v
         if (pt == SOLDIER && relative_rank(c, target, max_rank()) < var->soldierPromotionRank)
             ordinary &= PseudoAttacks[~c][SHOGI_PAWN][target];
         result |= ordinary;
-        if (directAllowed && (var->hasRangeJump && var->rangeJump[pt].geometry)) result |= range.attacks(c, pt, target, true) & sources;
+        if (directAllowed && var->hasRangeJump && var->rangeJump[pt].geometry && var->rangeJump[pt].capture)
+            result |= range.attacks(c, pt, target, true) & sources;
         if (directAllowed && (diagonal_lines() & target))
         {
             PieceType diagonal = moveType == WAZIR ? FERS : moveType == SOLDIER ? PAWN : moveType == ROOK ? BISHOP : NO_PIECE_TYPE;
@@ -1630,7 +1650,7 @@ Bitboard Position::burn_squares(Move m) const {
     return (var->burnActivePieceTypes & type_of(moved_piece(m))) ? neighbours & enemies & ~immune : Bitboard(0);
 }
 
-// A strike detonates after its direct capture, before passive burning. There
+// A jump detonates after landing (and any direct capture), before passive burning. There
 // is no cascade, pawn exemption, allegiance exemption or elemental immunity.
 Bitboard Position::removal_squares(Move m) const {
     if (type_of(m) == MISSILE)
@@ -1645,7 +1665,10 @@ bool Position::missile_attacks_square(Color c, PieceType pt, Square from, Square
     Bitboard prohibited = 0;
     for (PieceSet ps = prohibited_capture_types(c, pt); ps;) prohibited |= view.pieces(pop_lsb(ps));
     if (mutually_immune_types() & pt) prohibited |= view.pieces(pt);
-    Bitboard destinations = range.attacks(c, pt, from) & view.board_bb(c, pt) & view.pieces(~c) & ~prohibited;
+    const auto& spec = var->rangeJump[pt];
+    Bitboard destinations = range.attacks(c, pt, from) & view.board_bb(c, pt)
+                          & ((spec.capture ? view.pieces(~c) & ~prohibited : Bitboard(0))
+                             | (spec.quiet ? ~view.occupied : Bitboard(0)));
     return bool(destinations & (attacks_bb<KING>(target) | target));
 }
 
@@ -1711,7 +1734,11 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
     {
         AttackView actual(*this);
         RangeJumpContext range(view ? *view : actual);
-        ordinary |= range.attacks(c, pt, from) & enemies & ~prohibited & geometry_board(pt);
+        const auto& spec = var->rangeJump[pt];
+        if (!(var->missileEffectPieces & pt))
+            ordinary |= range.attacks(c, pt, from) & geometry_board(pt)
+                      & ((spec.capture ? enemies & ~prohibited : Bitboard(0))
+                         | (spec.quiet ? ~occupied : Bitboard(0)));
     }
     while (ordinary) { Square to = pop_lsb(ordinary); landing(to, square_bb(to)); }
     auto path = [&](Move m) {
@@ -2045,7 +2072,7 @@ bool Position::legal(Move m) const {
   if (immobility_illegal() && (type_of(m) == DROP || type_of(m) == NORMAL) && !(PseudoMoves[0][us][type_of(moved_piece(m))][to] & board_bb())
       && !((var->tenjikuTripleStepPieceTypes & type_of(moved_piece(m))) && (attacks_bb<KING>(to) & board_bb(us, type_of(moved_piece(m)))))
       && !((var->hasRangeJump && var->rangeJump[type_of(moved_piece(m))].geometry)
-            && (var->rangeJumpGeometries[var->rangeJump[type_of(moved_piece(m))].geometry - 1].attacks(us, to, st->wallSquares)
+            && (var->range_jump_potential(us, type_of(moved_piece(m)), to, st->wallSquares)
                 & board_bb(us, type_of(moved_piece(m)))))
       && !(var->hasBurn && (burn_squares(m) & to)))
       return false;
@@ -2752,7 +2779,9 @@ bool Position::pseudo_legal(const Move m) const {
       return false;
 
   // Handle the special case of a pawn move
-  if (type_of(pc) == PAWN && !((var->hasRangeJump && var->rangeJump[PAWN].geometry) && capture(m) && (range_jump_attacks(us, PAWN, from) & to)))
+  if (type_of(pc) == PAWN && !(var->hasRangeJump && var->rangeJump[PAWN].geometry
+      && (capture(m) ? var->rangeJump[PAWN].capture : var->rangeJump[PAWN].quiet)
+      && (range_jump_targets(us, PAWN, from) & to)))
   {
       // We have already handled promotion moves, so destination
       // cannot be on the 8th/1st rank.
@@ -2991,6 +3020,18 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Piece pc = moved_piece(m);
   Bitboard allPathCaptures = is_multi_move(m) ? path_capture_squares(m) : Bitboard(0);
   Piece captured = (is_multi_move(m)) && to == from ? NO_PIECE : piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
+  bool jumpForEp = false;
+  if (var->hasRangeJump && type_of(m) == NORMAL && var->rangeJump[type_of(pc)].geometry
+      && ((type_of(pc) == PAWN && (std::abs(int(to) - int(from)) == 2 * NORTH
+                               || std::abs(int(to) - int(from)) == 3 * NORTH))
+          || ((PseudoMoves[1][us][type_of(pc)][from] & ~PseudoMoves[0][us][type_of(pc)][from]) & to)))
+  {
+      // A screened jump is not an ordinary initial advance. Determine this
+      // before moving or burning pieces, while its screen is still present.
+      const auto& spec = var->rangeJump[type_of(pc)];
+      jumpForEp = (captured ? spec.capture : spec.quiet)
+               && bool(range_jump_targets(us, type_of(pc), from) & to);
+  }
   Square lionCapsq = SQ_NONE, secondLionCapsq = SQ_NONE;
   Piece lionCaptured = NO_PIECE, secondLionCaptured = NO_PIECE;
   if (is_multi_move(m))
@@ -3373,7 +3414,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       }
 
       // Set en passant square(s) if the moved pawn can be captured
-      else if (   !moverBurned && type_of(m) != DROP
+      else if (   !moverBurned && !jumpForEp && type_of(m) != DROP
           && (   std::abs(int(to) - int(from)) == 2 * NORTH
               || std::abs(int(to) - int(from)) == 3 * NORTH))
       {
@@ -3453,7 +3494,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       st->nonPawnMaterial[us] += PieceValue[MG][demotion] - PieceValue[MG][pc];
   }
   // Set en passant square(s) if the moved piece can be captured
-  else if (   !moverBurned && type_of(m) != DROP
+  else if (   !moverBurned && !jumpForEp && type_of(m) != DROP
            && ((PseudoMoves[1][us][type_of(pc)][from] & ~PseudoMoves[0][us][type_of(pc)][from]) & to))
   {
       assert(type_of(pc) != PAWN);

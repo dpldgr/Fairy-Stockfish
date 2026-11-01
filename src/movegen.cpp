@@ -26,6 +26,13 @@ namespace Stockfish {
 
 namespace {
 
+  Bitboard range_jump_destinations(const Position& pos, Color us, PieceType pt, Square from, const RangeJumpContext* range) {
+      const auto& spec = pos.variant()->rangeJump[pt];
+      return pos.range_jump_targets(us, pt, from, range)
+           & ((spec.capture ? pos.pieces(~us) & ~pos.prohibited_capture_targets(us, pt) : Bitboard(0))
+              | (spec.quiet ? ~pos.pieces() : Bitboard(0)));
+  }
+
   ExtMove* append_path_promotion(const Position& pos, ExtMove* list, Move m, PieceType pt);
 
   inline int pop_lsb64(uint64_t& b) {
@@ -598,9 +605,13 @@ namespace {
         Square from = pop_lsb(bb);
 
         Bitboard attacks = pos.attacks_from(Us, Pt, from, range, !(pos.variant()->missileEffectPieces & Pt)) & ~pos.prohibited_capture_targets(Us, Pt);
-        Bitboard quiets = pos.moves_from(Us, Pt, from, range);
+        Bitboard quiets = pos.moves_from(Us, Pt, from, range, !(pos.variant()->missileEffectPieces & Pt));
         Bitboard b = (  (attacks & pos.pieces())
                        | (quiets & ~pos.pieces()));
+        // A single-leg base ability may itself leap. A destination which also
+        // qualifies as a missile jump detonates, and must be emitted only once.
+        if (range && (pos.variant()->missileEffectPieces & Pt))
+            b &= ~range_jump_destinations(pos, Us, Pt, from, range);
         Bitboard b1 = b & target;
         PieceType promPt = pos.is_promoted(from) ? NO_PIECE_TYPE : pos.promoted_piece_type(Pt);
         PieceType rulePt = pos.is_promoted(from) && pos.unpromoted_piece_on(from)
@@ -755,7 +766,9 @@ namespace {
     if (pos.count<KING>(Us) && (!Checks || pos.blockers_for_king(~Us) & ksq))
     {
         Bitboard b = (  ((pos.attacks_from(Us, KING, ksq, range, !(pos.variant()->missileEffectPieces & KING)) & ~pos.prohibited_capture_targets(Us, KING)) & pos.pieces())
-                      | (pos.moves_from(Us, KING, ksq, range) & ~pos.pieces())) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
+                      | (pos.moves_from(Us, KING, ksq, range, !(pos.variant()->missileEffectPieces & KING)) & ~pos.pieces())) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
+        if (range && (pos.variant()->missileEffectPieces & KING))
+            b &= ~range_jump_destinations(pos, Us, KING, ksq, range);
         while (b)
             moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, ksq, pop_lsb(b));
 
@@ -779,16 +792,15 @@ namespace {
                                                          Type == EVASIONS ? pos.board_bb() : target);
         }
 
-    // Native pawns have a specialised generator; add their extra capture rays
+    // Native pawns have a specialised generator; add their extra jump rays
     // here and reuse the ordinary promotion pipeline. Other types merged the
-    // additional targets into their capture bitboards above.
+    // additional targets into their move bitboards above.
     if constexpr (Type == NON_EVASIONS)
         if (range && pos.variant()->rangeJump[PAWN].geometry && !(pos.variant()->missileEffectPieces & PAWN))
             for (Bitboard pawns = pos.pieces(Us, PAWN); pawns;)
             {
                 Square from = pop_lsb(pawns);
-                Bitboard targets = pos.range_jump_attacks(Us, PAWN, from, range) & pos.pieces(~Us)
-                                 & ~pawn_attacks_bb(Us, from) & ~pos.prohibited_capture_targets(Us, PAWN);
+                Bitboard targets = range_jump_destinations(pos, Us, PAWN, from, range);
                 while (targets)
                 {
                     Square to = pop_lsb(targets);
@@ -817,8 +829,7 @@ namespace {
                 for (Bitboard sources = pos.pieces(Us, pt) & ~range->view.frozen_pieces(Us); sources;)
                 {
                     Square from = pop_lsb(sources);
-                    Bitboard targets = pos.range_jump_attacks(Us, pt, from, range) & pos.pieces(~Us)
-                                     & ~pos.prohibited_capture_targets(Us, pt);
+                    Bitboard targets = range_jump_destinations(pos, Us, pt, from, range);
                     while (targets) *moveList++ = make<MISSILE>(from, pop_lsb(targets));
                 }
             }

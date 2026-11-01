@@ -2702,6 +2702,17 @@ void Variant::resolve_range_jumps() {
     hasRangeJump = bool(rangeJumpTypes);
 }
 
+Bitboard Variant::range_jump_potential(Color c, PieceType pt, Square from, Bitboard walls) const {
+    const auto& spec = rangeJump[pt];
+    if (!spec.geometry) return 0;
+    const auto& group = rangeJumpGroups[spec.group - 1];
+    if (!(pieceTypes & ~(group.friendBlockers & group.enemyBlockers))) return 0;
+    const auto& geometry = rangeJumpGeometries[spec.geometry - 1];
+    // Ignore temporary pieces, but leave room for a future screen and landing.
+    return geometry.attacks(c, from, walls)
+         & ~geometry.attacks(c, from, board_size_bb(maxFile, maxRank));
+}
+
 Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard walls) const {
     Bitboard board = board_size_bb(maxFile, maxRank) & ~walls;
     Bitboard area = mobilityRegion[c][pt] ? board & mobilityRegion[c][pt] : board;
@@ -2726,8 +2737,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
         PieceType movePt = pt == KING ? kingType : pt;
         Bitboard targets = potential(movePt, from);
         if (tenjikuTripleStepPieceTypes & pt) targets |= PseudoAttacks[c][KING][from];
-        if (rangeJump[pt].geometry)
-            targets |= rangeJumpGeometries[rangeJump[pt].geometry - 1].attacks(c, from, walls);
+        if (rangeJump[pt].geometry) targets |= range_jump_potential(c, pt, from, walls);
         if (doubleStepRegion[c] & from)
             targets |= walls ? moves_bb<true>(c, movePt, from, walls)
                              : PseudoMoves[1][c][movePt][from];

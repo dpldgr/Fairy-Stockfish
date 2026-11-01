@@ -1295,8 +1295,15 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
                 { valid = false; break; }
                 PieceType pt = piece_type_by_symbol(v, trim(value.substr(cursor, first - cursor)));
                 RangeJumpSpec spec;
+                std::string movement = trim(value.substr(first + 1, second - first - 1));
+                if (!movement.empty() && (movement.front() == 'm' || movement.front() == 'c'))
+                {
+                    spec.quiet = movement.front() == 'm';
+                    spec.capture = movement.front() == 'c';
+                    movement.erase(0, 1);
+                }
                 valid = pt != NO_PIECE_TYPE && !(specified & pt)
-                     && range_jump_directions(trim(value.substr(first + 1, second - first - 1)), spec.directions)
+                     && range_jump_directions(movement, spec.directions)
                      && parse_range_jump_blockers(v, value.substr(open, close - open + 1), spec.friendBlockers, spec.enemyBlockers);
                 if (valid)
                 {
@@ -1309,7 +1316,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             if (!valid)
             {
                 v->rangeJumpConfigurationValid = false;
-                std::cerr << "rangeJumpPieces - Expected unique piece:ray-directions:{blocker-types} entries: " << value << std::endl;
+                std::cerr << "rangeJumpPieces - Expected unique piece:[m|c]ray-directions:{blocker-types} entries: " << value << std::endl;
             }
         }
     }

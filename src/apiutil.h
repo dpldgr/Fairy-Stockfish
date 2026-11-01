@@ -248,8 +248,15 @@ inline Disambiguation disambiguation_level(const Position& pos, Move m, Notation
         // Construct a potential move with identical special move flags
         // and only a different "from" square.
         Move testMove = Move(m ^ make_move(from, to) ^ make_move(s, to));
-        if (      pos.pseudo_legal(testMove)
-               && pos.legal(testMove)
+        bool valid = pos.pseudo_legal(testMove) && pos.legal(testMove);
+        // Ordinary movement and missile jumping share standard notation.
+        // Other sources reaching this target may use the other internal type.
+        if (!valid && pos.variant()->hasMissile && (type_of(m) == NORMAL || type_of(m) == MISSILE))
+        {
+            testMove = type_of(m) == MISSILE ? make_move(s, to) : make<MISSILE>(s, to);
+            valid = pos.pseudo_legal(testMove) && pos.legal(testMove);
+        }
+        if (      valid
                && !(is_shogi(n) && pos.unpromoted_piece_on(s) != pos.unpromoted_piece_on(from)))
             others |= s;
     }
@@ -344,8 +351,6 @@ inline const std::string move_to_san(Position& pos, Move m, Notation n) {
         if (is_gating(m))
             san += std::string("/") + (char)toupper(pos.piece_to_char()[make_piece(us, gating_type(m))]);
     }
-
-    if (type_of(m) == MISSILE) san += '!';
 
     // Wall square
     if (pos.walling())

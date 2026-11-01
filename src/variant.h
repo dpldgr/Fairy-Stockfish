@@ -102,6 +102,7 @@ struct DoubleMoveSpec {
 // Geometry and passage restrictions are independent for every configured type.
 struct RangeJumpSpec {
   uint8_t directions = 0;
+  bool quiet = true, capture = true;
   PieceSet friendBlockers = NO_PIECE_SET;
   PieceSet enemyBlockers = NO_PIECE_SET;
   uint16_t geometry = 0; // Resolved indices plus one, zero disables jumping.
@@ -491,6 +492,7 @@ struct Variant {
   }
   void init_promotion_masks() const;
   Bitboard promotion_immobility_mask(Color c, PieceType pt, Bitboard walls) const;
+  Bitboard range_jump_potential(Color c, PieceType pt, Square from, Bitboard walls) const;
   void set_optional_promotion_region(Color c, Bitboard region, PieceType pt = NO_PIECE_TYPE) {
       optionalPromotionRegions[c][pt] = {region, true, true};
       if (pt == NO_PIECE_TYPE)

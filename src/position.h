@@ -305,9 +305,10 @@ public:
   Bitboard frozen_pieces(Color c) const;
   bool freezing_changed(Move m) const;
   Bitboard range_jump_attacks(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
+  Bitboard range_jump_targets(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
   Bitboard attackers_to_view(Square s, Color c, const AttackView& view) const;
   AttackView move_attack_view(Move m) const;
-  Bitboard moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
+  Bitboard moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr, bool includeRange = true) const;
   Bitboard slider_blockers(Bitboard sliders, Square s, Bitboard& pinners, Color c) const;
 
   // Properties of moves
@@ -1470,7 +1471,7 @@ inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s, const Ra
   return b & board_bb(c, pt);
 }
 
-inline Bitboard Position::moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range) const {
+inline Bitboard Position::moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range, bool includeRange) const {
   if (var->hasFreeze && ((range ? range->view.frozen_pieces(c) : frozen_pieces(c)) & s)) return 0;
   if (var->fastAttacks || var->fastAttacks2)
       return moves_bb(c, pt, s, byTypeBB[ALL_PIECES]) & board_bb();
@@ -1501,6 +1502,8 @@ inline Bitboard Position::moves_from(Color c, PieceType pt, Square s, const Rang
               & ~pieces(pt)
               & diagonal_lines();
   }
+  if (includeRange && var->hasRangeJump && var->rangeJump[pt].geometry && var->rangeJump[pt].quiet)
+      b |= range_jump_targets(c, pt, s, range);
   return b & board_bb(c, pt);
 }
 
@@ -1605,7 +1608,7 @@ inline bool Position::is_chess960() const {
 
 inline bool Position::capture_or_promotion(Move m) const {
   assert(is_ok(m));
-  return (var->hasBurn && burn_squares(m)) || type_of(m) == PROMOTION || is_path_promotion(m) || type_of(m) == EN_PASSANT || capture(m);
+  return type_of(m) == MISSILE || (var->hasBurn && burn_squares(m)) || type_of(m) == PROMOTION || is_path_promotion(m) || type_of(m) == EN_PASSANT || capture(m);
 }
 
 inline bool Position::capture(Move m) const {
@@ -1616,7 +1619,7 @@ inline bool Position::capture(Move m) const {
 }
 
 inline bool Position::capture_or_burn(Move m) const {
-  return capture(m) || (var->hasBurn && bool(burn_squares(m)));
+  return capture(m) || type_of(m) == MISSILE || (var->hasBurn && bool(burn_squares(m)));
 }
 
 inline bool Position::prohibited_capture(Move m) const {
