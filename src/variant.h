@@ -239,6 +239,11 @@ struct Variant {
   PieceSet burnPassivePieceTypes = NO_PIECE_SET;
   PieceSet tenjikuTripleStepPieceTypes = NO_PIECE_SET;
   bool hasBurn = false;
+  PieceSet freezeEffectPieces = NO_PIECE_SET;
+  PieceSet freezeImmunePieces = NO_PIECE_SET;
+  PieceSet burnImmunePieces = NO_PIECE_SET;
+  std::vector<PieceType> freezeEmitterTypes, freezeImmuneTypes;
+  bool hasFreeze = false;
   RangeJumpSpec rangeJump[PIECE_TYPE_NB] = {};
   PieceSet rangeJumpTypes = NO_PIECE_SET;
   std::vector<RangeJumpGeometry> rangeJumpGeometries;
@@ -383,7 +388,7 @@ struct Variant {
   Bitboard dropRegions[COLOR_NB][PIECE_TYPE_NB] = {};
   int xboardDropRanks[PIECE_TYPE_NB] = {};
   bool xboardDropRegionsCompatible = true;
-  bool xboard_compatible() const { return xboardDropRegionsCompatible && !hasBurn && !tenjikuTripleStepPieceTypes && !hasRangeJump; }
+  bool xboard_compatible() const { return xboardDropRegionsCompatible && !hasBurn && !tenjikuTripleStepPieceTypes && !hasRangeJump && !hasFreeze; }
 
   Variant() {
       pieceToSymbol.resize(PIECE_NB);

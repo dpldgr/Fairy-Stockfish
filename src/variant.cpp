@@ -3062,6 +3062,10 @@ Variant* Variant::conclude() {
 
     resolve_range_jumps();
     hasBurn = bool(burnActivePieceTypes || burnPassivePieceTypes);
+    hasFreeze = bool(freezeEffectPieces & pieceTypes);
+    freezeEmitterTypes.clear(); freezeImmuneTypes.clear();
+    for (PieceSet ps = freezeEffectPieces & pieceTypes; ps;) freezeEmitterTypes.push_back(pop_lsb(ps));
+    for (PieceSet ps = freezeImmunePieces & pieceTypes; ps;) freezeImmuneTypes.push_back(pop_lsb(ps));
 
     // Determine optimizations
     bool restrictedMobility = false;
@@ -3075,12 +3079,12 @@ Variant* Variant::conclude() {
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasRangeJump;
+                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasRangeJump && !hasFreeze;
     fastAttacks2 =  !(pieceTypes & ~(SHOGI_PIECES | COMMON_STEP_PIECES))
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasRangeJump;
+                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasRangeJump && !hasFreeze;
 
     // Initialize calculated NNUE properties
     nnueKing =  pieceTypes & KING ? KING
@@ -3185,7 +3189,7 @@ Variant* Variant::conclude() {
                     && !hasLionDog
                    )
                  ? endgameEval : NO_EG_EVAL;
-    if (baringRule || hasBurn || tenjikuTripleStepPieceTypes || hasRangeJump)
+    if (baringRule || hasBurn || tenjikuTripleStepPieceTypes || hasRangeJump || hasFreeze)
         endgameEval = NO_EG_EVAL;
 
     shogiStylePromotions = false;

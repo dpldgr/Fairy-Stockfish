@@ -302,10 +302,12 @@ public:
   Bitboard attackers_to(Square s, Bitboard occupied, Color c) const;
   Bitboard attackers_to(Square s, Bitboard occupied, Color c, Bitboard janggiCannons) const;
   Bitboard attacks_from(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
+  Bitboard frozen_pieces(Color c) const;
+  bool freezing_changed(Move m) const;
   Bitboard range_jump_attacks(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
   Bitboard attackers_to_view(Square s, Color c, const AttackView& view) const;
   AttackView move_attack_view(Move m) const;
-  Bitboard moves_from(Color c, PieceType pt, Square s) const;
+  Bitboard moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range = nullptr) const;
   Bitboard slider_blockers(Bitboard sliders, Square s, Bitboard& pinners, Color c) const;
 
   // Properties of moves
@@ -448,17 +450,20 @@ struct AttackView {
   const Position& pos;
   Bitboard occupied, walls, removed = 0, added = 0;
   Piece placements[SQUARE_NB];
+  mutable Bitboard frozen[COLOR_NB];
+  mutable bool freezeReady = false;
   explicit AttackView(const Position& p) : pos(p), occupied(p.pieces()), walls(p.state()->wallSquares) {}
   AttackView(const AttackView& other) : pos(other.pos), occupied(other.occupied), walls(other.walls), removed(other.removed), added(other.added) {
     for (Bitboard b = added; b;) { Square s = pop_lsb(b); placements[s] = other.placements[s]; }
   }
-  void erase(Square s) { removed |= s; added -= s; occupied -= s; }
+  void erase(Square s) { freezeReady = false; removed |= s; added -= s; occupied -= s; }
   void put(Piece pc, Square s) { erase(s); placements[s] = pc; added |= s; occupied |= s; }
   Piece piece_on(Square s) const;
   Bitboard pieces(PieceType pt) const;
   Bitboard pieces(Color c) const;
   Bitboard pieces(Color c, PieceType pt) const { return pieces(c) & pieces(pt); }
   Bitboard board_bb(Color c, PieceType pt) const;
+  Bitboard frozen_pieces(Color c) const;
 };
 
 // Scratch maps for one generation/attack operation. No arrays are initialized
@@ -558,7 +563,8 @@ inline Bitboard Position::promotion_targets(Color c, PieceType pt, Square from, 
     // Automatic classification is used for ordinary moves. A mover killed on
     // arrival never reaches promotion. Multi-leg callers pass explicit capture
     // facts and resolve passive burning against their complete route instead.
-    if (captureKinds == PROMO_CAPTURE_AUTO && var->hasBurn)
+    if (captureKinds == PROMO_CAPTURE_AUTO && var->hasBurn
+        && !(var->burnImmunePieces & type_of(piece_on(from))))
         for (PieceSet ps = var->burnPassivePieceTypes; ps;)
             for (Bitboard burners = pieces(~c, pop_lsb(ps)); burners;)
                 targets &= ~attacks_bb<KING>(pop_lsb(burners));
@@ -1431,6 +1437,7 @@ inline Square Position::castling_rook_square(CastlingRights cr) const {
 }
 
 inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s, const RangeJumpContext* range) const {
+  if (var->hasFreeze && ((range ? range->view.frozen_pieces(c) : frozen_pieces(c)) & s)) return 0;
   if (var->fastAttacks || var->fastAttacks2)
       return attacks_bb(c, pt, s, byTypeBB[ALL_PIECES]) & board_bb();
 
@@ -1461,7 +1468,8 @@ inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s, const Ra
   return b & board_bb(c, pt);
 }
 
-inline Bitboard Position::moves_from(Color c, PieceType pt, Square s) const {
+inline Bitboard Position::moves_from(Color c, PieceType pt, Square s, const RangeJumpContext* range) const {
+  if (var->hasFreeze && ((range ? range->view.frozen_pieces(c) : frozen_pieces(c)) & s)) return 0;
   if (var->fastAttacks || var->fastAttacks2)
       return moves_bb(c, pt, s, byTypeBB[ALL_PIECES]) & board_bb();
 

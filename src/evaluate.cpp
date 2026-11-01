@@ -79,7 +79,7 @@ namespace Eval {
     useNNUE = Options["Use NNUE"];
     const Variant* v = variants.find(string(Options["UCI_Variant"]))->second;
     // Wider type catalogues do not enlarge the network's feature storage.
-    useNNUE = useNNUE && !v->hasBurn && !v->hasRangeJump && v->nnueDimensions <= int(FeatureSet::Dimensions)
+    useNNUE = useNNUE && !v->hasBurn && !v->hasRangeJump && !v->hasFreeze && v->nnueDimensions <= int(FeatureSet::Dimensions)
                       && v->nnueMaxPieces <= int(FeatureSet::MaxActiveDimensions);
     if (!useNNUE)
         return;
@@ -327,7 +327,13 @@ namespace {
 
   public:
     Evaluation() = delete;
-    explicit Evaluation(const Position& p) : pos(p) {}
+    explicit Evaluation(const Position& p) : pos(p) {
+      if (pos.variant()->hasFreeze)
+      {
+          AttackView view(pos);
+          for (Color c : {WHITE, BLACK}) frozen[c] = view.frozen_pieces(c);
+      }
+    }
     Evaluation& operator=(const Evaluation&) = delete;
     Value value();
 
@@ -342,7 +348,14 @@ namespace {
     template<Color Us> Score variant() const;
     Value winnable(Score score) const;
 
+    Bitboard active_pieces(Color c, PieceType pt) const {
+      return pos.pieces(c, pt) & (pos.variant()->hasFreeze ? ~frozen[c] : AllSquares);
+    }
+    Bitboard pawn_attacks(Color c) const {
+      return pos.variant()->hasFreeze ? (c == WHITE ? pawn_attacks_bb<WHITE>(active_pieces(c, PAWN)) : pawn_attacks_bb<BLACK>(active_pieces(c, PAWN))) : pe->pawn_attacks(c);
+    }
     const Position& pos;
+    Bitboard frozen[COLOR_NB];
     Material::Entry* me;
     Pawns::Entry* pe;
     Bitboard mobilityArea[COLOR_NB];
@@ -395,7 +408,7 @@ namespace {
 
     const Square ksq = pos.count<KING>(Us) ? pos.square<KING>(Us) : SQ_NONE;
 
-    Bitboard dblAttackByPawn = pawn_double_attacks_bb<Us>(pos.pieces(Us, PAWN));
+    Bitboard dblAttackByPawn = pawn_double_attacks_bb<Us>(active_pieces(Us, PAWN));
 
     // Find our pawns that are blocked or on the first two ranks
     Bitboard b = pos.pieces(Us, PAWN) & (shift<Down>(pos.pieces()) | LowRanks);
@@ -405,7 +418,7 @@ namespace {
     if (pos.must_capture())
         mobilityArea[Us] = AllSquares;
     else
-        mobilityArea[Us] = ~(b | pos.pieces(Us, KING, QUEEN) | pos.blockers_for_king(Us) | pe->pawn_attacks(Them)
+        mobilityArea[Us] = ~(b | pos.pieces(Us, KING, QUEEN) | pos.blockers_for_king(Us) | pawn_attacks(Them)
                                | (pos.pieces(Us, SHOGI_PAWN) & shift<Down>(pos.pieces(Us)))
                                | shift<Down>(pos.pieces(Them, SHOGI_PAWN, SOLDIER))
                                | shift<EAST>(pos.promoted_soldiers(Them))
@@ -413,8 +426,8 @@ namespace {
 
     // Initialize attackedBy[] for king and pawns
     attackedBy[Us][KING] = pos.count<KING>(Us) ? pos.attacks_from(Us, KING, ksq) : Bitboard(0);
-    attackedBy[Us][PAWN] = pe->pawn_attacks(Us);
-    attackedBy[Us][SHOGI_PAWN] = shift<Up>(pos.pieces(Us, SHOGI_PAWN));
+    attackedBy[Us][PAWN] = pawn_attacks(Us);
+    attackedBy[Us][SHOGI_PAWN] = shift<Up>(active_pieces(Us, SHOGI_PAWN));
     attackedBy[Us][ALL_PIECES] = attackedBy[Us][KING] | attackedBy[Us][PAWN] | attackedBy[Us][SHOGI_PAWN];
     attackedBy2[Us]            =  (attackedBy[Us][KING] & attackedBy[Us][PAWN])
                                 | (attackedBy[Us][KING] & attackedBy[Us][SHOGI_PAWN])
@@ -431,7 +444,7 @@ namespace {
         kingRing[Us] = attacks_bb<KING>(s) | s;
     }
 
-    kingAttackersCount[Them] = popcount(kingRing[Us] & (pe->pawn_attacks(Them) | shift<Down>(pos.pieces(Them, SHOGI_PAWN))));
+    kingAttackersCount[Them] = popcount(kingRing[Us] & (pawn_attacks(Them) | shift<Down>(active_pieces(Them, SHOGI_PAWN))));
     kingAttacksCount[Them] = kingAttackersWeight[Them] = 0;
     kingAttackersCountInHand[Them] = kingAttackersWeightInHand[Them] = 0;
 
@@ -451,7 +464,7 @@ namespace {
     constexpr Direction Down = -pawn_push(Us);
     constexpr Bitboard OutpostRanks = (Us == WHITE ? Rank4BB | Rank5BB | Rank6BB
                                                    : Rank5BB | Rank4BB | Rank3BB);
-    Bitboard b1 = pos.pieces(Us, Pt);
+    Bitboard b1 = active_pieces(Us, Pt);
     Bitboard b, bb;
     Score score = SCORE_ZERO;
 
@@ -462,7 +475,8 @@ namespace {
         Square s = pop_lsb(b1);
 
         // Find attacked squares, including x-ray attacks for bishops and rooks
-        b = pos.variant()->hasRangeJump && pos.variant()->rangeJump[Pt].geometry ? pos.attacks_from(Us, Pt, s)
+        b = pos.variant()->hasFreeze ? pos.attacks_from(Us, Pt, s)
+          : pos.variant()->hasRangeJump && pos.variant()->rangeJump[Pt].geometry ? pos.attacks_from(Us, Pt, s)
           : Pt == BISHOP ? attacks_bb<BISHOP>(s, pos.pieces() ^ pos.pieces(QUEEN))
           : Pt ==   ROOK && !pos.diagonal_lines() ? attacks_bb<  ROOK>(s, pos.pieces() ^ pos.pieces(QUEEN) ^ pos.pieces(Us, ROOK))
                          : pos.attacks_from(Us, Pt, s);
@@ -950,19 +964,19 @@ namespace {
     safe = ~attackedBy[Them][ALL_PIECES] | attackedBy[Us][ALL_PIECES];
 
     // Bonus for attacking enemy pieces with our relatively safe pawns
-    b = pos.pieces(Us, PAWN) & safe;
+    b = active_pieces(Us, PAWN) & safe;
     b = pawn_attacks_bb<Us>(b) & nonPawnEnemies;
     score += ThreatBySafePawn * popcount(b);
 
     // Find squares where our pawns can push on the next move
-    b  = shift<Up>(pos.pieces(Us, PAWN)) & ~pos.pieces();
+    b  = shift<Up>(active_pieces(Us, PAWN)) & ~pos.pieces();
     b |= shift<Up>(b & TRank3BB) & ~pos.pieces();
 
     // Keep only the squares which are relatively safe
     b &= ~attackedBy[Them][PAWN] & safe;
 
     // Bonus for safe pawn threats on the next move
-    b = (pawn_attacks_bb<Us>(b) | shift<Up>(shift<Up>(pos.pieces(Us, SHOGI_PAWN, SOLDIER)))) & nonPawnEnemies;
+    b = (pawn_attacks_bb<Us>(b) | shift<Up>(shift<Up>((active_pieces(Us, SHOGI_PAWN) | active_pieces(Us, SOLDIER))))) & nonPawnEnemies;
     score += ThreatByPawnPush * popcount(b);
 
     // Bonus for threats on the next moves against enemy queen
@@ -1202,8 +1216,8 @@ namespace {
         Bitboard blocked = pos.pieces(Us, PAWN) | attackedBy[Them][ALL_PIECES];
         Bitboard doubleBlocked =  attackedBy2[Them]
                                 | (pos.pieces(Us, PAWN) & (shift<Down>(pos.pieces()) | attackedBy[Them][ALL_PIECES]))
-                                | (pos.pieces(Them) & pe->pawn_attacks(Them))
-                                | (pawn_attacks_bb<Them>(pos.pieces(Them, PAWN) & pe->pawn_attacks(Them)));
+                                | (pos.pieces(Them) & pawn_attacks(Them))
+                                | (pawn_attacks_bb<Them>(active_pieces(Them, PAWN) & pawn_attacks(Them)));
         Bitboard inaccessible = pos.pieces(Us, PAWN) & shift<Down>(pos.pieces(Them, PAWN));
         // Traverse all paths of the CTF pieces to the CTF targets.
         // Put squares that are attacked or occupied on hold for one iteration.

@@ -1290,6 +1290,9 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     const std::pair<const char*, PieceSet*> arrivalOptions[] = {
         {"burnActivePieceTypes", &v->burnActivePieceTypes},
         {"burnPassivePieceTypes", &v->burnPassivePieceTypes},
+        {"freezeEffectPieces", &v->freezeEffectPieces},
+        {"freezeImmunePieces", &v->freezeImmunePieces},
+        {"burnImmunePieces", &v->burnImmunePieces},
         {"tenjikuTripleStepPieceTypes", &v->tenjikuTripleStepPieceTypes}
     };
     for (const auto& setting : arrivalOptions)
