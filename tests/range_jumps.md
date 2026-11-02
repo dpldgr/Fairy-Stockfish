@@ -30,6 +30,10 @@ fixture in `fixtures/tenjiku-range-search.ini`. It verifies that the ordinary
 quiet GG move `i13h14` is searched after White's GG is passively burned on h14:
 the preceding `h4h14` must score mate -2 at depth 4, and Black must select
 `i13h14` with mate 2 at depth 3. Smaller builds skip this fixture.
+The second sequence, `i5i6 k13a3 a2a3 g12g11 f4p14`, must find the quiet
+VG move `h13b7` and mate 2 at depth 6. Forcing White's preceding `f4p14`
+must score mate -2 at depth 4. These cases cover early static pruning and
+reductions as well as quiet-move skipping.
 
 `range_jump_state.cpp` compares typed hypothetical attack queries with queries
 after actually making every legal move. It checks promotion provenance,
