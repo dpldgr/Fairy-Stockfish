@@ -869,6 +869,16 @@ namespace {
 
     CapturePieceToHistory& captureHistory = thisThread->captureHistory;
 
+    // Detect on-board range jumpers once for the pruning and reduction guards.
+    bool activeRangeJumpers = false;
+    if (pos.variant()->hasRangeJump)
+        for (PieceSet types = pos.variant()->rangeJumpTypes; types;)
+            if (pos.pieces(pop_lsb(types)))
+            {
+                activeRangeJumpers = true;
+                break;
+            }
+
     // Step 6. Static evaluation of the position
     if (ss->inCheck)
     {
@@ -928,6 +938,7 @@ namespace {
 
     // Step 7. Futility pruning: child node (~50 Elo)
     if (   !PvNode
+        && !activeRangeJumpers
         && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
         &&  depth < 9 - 3 * pos.blast_on_capture()
         &&  eval - futility_margin(depth, improving) * (1 + pos.check_counting() + 2 * pos.must_capture() + pos.extinction_single_piece() + !pos.checking_permitted()) >= beta
@@ -1098,16 +1109,6 @@ moves_loop: // When in check, search starts from here
     singularQuietLMR = moveCountPruning = false;
     bool doubleExtension = false;
 
-    // Keep quiet moves available while either side has a range jumper on board.
-    bool activeRangeJumpers = false;
-    if (pos.variant()->hasRangeJump)
-        for (PieceSet types = pos.variant()->rangeJumpTypes; types;)
-            if (pos.pieces(pop_lsb(types)))
-            {
-                activeRangeJumpers = true;
-                break;
-            }
-
     // Indicate PvNodes that will probably fail low if the node was searched
     // at a depth equal or greater than the current depth, and the result of this search was a fail low.
     bool likelyFailLow =    PvNode
@@ -1155,13 +1156,12 @@ moves_loop: // When in check, search starts from here
 
       // Step 13. Pruning at shallow depth (~200 Elo)
       if (  !rootNode
-          && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
+          && !activeRangeJumpers && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
           && (pos.non_pawn_material(us) || pos.count<ALL_PIECES>(us) == pos.count<PAWN>(us))
           && bestValue > VALUE_TB_LOSS_IN_MAX_PLY)
       {
           // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold
-          moveCountPruning = !activeRangeJumpers
-                         && moveCount >= futility_move_count(improving, depth, pos);
+          moveCountPruning = moveCount >= futility_move_count(improving, depth, pos);
 
           // Reduced depth of the next LMR search
           int lmrDepth = std::max(newDepth - reduction(improving, depth, moveCount), 0);
@@ -1297,7 +1297,7 @@ moves_loop: // When in check, search starts from here
       // been searched. In general we would like to reduce them, but there are many
       // cases where we extend a son if it has good chances to be "interesting".
       if (    depth >= 3
-          &&  moveCount > 1 + 2 * rootNode
+          && !activeRangeJumpers && moveCount > 1 + 2 * rootNode
           && !(pos.must_capture() && pos.has_capture())
           && (  !captureOrPromotion
               || (cutNode && (ss-1)->moveCount > 1)

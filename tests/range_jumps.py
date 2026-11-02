@@ -421,10 +421,13 @@ extinctionPieceTypes = k
 
         config = Path(__file__).with_name('fixtures') / 'tenjiku-range-search.ini'
         cases = (
-            ('c3b2 l11l10', 'depth 4 searchmoves h4h14', -2, 'h4h14 i13h14'),
-            ('c3b2 l11l10 h4h14', 'depth 3', 2, 'i13h14'),
+            ('c3b2 l11l10', 'depth 4 searchmoves h4h14', -2, 'h4h14 i13h14', 'h14h1'),
+            ('c3b2 l11l10 h4h14', 'depth 3', 2, 'i13h14', 'h14h1'),
+            ('i5i6 k13a3 a2a3 g12g11 f4p14', 'depth 6', 2, 'h13b7', 'b7h1'),
+            ('i5i6 k13a3 a2a3 g12g11', 'depth 4 searchmoves f4p14', -2,
+             'f4p14 h13b7', 'b7h1'),
         )
-        for moves, go, mate, pv in cases:
+        for moves, go, mate, pv, capture in cases:
             with self.subTest(moves=moves):
                 with subprocess.Popen([self.engine, 'load', str(config)], stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as engine:
@@ -452,7 +455,7 @@ extinctionPieceTypes = k
                         info = [line for line in output if line.startswith('info depth')][-1]
                         self.assertIn(f' score mate {mate} ', info)
                         self.assertIn(f' pv {pv} ', info)
-                        self.assertIn('h14h1', info)
+                        self.assertIn(capture, info)
                     finally:
                         timer.cancel()
 
