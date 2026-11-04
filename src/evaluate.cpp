@@ -76,7 +76,11 @@ namespace Eval {
 
   void NNUE::init() {
 
+#if BOARD_SQUARES > 640
+    useNNUE = false;
+#else
     useNNUE = Options["Use NNUE"];
+#endif
     const Variant* v = variants.find(string(Options["UCI_Variant"]))->second;
     // Wider type catalogues do not enlarge the network's feature storage.
     useNNUE = useNNUE && !v->hasBurn && !v->hasRangeJump && !v->hasFreeze && v->nnueDimensions <= int(FeatureSet::Dimensions)
@@ -1482,10 +1486,20 @@ namespace {
         sf -= 4 * !pawnsOnBothFlanks;
     }
 
+#if BOARD_SQUARES > 640
+    // Preserve the wider components through interpolation, then clamp before
+    // converting back to the search/TT value range.
+    int64_t interpolated = int64_t(mg) * int(me->game_phase())
+                         + int64_t(eg) * int(PHASE_MIDGAME - me->game_phase()) * sf / SCALE_FACTOR_NORMAL;
+    v = int(std::clamp(interpolated / PHASE_MIDGAME,
+                      int64_t(VALUE_TB_LOSS_IN_MAX_PLY + 1), int64_t(VALUE_TB_WIN_IN_MAX_PLY - 1)));
+#else
     // Interpolate between the middlegame and (scaled by 'sf') endgame score
     v =  mg * int(me->game_phase())
        + eg * int(PHASE_MIDGAME - me->game_phase()) * ScaleFactor(sf) / SCALE_FACTOR_NORMAL;
     v /= PHASE_MIDGAME;
+
+#endif
 
     if constexpr (T)
     {

@@ -747,7 +747,42 @@ inline Square msb(Bitboard b) {
 
 #elif defined(_MSC_VER)  // MSVC
 
-#ifdef _WIN64  // MSVC, WIN64
+#if defined(BITBOARD_MULTIWORD) && BOARD_SQUARES > 384
+inline Square lsb(Bitboard b) {
+  assert(b);
+  for (int i = BITBOARD_WORDS - 1; i >= 0; --i)
+      if (uint64_t word = b.b64[i])
+      {
+          unsigned long idx;
+#ifdef _WIN64
+          _BitScanForward64(&idx, word);
+#else
+          if (uint32_t(word)) _BitScanForward(&idx, uint32_t(word));
+          else { _BitScanForward(&idx, uint32_t(word >> 32)); idx += 32; }
+#endif
+          return Square(idx + 64 * (BITBOARD_WORDS - 1 - i));
+      }
+  return SQ_NONE;
+}
+
+inline Square msb(Bitboard b) {
+  assert(b);
+  for (int i = 0; i < BITBOARD_WORDS; ++i)
+      if (uint64_t word = b.b64[i])
+      {
+          unsigned long idx;
+#ifdef _WIN64
+          _BitScanReverse64(&idx, word);
+#else
+          if (word >> 32) { _BitScanReverse(&idx, uint32_t(word >> 32)); idx += 32; }
+          else _BitScanReverse(&idx, uint32_t(word));
+#endif
+          return Square(idx + 64 * (BITBOARD_WORDS - 1 - i));
+      }
+  return SQ_NONE;
+}
+
+#elif defined(_WIN64)  // MSVC, WIN64
 
 inline Square lsb(Bitboard b) {
   assert(b);

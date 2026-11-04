@@ -70,15 +70,18 @@
 #define BOARD_SQUARES (BOARD_FILES * BOARD_RANKS)
 #endif
 
-#if BOARD_FILES < 8 || BOARD_FILES > 32
-#error "BOARD_FILES must be between 8 and 32"
+#if BOARD_FILES < 8 || BOARD_FILES > 36
+#error "BOARD_FILES must be between 8 and 36"
 #endif
 #if BOARD_RANKS < 8 || BOARD_RANKS > 48
 #error "BOARD_RANKS must be between 8 and 48"
 #endif
-#if BOARD_SQUARES < 64 || BOARD_SQUARES > 384
-#error "BOARD_SQUARES must be between 64 and 384"
+#if BOARD_SQUARES < 64 || BOARD_SQUARES > 1296
+#error "BOARD_SQUARES must be between 64 and 1296"
 #endif
+// Larger profiles trade continuation-history heuristics for a bounded worker
+// footprint. Keep the existing layout and search paths through 640 cells.
+#define USE_CONTINUATION_HISTORY (BOARD_SQUARES <= 640)
 #if BOARD_SQUARES > 128
 #define BITBOARD_MULTIWORD
 #define BITBOARD_WORDS ((BOARD_SQUARES + 63) / 64)
@@ -284,7 +287,7 @@ struct Bitboard {
     constexpr Bitboard operator - (const int x) const { return *this - Bitboard(x); }
     constexpr Bitboard operator * (const Bitboard) const { return Bitboard(0); }
 };
-constexpr int SQUARE_BITS = BOARD_SQUARES <= 256 ? 8 : 9;
+constexpr int SQUARE_BITS = BOARD_SQUARES <= 256 ? 8 : BOARD_SQUARES <= 512 ? 9 : BOARD_SQUARES <= 1024 ? 10 : 11;
 #elif defined(LARGEBOARDS)
 #if defined(__GNUC__) && defined(IS_64BIT)
 typedef unsigned __int128 Bitboard;
@@ -489,7 +492,8 @@ constexpr int MAX_PLY = 246;
 // Wider catalogues can offer both ordinary and promoted drops for every
 // type on every empty square. Preserve the original default-build bound.
 constexpr int MAX_MOVES = BASE_MAX_MOVES
-                       + (PIECE_TYPE_CAPACITY > 64 ? 2 * PIECE_TYPE_CAPACITY * BOARD_SQUARES : 0);
+                       + (PIECE_TYPE_CAPACITY > 64 || BOARD_SQUARES > 384
+                          ? 2 * PIECE_TYPE_CAPACITY * BOARD_SQUARES : 0);
 
 /// Moves use 32 or 64 bits, selected from the board and type capacity.
 /// The low fields hold destination, origin and four move-type bits. Higher
@@ -508,7 +512,7 @@ constexpr int PIECE_SET_WORDS = PIECE_TYPE_CAPACITY / 64;
 // Walling shares the extra-square payload with gating, even in gating=no
 // builds. Drops carry both the in-hand and placed type.
 constexpr int MOVE_TYPE_BITS = 4;
-#define MOVE_SQUARE_BITS (BOARD_SQUARES <= 64 ? 6 : BOARD_SQUARES <= 128 ? 7 : BOARD_SQUARES <= 256 ? 8 : 9)
+#define MOVE_SQUARE_BITS (BOARD_SQUARES <= 64 ? 6 : BOARD_SQUARES <= 128 ? 7 : BOARD_SQUARES <= 256 ? 8 : BOARD_SQUARES <= 512 ? 9 : BOARD_SQUARES <= 1024 ? 10 : 11)
 #define WIDE_MOVES (3 * MOVE_SQUARE_BITS + 4 + PIECE_TYPE_ENCODING_BITS > 32 || 2 * MOVE_SQUARE_BITS + 4 + 2 * PIECE_TYPE_ENCODING_BITS > 32)
 constexpr int MOVE_PAYLOAD_BITS = std::max({2 * SQUARE_BITS + MOVE_TYPE_BITS + 2 * PIECE_TYPE_BITS,
                                           3 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS,
@@ -840,7 +844,7 @@ enum Direction : int {
 };
 
 enum File : int {
-  FILE_A = 0, FILE_B = 1, FILE_C = 2, FILE_D = 3, FILE_E = 4, FILE_F = 5, FILE_G = 6, FILE_H = 7, FILE_I = 8, FILE_J = 9, FILE_K = 10, FILE_L = 11, FILE_M = 12, FILE_N = 13, FILE_O = 14, FILE_P = 15, FILE_Q = 16, FILE_R = 17, FILE_S = 18, FILE_T = 19, FILE_U = 20, FILE_V = 21, FILE_W = 22, FILE_X = 23, FILE_Y = 24, FILE_Z = 25, FILE_AA = 26, FILE_AB = 27, FILE_AC = 28, FILE_AD = 29, FILE_AE = 30, FILE_AF = 31,
+  FILE_A = 0, FILE_B = 1, FILE_C = 2, FILE_D = 3, FILE_E = 4, FILE_F = 5, FILE_G = 6, FILE_H = 7, FILE_I = 8, FILE_J = 9, FILE_K = 10, FILE_L = 11, FILE_M = 12, FILE_N = 13, FILE_O = 14, FILE_P = 15, FILE_Q = 16, FILE_R = 17, FILE_S = 18, FILE_T = 19, FILE_U = 20, FILE_V = 21, FILE_W = 22, FILE_X = 23, FILE_Y = 24, FILE_Z = 25, FILE_AA = 26, FILE_AB = 27, FILE_AC = 28, FILE_AD = 29, FILE_AE = 30, FILE_AF = 31, FILE_AG = 32, FILE_AH = 33, FILE_AI = 34, FILE_AJ = 35,
   FILE_NB = BOARD_FILES,
   FILE_MAX = FILE_NB - 1
 };
@@ -871,6 +875,24 @@ struct DirtyPiece {
 /// The least significant 16 bits are used to store the middlegame value and the
 /// upper 16 bits are used to store the endgame value. We have to take care to
 /// avoid left-shifting a signed int to avoid undefined behavior.
+#if BOARD_SQUARES > 640
+// Large armies can exceed a signed 16-bit component before the final clamp.
+enum Score : int64_t { SCORE_ZERO };
+
+constexpr Score make_score(int mg, int eg) {
+  return Score((uint64_t(uint32_t(eg)) << 32) + uint64_t(int64_t(mg)));
+}
+
+inline Value eg_value(Score s) {
+  union { uint32_t u; int32_t s; } eg = { uint32_t((uint64_t(s) + 0x80000000ULL) >> 32) };
+  return Value(eg.s);
+}
+
+inline Value mg_value(Score s) {
+  union { uint32_t u; int32_t s; } mg = { uint32_t(s) };
+  return Value(mg.s);
+}
+#else
 enum Score : int { SCORE_ZERO };
 
 constexpr Score make_score(int mg, int eg) {
@@ -889,6 +911,7 @@ inline Value mg_value(Score s) {
   union { uint16_t u; int16_t s; } mg = { uint16_t(unsigned(s)) };
   return Value(mg.s);
 }
+#endif
 
 #define ENABLE_BIT_OPERATORS_ON(T)                                        \
 constexpr T operator~ (T d) { return (T)~(int)d; }                        \
@@ -929,7 +952,15 @@ ENABLE_INCR_OPERATORS_ON(File)
 ENABLE_INCR_OPERATORS_ON(Rank)
 ENABLE_INCR_OPERATORS_ON(CheckCount)
 
+#if BOARD_SQUARES > 640
+constexpr Score operator+(Score s, int64_t x) { return Score(uint64_t(s) + uint64_t(x)); }
+constexpr Score operator-(Score s, int64_t x) { return Score(uint64_t(s) - uint64_t(x)); }
+constexpr Score operator-(Score s) { return Score(uint64_t(0) - uint64_t(s)); }
+inline Score& operator+=(Score& s, int64_t x) { return s = s + x; }
+inline Score& operator-=(Score& s, int64_t x) { return s = s - x; }
+#else
 ENABLE_BASE_OPERATORS_ON(Score)
+#endif
 
 ENABLE_BASE_OPERATORS_ON(PieceType)
 ENABLE_BIT_OPERATORS_ON(RiderType)
@@ -968,6 +999,9 @@ inline Score operator/(Score s, int i) {
 /// Multiplication of a Score by an integer. We check for overflow in debug mode.
 inline Score operator*(Score s, int i) {
 
+#if BOARD_SQUARES > 640
+  return make_score(mg_value(s) * i, eg_value(s) * i);
+#else
   Score result = Score(int(s) * i);
 
   assert(eg_value(result) == (i * eg_value(s)));
@@ -975,7 +1009,12 @@ inline Score operator*(Score s, int i) {
   assert((i == 0) || (result / i) == s);
 
   return result;
+#endif
 }
+
+#if BOARD_SQUARES > 640
+inline Score operator*(int i, Score s) { return s * i; }
+#endif
 
 /// Multiplication of a Score by a boolean
 inline Score operator*(Score s, bool b) {
@@ -1021,7 +1060,7 @@ constexpr Square make_square(File f, Rank r) {
 }
 
 constexpr bool is_supported_file(File f) {
-  return f >= FILE_A && f <= FILE_AF;
+  return f >= FILE_A && f <= (BOARD_FILES > 32 ? FILE_AJ : FILE_AF);
 }
 
 constexpr bool is_supported_rank(Rank r) {

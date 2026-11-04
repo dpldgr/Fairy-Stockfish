@@ -9,7 +9,8 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory() as directory:
     binary = str(Path(directory) / 'encoding')
-    for files, ranks in ((8, 8), (12, 10), (16, 16), (19, 19), (32, 12)):
+    for files, ranks in ((8, 8), (12, 10), (16, 16), (19, 19), (32, 12),
+                         (25, 25), (32, 20), (36, 18), (36, 36)):
         for slots in range(64, 513, 64):
             subprocess.run(shlex.split(os.environ.get('CXX', 'g++'))
                            + ['-std=c++17', '-O2']

@@ -162,7 +162,7 @@ private:
   Value threshold;
   Depth depth;
   int ply;
-#if PIECE_TYPE_CAPACITY > 64
+#if PIECE_TYPE_CAPACITY > 64 || BOARD_SQUARES > 384
   // Wide catalogues and area routes can exceed the fixed move-list bound.
   std::unique_ptr<ExtMove[]> moveStorage{new ExtMove[pos.move_capacity()]};
   ExtMove* moves = moveStorage.get();

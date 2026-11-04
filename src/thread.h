@@ -74,7 +74,9 @@ public:
   GateHistory gateHistory;
   LowPlyHistory lowPlyHistory;
   CapturePieceToHistory captureHistory;
+#if USE_CONTINUATION_HISTORY
   ContinuationHistory continuationHistory[2][2];
+#endif
   Score trend;
 };
 
