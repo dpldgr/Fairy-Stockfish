@@ -41,6 +41,36 @@ int main() {
     static_assert(sizeof(Score) == 8);
     // No hidden multi-GiB continuation table remains in the worker layout.
     static_assert(sizeof(Thread) < sizeof(CapturePieceToHistory) + 64 * 1024 * 1024);
+    static_assert(sizeof(Thread) < 128 * 1024 * 1024);
+    static_assert(sizeof(Variant) < 4 * 1024 * 1024);
+    auto captures = std::make_unique<CapturePieceToHistory>();
+    captures->fill(7);
+    const auto& readOnly = *captures;
+    const Piece attackers[] = {W_PAWN, B_PAWN, W_KING, B_KING};
+    const PieceType victims[] = {NO_PIECE_TYPE, PAWN, KING};
+    const Square destinations[] = {SQ_MIN, Square(64), SQ_MAX};
+    Stats<int16_t, 10692, 4, 3, 3> reference;
+    reference.fill(7);
+    for (Piece pc : attackers)
+        for (PieceType pt : victims)
+            for (Square to : destinations)
+                assert(readOnly.value(pc, to, pt) == 7);
+    assert(captures->allocated_rows() == 0); // Reads do not allocate.
+    for (int i = 0; i < 4096; ++i)
+    {
+        int a = i % 4, v = (i / 4) % 3, d = (i / 12) % 3;
+        int bonus = (i * 173 % 6001) - 3000;
+        reference[a][d][v] << bonus;
+        captures->update(attackers[a], destinations[d], victims[v], bonus);
+        assert(readOnly.value(attackers[a], destinations[d], victims[v]) == reference[a][d][v]);
+    }
+    assert(captures->allocated_rows() == 12);
+    for (int a = 0; a < 4; ++a)
+        for (int v = 0; v < 3; ++v)
+            for (int d = 0; d < 3; ++d)
+                assert(readOnly.value(attackers[a], destinations[d], victims[v]) == reference[a][d][v]);
+    captures->fill(-3);
+    assert(captures->allocated_rows() == 0 && readOnly.value(B_KING, SQ_MAX, KING) == -3);
     score = make_score(900000, -700000);
     score += make_score(-200000, 300000);
     assert(mg_value(score) == 700000 && eg_value(score) == -400000);

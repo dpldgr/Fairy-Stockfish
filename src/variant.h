@@ -243,7 +243,15 @@ struct Variant {
     return combined_lion_mask(pt, MODALITY_QUIET) | combined_lion_mask(pt, MODALITY_CAPTURE);
   }
   void resolve_lion_dog_masks();
+#if BOARD_SQUARES > 640
+  uint64_t lionGeometryPathMask[SQUARE_NB] = {};
+  uint64_t lion_effective_path_mask(Color c, PieceType pt, Square from) const {
+    return lionGeometryPathMask[from]
+         & (lionModalityMask[c][MODALITY_QUIET][pt] | lionModalityMask[c][MODALITY_CAPTURE][pt]);
+  }
+#else
   uint64_t lionEffectivePathMask[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB] = {};
+#endif
   std::vector<HookMoveSpec> hookMoveSpecs[PIECE_TYPE_NB] = {};
   std::vector<DoubleMoveSpec> doubleMoveSpecs[PIECE_TYPE_NB] = {};
   PieceSet burnActivePieceTypes = NO_PIECE_SET;

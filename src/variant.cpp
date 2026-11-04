@@ -2765,7 +2765,11 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
                     }
                 targets |= second & ~square_bb(from);
             }
+#if BOARD_SQUARES > 640
+        uint64_t lion = lion_effective_path_mask(c, pt, from);
+#else
         uint64_t lion = lionEffectivePathMask[c][pt][from];
+#endif
         while (lion)
         {
             int path = __builtin_ctzll(lion);
@@ -3072,10 +3076,20 @@ Variant* Variant::conclude() {
     if (!doubleStepRegion[WHITE] && !doubleStepRegion[BLACK])
         doubleStep = false;
 
+#if BOARD_SQUARES > 640
+    for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+    {
+        lionGeometryPathMask[from] = 0;
+        for (int path = 0; path < 64; ++path)
+            if (variant_lion_path_is_ok(from, path, maxFile, maxRank))
+                lionGeometryPathMask[from] |= 1ULL << path;
+    }
+#else
     for (Color c : { WHITE, BLACK })
         for (PieceType pt = NO_PIECE_TYPE; pt < PIECE_TYPE_NB; ++pt)
             for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
                 lionEffectivePathMask[c][pt][from] = 0;
+#endif
 
     hasLionMoves = false;
     for (PieceType pt = NO_PIECE_TYPE; pt < PIECE_TYPE_NB; ++pt)
@@ -3086,6 +3100,7 @@ Variant* Variant::conclude() {
             lionModalityMask[WHITE][modality][pt] = combined_lion_mask(pt, modality);
             lionModalityMask[BLACK][modality][pt] = flip_lion_path_mask(combined_lion_mask(pt, modality));
         }
+#if BOARD_SQUARES <= 640
         uint64_t lionMaskByColor[COLOR_NB] = {
           combined_lion_mask(pt),
           flip_lion_path_mask(combined_lion_mask(pt))
@@ -3097,6 +3112,7 @@ Variant* Variant::conclude() {
                     if (   (lionMaskByColor[c] & (1ULL << path))
                         && variant_lion_path_is_ok(from, path, maxFile, maxRank))
                         lionEffectivePathMask[c][pt][from] |= 1ULL << path;
+#endif
     }
 
     resolve_range_jumps();

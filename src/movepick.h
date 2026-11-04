@@ -102,7 +102,53 @@ typedef Stats<int16_t, 10692, MAX_LPH, int(SQUARE_NB + 1) * int(1 << SQUARE_BITS
 typedef Stats<Move, NOT_USED, PIECE_NB, SQUARE_NB> CounterMoveHistory;
 
 /// CapturePieceToHistory is addressed by a move's [piece][to][captured piece type]
+#if BOARD_SQUARES > 640
+// Allocate a destination row only when its attacker/victim pair is updated.
+// Reads of an untouched pair return the fill value without allocating. Every
+// exact piece identity and every statistic is retained; there is no eviction.
+class CapturePieceToHistory {
+  using Row = Stats<int16_t, 10692, SQUARE_NB>;
+  std::array<std::unique_ptr<Row>, PIECE_NB * PIECE_TYPE_NB> rows{};
+  int16_t initialValue = 0;
+  size_t rowCount = 0;
+
+  static size_t index(Piece pc, PieceType captured) {
+    assert(pc >= NO_PIECE && pc < PIECE_NB);
+    assert(captured >= NO_PIECE_TYPE && captured < PIECE_TYPE_NB);
+    return size_t(pc) * PIECE_TYPE_NB + captured;
+  }
+
+public:
+  int16_t value(Piece pc, Square to, PieceType captured) const {
+    assert(is_ok(to));
+    const auto& row = rows[index(pc, captured)];
+    return row ? int16_t((*row)[to]) : initialValue;
+  }
+
+  void update(Piece pc, Square to, PieceType captured, int bonus) {
+    assert(is_ok(to));
+    auto& row = rows[index(pc, captured)];
+    if (!row)
+    {
+        std::unique_ptr<Row> fresh(new Row);
+        for (auto& entry : *fresh) entry = initialValue;
+        row = std::move(fresh);
+        ++rowCount;
+    }
+    (*row)[to] << bonus;
+  }
+
+  void fill(int16_t value) {
+    for (auto& row : rows) row.reset();
+    initialValue = value;
+    rowCount = 0;
+  }
+
+  size_t allocated_rows() const { return rowCount; }
+};
+#else
 typedef Stats<int16_t, 10692, PIECE_NB, SQUARE_NB, PIECE_TYPE_NB> CapturePieceToHistory;
+#endif
 
 /// PieceToHistory is like ButterflyHistory but is addressed by a move's [piece][to]
 typedef Stats<int16_t, 29952, 2 * PIECE_SLOTS, SQUARE_NB> PieceToHistory;
