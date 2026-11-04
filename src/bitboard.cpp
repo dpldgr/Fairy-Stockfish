@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <bitset>
 #include <cstdlib>
+#include <memory>
 
 #include "bitboard.h"
 #include "magic.h"
@@ -45,6 +46,11 @@ uint32_t LionDogValidPathMask[SQUARE_NB];
 Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 RiderType AttackRiderTypes[PIECE_TYPE_NB];
 RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
+std::vector<SkipRayProfile> SkipRayProfiles;
+std::vector<unsigned> SkipAttackProfiles[PIECE_TYPE_NB];
+std::vector<unsigned> SkipMoveProfiles[2][PIECE_TYPE_NB];
+struct SkipRayBaseAttacks { Bitboard squares[COLOR_NB][SQUARE_NB]; };
+static std::unique_ptr<SkipRayBaseAttacks> SkipRayBase[PIECE_TYPE_NB];
 
 Magic RookMagicsH[SQUARE_NB];
 Magic RookMagicsV[SQUARE_NB];
@@ -254,6 +260,44 @@ namespace {
 
 }
 
+Bitboard skip_ray_attacks(Color c, PieceType pt, Square from, Bitboard occupied,
+                         Bitboard walls, bool quiet, bool initial) {
+    Bitboard result = 0;
+    const auto& profiles = quiet ? SkipMoveProfiles[initial][pt] : SkipAttackProfiles[pt];
+    for (unsigned index : profiles)
+    {
+        const auto& profile = SkipRayProfiles[index];
+        // A wall stays opaque even when it occupies the ignored prefix.
+        Bitboard blockers = occupied & ~(profile.ignored[c][from] & ~walls);
+        Bitboard attacks = 0;
+        for (RiderType riders = profile.riders; riders;)
+            attacks |= rider_attacks_bb(pop_rider(&riders), from, blockers);
+        result |= attacks & profile.destinations[c][from];
+    }
+    return result & ~walls;
+}
+
+Bitboard regular_pseudo_attacks(Color c, PieceType pt, Square from) {
+    return SkipRayBase[pt] ? SkipRayBase[pt]->squares[c][from] : PseudoAttacks[c][pt][from];
+}
+
+Bitboard regular_attacks_bb(Color c, PieceType pt, Square from, Bitboard occupied) {
+    Bitboard result = LeaperAttacks[c][pt][from];
+    for (RiderType riders = AttackRiderTypes[pt] & ~RIDER_SKIP; riders;)
+        result |= rider_attacks_bb(pop_rider(&riders), from, occupied);
+    return result & regular_pseudo_attacks(c, pt, from);
+}
+
+Bitboard skip_checking_squares(Color c, PieceType pt, Square target, Bitboard occupied, Bitboard walls) {
+    Bitboard result = 0, candidates = PseudoAttacks[~c][pt][target] & ~walls;
+    while (candidates)
+    {
+        Square from = pop_lsb(candidates);
+        if (attacks_bb(c, pt, from, occupied, walls) & target) result |= from;
+    }
+    return result;
+}
+
 #ifdef BITBOARD_MULTIWORD
   enum RayIndex {
     RAY_NORTH, RAY_SOUTH, RAY_EAST, RAY_WEST,
@@ -334,9 +378,50 @@ void Bitboards::init_pieces() {
   if (std::getenv("FSF_INIT_TELEMETRY"))
       sync_cout << "info string Bitboards::init_pieces(): entered" << sync_endl;
 
+  SkipRayProfiles.clear();
+  auto profile_index = [](const SkipRay& term) {
+      for (unsigned i = 0; i < SkipRayProfiles.size(); ++i)
+          if (SkipRayProfiles[i].skip == term.skip && SkipRayProfiles[i].range == term.range
+              && SkipRayProfiles[i].directions == term.directions) return i;
+      SkipRayProfile profile{};
+      profile.skip = term.skip; profile.range = term.range; profile.directions = term.directions;
+      if (term.directions & 0xAA) profile.riders |= RIDER_BISHOP;
+      if (term.directions & 0x11) profile.riders |= RIDER_ROOK_V;
+      if (term.directions & 0x44) profile.riders |= RIDER_ROOK_H;
+      constexpr int df[] = {0,1,1,1,0,-1,-1,-1}, dr[] = {1,1,0,-1,-1,-1,0,1};
+      for (Color c : {WHITE, BLACK})
+          for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+              for (int d = 0; d < 8; ++d)
+                  if (term.directions & (1 << d))
+                  {
+                      int actual = (d + (c == BLACK ? 4 : 0)) % 8;
+                      unsigned distance = 1;
+                      for (int f = file_of(from) + df[actual], r = rank_of(from) + dr[actual];
+                           f >= 0 && f < FILE_NB && r >= 0 && r < RANK_NB;
+                           f += df[actual], r += dr[actual], ++distance)
+                      {
+                          Square to = make_square(File(f), Rank(r));
+                          if (distance <= term.skip) profile.ignored[c][from] |= to;
+                          else if (!term.range || distance <= term.range) profile.destinations[c][from] |= to;
+                      }
+                  }
+      SkipRayProfiles.push_back(std::move(profile));
+      return unsigned(SkipRayProfiles.size() - 1);
+  };
   for (PieceType pt = PAWN; pt <= KING; ++pt)
   {
       const PieceInfo* pi = pieceMap.find(pt)->second;
+      SkipAttackProfiles[pt].clear();
+      SkipRayBase[pt].reset();
+      for (bool initial : {false, true})
+      {
+          SkipMoveProfiles[initial][pt].clear();
+          for (const auto& term : pi->skipped[initial][MODALITY_QUIET])
+              SkipMoveProfiles[initial][pt].push_back(profile_index(term));
+      }
+      for (const auto& term : pi->skipped[false][MODALITY_CAPTURE])
+          SkipAttackProfiles[pt].push_back(profile_index(term));
+      if (!SkipAttackProfiles[pt].empty()) SkipRayBase[pt].reset(new SkipRayBaseAttacks{});
 
       // Detect rider types
       for (auto modality : {MODALITY_QUIET, MODALITY_CAPTURE})
@@ -379,6 +464,8 @@ void Bitboards::init_pieces() {
                   if (BishopDirections.find(d) != BishopDirections.end())
                       riderTypes |= limit == 1 ? RIDER_GRASSHOPPER_D : RIDER_CANNON_DIAG;
               }
+              if (!(modality == MODALITY_CAPTURE ? SkipAttackProfiles[pt] : SkipMoveProfiles[initial][pt]).empty())
+                  riderTypes |= RIDER_SKIP;
           }
       }
 
@@ -408,6 +495,10 @@ void Bitboards::init_pieces() {
                       }
                       pseudo |= sliding_attack<RIDER>(pi->slider[initial][modality], s, 0, c);
                       pseudo |= sliding_attack<HOPPER_RANGE>(pi->hopper[initial][modality], s, 0, c);
+                      if (modality == MODALITY_CAPTURE && SkipRayBase[pt])
+                          SkipRayBase[pt]->squares[c][s] = pseudo;
+                      const auto& profiles = modality == MODALITY_CAPTURE ? SkipAttackProfiles[pt] : SkipMoveProfiles[initial][pt];
+                      for (unsigned index : profiles) pseudo |= SkipRayProfiles[index].destinations[c][s];
                   }
               }
           }

@@ -2717,7 +2717,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
     Bitboard board = board_size_bb(maxFile, maxRank) & ~walls;
     Bitboard area = mobilityRegion[c][pt] ? board & mobilityRegion[c][pt] : board;
     auto potential = [&](PieceType type, Square from) {
-        Bitboard targets = walls ? moves_bb(c, type, from, walls) | attacks_bb(c, type, from, walls)
+        Bitboard targets = walls ? moves_bb(c, type, from, walls, walls) | attacks_bb(c, type, from, walls, walls)
                                 : PseudoMoves[0][c][type][from] | PseudoAttacks[c][type][from];
         // A hopper may acquire a screen on a future turn. Try every possible
         // single screen; current pieces never restrict this geometric test.
@@ -2726,7 +2726,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
             for (Bitboard screens = board & ~square_bb(from); screens;)
             {
                 Bitboard occupied = walls | pop_lsb(screens);
-                targets |= moves_bb(c, type, from, occupied) | attacks_bb(c, type, from, occupied);
+                targets |= moves_bb(c, type, from, occupied, walls) | attacks_bb(c, type, from, occupied, walls);
             }
         return targets & board;
     };
@@ -2739,7 +2739,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
         if (tenjikuTripleStepPieceTypes & pt) targets |= PseudoAttacks[c][KING][from];
         if (rangeJump[pt].geometry) targets |= range_jump_potential(c, pt, from, walls);
         if (doubleStepRegion[c] & from)
-            targets |= walls ? moves_bb<true>(c, movePt, from, walls)
+            targets |= walls ? moves_bb<true>(c, movePt, from, walls, walls)
                              : PseudoMoves[1][c][movePt][from];
         if (pt == SOLDIER && relative_rank(c, from, maxRank) < soldierPromotionRank)
             targets &= file_bb(file_of(from));
@@ -3045,6 +3045,22 @@ void Variant::resolve_baring_royal_types() {
 }
 
 Variant* Variant::conclude() {
+    hasSkippedRays = false;
+    skipRayConfigurationValid = true;
+    skippedRayTypes = NO_PIECE_SET;
+    for (PieceSet types = pieceTypes; types;)
+    {
+        PieceType pt = pop_lsb(types), movement = pt == KING ? kingType : pt;
+        if (!is_custom(movement)) continue;
+        std::string error;
+        if (skip_ray_syntax(customPiece[movement - CUSTOM_PIECES], error))
+        { hasSkippedRays = true; skippedRayTypes |= pt; }
+        if (!error.empty())
+        {
+            skipRayConfigurationValid = false;
+            std::cerr << "piece - " << error << ": " << pieceToSymbol[make_piece(WHITE, pt)] << std::endl;
+        }
+    }
     resolve_baring_royal_types();
     resolve_lion_dog_masks();
     resolve_promotion_rules();
@@ -3090,6 +3106,7 @@ Variant* Variant::conclude() {
         }
     }
     hasFreeze = bool(freezeEffectPieces & pieceTypes);
+    hasTypedAttacks = hasRangeJump || hasFreeze || hasSkippedRays;
     freezeEmitterTypes.clear(); freezeImmuneTypes.clear();
     for (PieceSet ps = freezeEffectPieces & pieceTypes; ps;) freezeEmitterTypes.push_back(pop_lsb(ps));
     for (PieceSet ps = freezeImmunePieces & pieceTypes; ps;) freezeImmuneTypes.push_back(pop_lsb(ps));
@@ -3106,12 +3123,12 @@ Variant* Variant::conclude() {
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasRangeJump && !hasFreeze;
+                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasTypedAttacks;
     fastAttacks2 =  !(pieceTypes & ~(SHOGI_PIECES | COMMON_STEP_PIECES))
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasRangeJump && !hasFreeze;
+                  && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasTypedAttacks;
 
     // Initialize calculated NNUE properties
     nnueKing =  pieceTypes & KING ? KING
@@ -3216,7 +3233,7 @@ Variant* Variant::conclude() {
                     && !hasLionDog
                    )
                  ? endgameEval : NO_EG_EVAL;
-    if (baringRule || hasBurn || tenjikuTripleStepPieceTypes || hasRangeJump || hasFreeze)
+    if (baringRule || hasBurn || tenjikuTripleStepPieceTypes || hasTypedAttacks)
         endgameEval = NO_EG_EVAL;
 
     shogiStylePromotions = false;
@@ -3359,7 +3376,7 @@ void VariantMap::add(std::string s, Variant* v, bool configured) {
   if (v->maxFile <= FILE_MAX && v->maxRank <= RANK_MAX)
   {
       v->conclude();
-      if (!v->rangeJumpConfigurationValid) { delete v; return; }
+      if (!v->rangeJumpConfigurationValid || !v->skipRayConfigurationValid) { delete v; return; }
       if (!WIDE_MOVES && v->tenjikuTripleStepPieceTypes)
       {
           std::cerr << "tenjikuTripleStepPieceTypes - Requires a 64-bit move build (e.g. board_files=16 board_ranks=16): " << s << std::endl;

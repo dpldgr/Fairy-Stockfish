@@ -756,7 +756,11 @@ namespace {
         case SHOGI_PAWN:
             if (pos.promoted_piece_type(pt))
             {
-                otherChecks = attacks_bb(Us, pos.promoted_piece_type(pt), ksq, pos.pieces()) & attackedBy[Them][pt]
+                PieceType promoted = pos.promoted_piece_type(pt);
+                Bitboard checks = AttackRiderTypes[promoted] & RIDER_SKIP
+                                ? skip_checking_squares(Them, promoted, ksq, pos.pieces(), pos.state()->wallSquares)
+                                : attacks_bb(Us, promoted, ksq, pos.pieces());
+                otherChecks = checks & attackedBy[Them][pt]
                                  & pos.promotion_zone(Them, pt) & pos.board_bb();
                 if (otherChecks & safe)
                     kingDanger += SafeCheck[FAIRY_PIECES][more_than_one(otherChecks & safe)];
@@ -767,7 +771,9 @@ namespace {
         case KING:
             break;
         default:
-            otherChecks = attacks_bb(Us, pt, ksq, pos.pieces()) & get_attacks(Them, pt) & pos.board_bb();
+            otherChecks = (AttackRiderTypes[pt] & RIDER_SKIP
+                          ? skip_checking_squares(Them, pt, ksq, pos.pieces(), pos.state()->wallSquares)
+                          : attacks_bb(Us, pt, ksq, pos.pieces())) & get_attacks(Them, pt) & pos.board_bb();
             if (otherChecks & safe)
                 kingDanger += SafeCheck[FAIRY_PIECES][more_than_one(otherChecks & safe)];
             else
@@ -781,7 +787,10 @@ namespace {
         for (PieceSet ps = pos.piece_types(); ps;)
         {
             PieceType pt = pop_lsb(ps);
-            if (pos.count_in_hand(Them, pt) <= 0 && (attacks_bb(Us, pt, ksq, pos.pieces()) & safe & pos.drop_region(Them, pt) & ~pos.pieces()))
+            Bitboard checks = AttackRiderTypes[pt] & RIDER_SKIP
+                            ? skip_checking_squares(Them, pt, ksq, pos.pieces(), pos.state()->wallSquares)
+                            : attacks_bb(Us, pt, ksq, pos.pieces());
+            if (pos.count_in_hand(Them, pt) <= 0 && (checks & safe & pos.drop_region(Them, pt) & ~pos.pieces()))
             {
                 kingDanger += VirtualCheck * 500 / (500 + PieceValue[MG][pt]);
                 // Presumably a mate threat

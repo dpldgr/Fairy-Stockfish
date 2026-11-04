@@ -183,6 +183,26 @@ static void verify_screen_dependent_pins() {
     std::cout << "Pins distinguish removing a hard blocker from removing the last screen" << std::endl;
 }
 
+static void verify_skipped_ray_pins() {
+    const Variant* v = variants.at("skip-royal");
+    UCI::init_variant(v); PSQT::init(v);
+    auto p = std::make_unique<Position>(); auto state = std::make_unique<StateInfo>();
+    p->set(v, "7k/8/8/s7/X7/X7/X7/K7 w - - 0 1", false, state.get(), Threads.main());
+    Square a2 = make_square(FILE_A, RANK_2), a3 = make_square(FILE_A, RANK_3),
+           a4 = make_square(FILE_A, RANK_4), a5 = make_square(FILE_A, RANK_5);
+    assert(!p->checkers());
+    assert(p->blockers_for_king(WHITE) == square_bb(a2));
+    assert(p->pinners(BLACK) == square_bb(a5));
+    for (std::string text : {"a3b3", "a4b4"}) assert(UCI::to_move(*p, text) != MOVE_NONE);
+    std::string pinned = "a2b2";
+    assert(UCI::to_move(*p, pinned) == MOVE_NONE);
+    assert(!(p->blockers_for_king(WHITE) & (square_bb(a3) | a4)));
+    p->set(v, "7k/8/8/s7/*7/X7/X7/K7 w - - 0 1", false, state.get(), Threads.main());
+    assert(!p->blockers_for_king(WHITE));
+    assert(UCI::to_move(*p, pinned) != MOVE_NONE);
+    std::cout << "Skip-ray pins ignore prefix pieces and respect walls" << std::endl;
+}
+
 int main(int argc, char** argv) {
     pieceMap.init(); variants.init(); CommandLine::init(argc, argv); UCI::init(Options);
     PSQT::init(variants.at("chess")); Bitboards::init(); Position::init(); Bitbases::init(); Endgames::init();
@@ -290,6 +310,38 @@ rangeJumpPieces = m:mR:{p=enemy}
 [state-missile-notation:state-missile-native]
 piece = m:R
 rangeJumpPieces = m:R:{p=enemy}
+[skip-state]
+commoner = k
+piece = x:W
+piece = s:j2R +s:jB
+castling = false
+pieceDrops = true
+capturesToHand = true
+extinctionValue = loss
+extinctionPieceTypes = k
+extinctionPseudoRoyal = false
+[skip-promotion:skip-state]
+promotionRegionMandatoryWhite = *
+promotionPolicy = optional:{} mandatory:{ii}
+[skip-royal:skip-state]
+commoner = -
+king = k
+extinctionValue = none
+[skip-effects:skip-state]
+piece = i:K
+piece = f:K
+freezeEffectPieces = {i}
+burnActivePieceTypes = {s,f}
+burnPassivePieceTypes = {f}
+burnImmunePieces = {i}
+[skip-castle:chess]
+piece = s:jR
+[skip-hybrid:skip-state]
+piece = s:cpBj2R +s:jB
+[skip-range:skip-state]
+rangeJumpPieces = s:cB:{k,x}
+[skip-igui:skip-state]
+lionMovePieces = s:0804020180402010
 [state-relative-royal:state-royal]
 rangeJumpPieces = r:cR:{s=enemy}
 
@@ -328,6 +380,17 @@ rangeJumpPieces = r:cR:{s=enemy}
     exercise("state-relative-royal", "7,k/8/8/8/8/8/3,S,4/K,2,v,2,r,1 w - - 0 1");
     exercise("state-missile-quiet", "4k3/8/3,b,4/8/1,M,P,5/8/8/R,3,K,2,R w KQ - 0 1");
     exercise("state-quiet-pawn", "7k/8/8/8/2p5/3P4/3P4/7K w - - 0 1");
+    exercise("skip-state", "7k/3x4/3X4/3x4/3S4/8/8/7K[S] w - - 0 1");
+    exercise("skip-promotion", "7k/3x4/3X4/3x4/3S4/8/8/7K w - - 0 1");
+    exercise("skip-state", "7k/8/8/8/3+S4/8/8/7K w - - 0 1");
+    exercise("skip-royal", "7k/8/8/s7/X7/X7/X7/K7 w - - 0 1");
+    exercise("skip-effects", "7k/3x4/3Xf3/3x4/3S4/8/6i1/7K w - - 0 1");
+    exercise("skip-castle", "k7/8/8/8/5s2/8/5P2/4K2R w K - 0 1");
+    exercise("skip-castle", "7k/8/8/s,p,P,4,K/8/8/8/8 w - b6 0 1");
+    exercise("skip-hybrid", "7k/3x4/3X4/2x5/3S4/4x3/5x2/7K w - - 0 1");
+    exercise("skip-range", "7k/3x4/3X4/2x5/3S4/4x3/5x2/7K w - - 0 1");
+    exercise("skip-igui", "7k/8/8/3x4/3S4/8/8/7K w - - 0 1");
+    verify_skipped_ray_pins();
     verify_missile_notation();
     verify_screen_dependent_pins();
     verify_cycle("freeze-cycle", false);
