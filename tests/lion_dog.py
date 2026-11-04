@@ -56,9 +56,9 @@ startFen = 7,k/8/8/8/3,LD,4/8/8/7,K w - - 0 1
 [dog-zero:dog]
 lionDogMovePieces = ld:000000000000
 [dog-turn:dog-zero]
-lionMovePieces = ld:0000000000000002
+lionMovePieces = ld(0000000000000002)
 [fiend:dog]
-lionMovePieces = ld:FFFFFFFFFFFFFFFF
+lionMovePieces = ld(FFFFFFFFFFFFFFFF)
 [dog-promote:dog]
 gold = g
 promotedPieceType = ld:g
@@ -199,7 +199,7 @@ lionDogMovePieces = ld:000000000004
     def test_mask_conflicts_rejected_during_load_and_check(self):
         for lion, dog in (('FFFFFFFFFFFFFFFF', '000000000000'), ('0000000000000000', 'FFFFFFFFFFFF')):
             config = Path(self.temp.name) / 'conflict.ini'
-            config.write_text(self.config.read_text() + f'\n[conflict:dog]\nlionMovePieces=ld:{lion}\nlionDogMovePieces=ld:{dog}\n')
+            config.write_text(self.config.read_text() + f'\n[conflict:dog]\nlionMovePieces=ld({lion})\nlionDogMovePieces=ld:{dog}\n')
             for mode in ('load', 'check'):
                 result = subprocess.run([self.engine, mode, str(config)], input='uci\nquit\n',
                                         capture_output=True, text=True, timeout=60)

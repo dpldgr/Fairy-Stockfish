@@ -1327,6 +1327,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         {"freezeEffectPieces", &v->freezeEffectPieces},
         {"freezeImmunePieces", &v->freezeImmunePieces},
         {"burnImmunePieces", &v->burnImmunePieces},
+        {"burnOnPromotePieces", &v->burnOnPromotePieces},
         {"missileEffectPieces", &v->missileEffectPieces},
         {"tenjikuTripleStepPieceTypes", &v->tenjikuTripleStepPieceTypes}
     };
@@ -1385,22 +1386,57 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     const auto& it_lion_pieces = config.find("lionMovePieces");
     if (it_lion_pieces != config.end())
     {
-        std::string token;
-        std::stringstream ss(it_lion_pieces->second);
-        while (ss >> token)
+        const std::string& value = it_lion_pieces->second;
+        PieceSet specified = NO_PIECE_SET;
+        size_t cursor = 0;
+        bool valid = true;
+        while ((cursor = value.find_first_not_of(" \t", cursor)) != std::string::npos)
         {
-            std::string symbol, maskString;
-            uint64_t mask = 0;
-            PieceType pt = NO_PIECE_TYPE;
-            if (   split_piece_definition(token, symbol, maskString)
-                && (pt = piece_type_by_symbol(v, symbol)) != NO_PIECE_TYPE
-                && parse_lion_move_mask(maskString, mask))
+            size_t open = value.find('(', cursor), close = value.find(')', cursor);
+            if (open == std::string::npos || close == std::string::npos || close < open)
+            { valid = false; break; }
+            PieceType pt = piece_type_by_symbol(v, trim(value.substr(cursor, open - cursor)));
+            uint64_t masks[MOVE_MODALITY_NB] = {};
+            bool modes[MOVE_MODALITY_NB] = {};
+            std::string body = trim(value.substr(open + 1, close - open - 1));
+            if (pt == NO_PIECE_TYPE || (specified & pt) || body.empty())
+            { valid = false; break; }
+            if (body.find(':') == std::string::npos)
             {
-                v->lionMoveMask[pt] = mask;
-                v->lionMoveSpecified[pt] = true;
+                valid = parse_lion_move_mask(body, masks[MODALITY_QUIET]);
+                masks[MODALITY_CAPTURE] = masks[MODALITY_QUIET];
             }
-            else if (DoCheck)
-                std::cerr << "lionMovePieces - Invalid piece/mask: " << token << std::endl;
+            else
+            {
+                size_t start = 0;
+                do
+                {
+                    size_t comma = body.find(',', start);
+                    std::string part = trim(body.substr(start, comma == std::string::npos ? comma : comma - start));
+                    size_t colon = part.find(':');
+                    std::string name = trim(part.substr(0, colon));
+                    if (colon == std::string::npos || (name != "m" && name != "c"))
+                    { valid = false; break; }
+                    MoveModality mode = name == "m" ? MODALITY_QUIET : MODALITY_CAPTURE;
+                    if (modes[mode] || !parse_lion_move_mask(trim(part.substr(colon + 1)), masks[mode]))
+                    { valid = false; break; }
+                    modes[mode] = true;
+                    if (comma == std::string::npos) break;
+                    start = comma + 1;
+                } while (true);
+            }
+            if (!valid) break;
+            specified |= pt;
+            for (MoveModality mode : {MODALITY_QUIET, MODALITY_CAPTURE}) v->lionMoveMask[mode][pt] = masks[mode];
+            v->lionMoveSpecified[pt] = true;
+            cursor = close + 1;
+            if (cursor < value.size() && !std::isspace(static_cast<unsigned char>(value[cursor])))
+            { valid = false; break; }
+        }
+        if (!valid)
+        {
+            v->lionConfigurationValid = false;
+            std::cerr << "lionMovePieces - Expected unique piece(mask) or piece(m:mask,c:mask) entries: " << value << std::endl;
         }
     }
     const auto dog = config.find("lionDogMovePieces");
@@ -1924,7 +1960,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             std::cerr << "Can not use flagPieceSafe with blastOnCapture (flagPieceSafe uses simple assessment that does not see blast)." << std::endl;
         if (v->gating)
             for (PieceType pt = PAWN; pt < PIECE_TYPE_NB; ++pt)
-                if (v->lionMoveMask[pt])
+                if (v->combined_lion_mask(pt))
                 {
                     std::cerr << "Can not use gating with lionMovePieces." << std::endl;
                     break;

@@ -773,6 +773,8 @@ constexpr PieceSet COMMON_STEP_PIECES = piece_set(COMMONER) | piece_set(FERS) | 
 static_assert(sizeof(PieceSet) == PIECE_TYPE_CAPACITY / 8, "Unexpected PieceSet size");
 static_assert(std::is_trivial<PieceSet>::value, "Piece sets must support zero-initialized position state");
 
+enum MoveModality {MODALITY_QUIET, MODALITY_CAPTURE, MOVE_MODALITY_NB};
+
 enum RiderType : int {
   NO_RIDER = 0,
   RIDER_BISHOP = 1 << 0,

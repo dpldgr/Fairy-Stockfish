@@ -69,7 +69,7 @@ mobilityRegionWhiteCustomPiece2 = d6 d7
 [prohibited:rook]
 prohibitedCaptures = s:x
 [igui:queen]
-lionMovePieces = s:0804020180402010
+lionMovePieces = s(0804020180402010)
 [promote:two]
 piece = s:j2R +s:jB
 promotionRegionMandatoryWhite = *

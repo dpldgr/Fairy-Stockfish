@@ -536,6 +536,8 @@ namespace {
         if (visited & ~pos.board_bb(Us, pt)) return;
         if (pos.prohibited_capture(m)) return;
         bool capture = pos.capture(m);
+        if (type_of(m) == LION && !(pos.lion_move_mask(Us, pt, from, capture ? MODALITY_CAPTURE : MODALITY_QUIET)
+                                 & (1ULL << lion_path_index(m)))) return;
         if (Type == NON_EVASIONS || (Type == CAPTURES && capture) || (Type == QUIETS && !capture)
             || (Type == EVASIONS && ((target & to_sq(m)) || (visited & pos.checkers()))))
             list = append_path_promotion(pos, list, m, pt);

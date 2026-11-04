@@ -107,7 +107,11 @@ static void exercise(const std::string& name, const std::string& fen) {
         // After making the move, inspect stored placements/removals directly;
         // expected.pos now refers to the changed board and is not queried again.
         for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
-            if (expected.added & s) assert(p->piece_on(s) == expected.placements[s]);
+            if (expected.added & s)
+            {
+                assert(p->piece_on(s) == expected.placements[s]);
+                assert(p->is_promoted(s) == bool(expected.promotedAdded & s));
+            }
             else if (expected.removed & s) assert(p->empty(s));
         for (Color c : {WHITE, BLACK})
             for (Bitboard targets = board_size_bb(v->maxFile, v->maxRank); targets;)
@@ -275,7 +279,7 @@ king = -
 commoner = k
 piece = i:K
 piece = l:KNAD
-lionMovePieces = l:FFFFFFFFFFFFFFFF
+lionMovePieces = l(FFFFFFFFFFFFFFFF)
 freezeEffectPieces = {i}
 freezeImmunePieces = {i}
 castling = false
@@ -341,7 +345,39 @@ piece = s:cpBj2R +s:jB
 [skip-range:skip-state]
 rangeJumpPieces = s:cB:{k,x}
 [skip-igui:skip-state]
-lionMovePieces = s:0804020180402010
+lionMovePieces = s(0804020180402010)
+[mode-state:skip-state]
+piece = l:<immobile>
+lionMovePieces = l(m:AA00AA00AA00AA00,c:0804020180402010)
+[mode-capture:mode-state]
+lionMovePieces = l(c:FFFFFFFFFFFFFFFF)
+[mode-burn:mode-state]
+burnActivePieceTypes = {l}
+[mode-royal:mode-state]
+commoner = -
+king = k
+extinctionValue = none
+[promotion-burn:skip-state]
+piece = f:K
+piece = w:W +w:<f>
+piece = v:F +v:<w>
+burnActivePieceTypes = {f}
+burnPassivePieceTypes = {f}
+burnOnPromotePieces = {w}
+promotionRegionOptionalWhite = *
+promotionRegionOptionalBlack = *
+promotionPolicy = optional:{all} mandatory:{}
+[promotion-burn-path:promotion-burn]
+lionMovePieces = w(c:FFFFFFFFFFFFFFFF,m:0804020180402010)
+[promotion-burn-royal:promotion-burn]
+commoner = -
+king = k
+extinctionValue = none
+[promotion-burn-limit:promotion-burn-royal]
+promotionLimit = f:1
+[promotion-burn-pawn:chess]
+burnActivePieceTypes = {q}
+burnOnPromotePieces = {p}
 [state-relative-royal:state-royal]
 rangeJumpPieces = r:cR:{s=enemy}
 
@@ -390,6 +426,17 @@ rangeJumpPieces = r:cR:{s=enemy}
     exercise("skip-hybrid", "7k/3x4/3X4/2x5/3S4/4x3/5x2/7K w - - 0 1");
     exercise("skip-range", "7k/3x4/3X4/2x5/3S4/4x3/5x2/7K w - - 0 1");
     exercise("skip-igui", "7k/8/8/3x4/3S4/8/8/7K w - - 0 1");
+    exercise("mode-state", "7k/8/3x4/2x1x3/3L4/8/8/7K w - - 0 1");
+    exercise("mode-capture", "7k/8/3x4/2x1x3/3L4/8/8/7K w - - 0 1");
+    exercise("mode-burn", "7k/8/3x4/2x1x3/3L4/8/8/7K w - - 0 1");
+    exercise("mode-royal", "7k/8/8/8/3l4/8/3K4/8 w - - 0 1");
+    exercise("promotion-burn", "7k/8/4+v3/3x4/3W4/8/8/7K[W] w - - 0 1");
+    exercise("promotion-burn", "7k/8/4f3/3x4/3W4/8/8/7K w - - 0 1");
+    exercise("promotion-burn-path", "7k/8/4+v3/3x4/3W4/8/8/7K w - - 0 1");
+    exercise("promotion-burn-royal", "7k/8/4K3/8/3w4/8/8/8 w - - 0 1");
+    exercise("promotion-burn-limit", "f6k/8/4K3/8/3w4/8/8/8 w - - 0 1");
+    exercise("promotion-burn-royal", "7k/8/4K3/8/3+v4/8/8/8 w - - 0 1");
+    exercise("promotion-burn-pawn", "1r5k/P7/8/8/8/8/8/7K w - - 0 1");
     verify_skipped_ray_pins();
     verify_missile_notation();
     verify_screen_dependent_pins();

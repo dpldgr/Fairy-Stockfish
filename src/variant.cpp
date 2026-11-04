@@ -2970,8 +2970,8 @@ void Variant::resolve_drop_regions() {
     }
 }
 
-uint64_t Variant::combined_lion_mask(PieceType pt) const {
-    uint64_t mask = lionMoveMask[pt];
+uint64_t Variant::combined_lion_mask(PieceType pt, MoveModality modality) const {
+    uint64_t mask = lionMoveMask[modality][pt];
     for (int d = 0; d < 8; ++d)
         for (int kind = 0; kind < 2; ++kind)
             if (lionDogMoveMask[pt] & (1ULL << (d * 6 + kind)))
@@ -2986,12 +2986,13 @@ void Variant::resolve_lion_dog_masks() {
     {
         lionDogPathMask[WHITE][pt] = lionDogPathMask[BLACK][pt] = 0;
         if (!lionDogMoveSpecified[pt]) continue;
-        hasLionDog |= lionDogMoveMask[pt] != 0 || lionMoveMask[pt] != 0;
+        hasLionDog |= lionDogMoveMask[pt] != 0 || combined_lion_mask(PieceType(pt)) != 0;
         for (int d = 0; d < 8; ++d)
         {
-            for (int kind = 0; kind < 2; ++kind)
-                if ((lionMoveSpecified[pt] || lionMoveMask[pt])
-                    && bool(lionMoveMask[pt] & (1ULL << lion_dog_shared_path(d, kind)))
+            for (MoveModality modality : {MODALITY_QUIET, MODALITY_CAPTURE})
+              for (int kind = 0; kind < 2; ++kind)
+                if ((lionMoveSpecified[pt] || lionMoveMask[modality][pt])
+                    && bool(lionMoveMask[modality][pt] & (1ULL << lion_dog_shared_path(d, kind)))
                     != bool(lionDogMoveMask[pt] & (1ULL << (d * 6 + kind))))
                 {
                     lionDogMasksCompatible = false;
@@ -3076,8 +3077,15 @@ Variant* Variant::conclude() {
             for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
                 lionEffectivePathMask[c][pt][from] = 0;
 
+    hasLionMoves = false;
     for (PieceType pt = NO_PIECE_TYPE; pt < PIECE_TYPE_NB; ++pt)
     {
+        hasLionMoves |= combined_lion_mask(pt) != 0;
+        for (MoveModality modality : {MODALITY_QUIET, MODALITY_CAPTURE})
+        {
+            lionModalityMask[WHITE][modality][pt] = combined_lion_mask(pt, modality);
+            lionModalityMask[BLACK][modality][pt] = flip_lion_path_mask(combined_lion_mask(pt, modality));
+        }
         uint64_t lionMaskByColor[COLOR_NB] = {
           combined_lion_mask(pt),
           flip_lion_path_mask(combined_lion_mask(pt))
@@ -3092,7 +3100,20 @@ Variant* Variant::conclude() {
     }
 
     resolve_range_jumps();
-    hasBurn = bool(burnActivePieceTypes || burnPassivePieceTypes);
+    burnConfigurationValid = true;
+    for (PieceSet ps = burnOnPromotePieces & pieceTypes; ps;)
+    {
+        PieceType pt = pop_lsb(ps);
+        PieceSet targets = piece_set(promotedPieceType[pt]) & ~piece_set(NO_PIECE_TYPE);
+        for (Color c : {WHITE, BLACK})
+            if (promotionPawnTypes[c] & pt) targets |= promotionPieceTypes[c];
+        if (!(targets & burnActivePieceTypes))
+        {
+            burnConfigurationValid = false;
+            std::cerr << "burnOnPromotePieces - Piece has no active-burning promotion target: " << piece_name(pt) << std::endl;
+        }
+    }
+    hasBurn = bool(burnActivePieceTypes || burnPassivePieceTypes || burnOnPromotePieces);
     hasMissile = bool(missileEffectPieces & pieceTypes);
     hasArrivalEffects = hasBurn || hasMissile;
     for (PieceSet ps = missileEffectPieces & pieceTypes; ps;)
@@ -3106,7 +3127,7 @@ Variant* Variant::conclude() {
         }
     }
     hasFreeze = bool(freezeEffectPieces & pieceTypes);
-    hasTypedAttacks = hasRangeJump || hasFreeze || hasSkippedRays;
+    hasTypedAttacks = hasRangeJump || hasFreeze || hasSkippedRays || hasLionMoves || bool(burnOnPromotePieces);
     freezeEmitterTypes.clear(); freezeImmuneTypes.clear();
     for (PieceSet ps = freezeEffectPieces & pieceTypes; ps;) freezeEmitterTypes.push_back(pop_lsb(ps));
     for (PieceSet ps = freezeImmunePieces & pieceTypes; ps;) freezeImmuneTypes.push_back(pop_lsb(ps));
@@ -3376,7 +3397,7 @@ void VariantMap::add(std::string s, Variant* v, bool configured) {
   if (v->maxFile <= FILE_MAX && v->maxRank <= RANK_MAX)
   {
       v->conclude();
-      if (!v->rangeJumpConfigurationValid || !v->skipRayConfigurationValid) { delete v; return; }
+      if (!v->rangeJumpConfigurationValid || !v->skipRayConfigurationValid || !v->lionConfigurationValid || !v->burnConfigurationValid) { delete v; return; }
       if (!WIDE_MOVES && v->tenjikuTripleStepPieceTypes)
       {
           std::cerr << "tenjikuTripleStepPieceTypes - Requires a 64-bit move build (e.g. board_files=16 board_ranks=16): " << s << std::endl;

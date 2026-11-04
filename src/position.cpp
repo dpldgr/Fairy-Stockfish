@@ -1521,7 +1521,10 @@ AttackView Position::move_attack_view(Move m) const {
         else if (type_of(m) == PIECE_PROMOTION) result = make_piece(us, promoted_piece_type(type_of(mover)));
         else if (is_path_promotion(m)) result = make_piece(us, path_promotion_type(m));
         else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)) result = unpromoted_piece_on(from);
-        view.put(result, to);
+        bool promoted = type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m)
+                     || (type_of(m) == DROP ? type_of(mover) != in_hand_piece_type(m) : is_promoted(from));
+        if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)) promoted = false;
+        view.put(result, to, promoted);
     }
     if (is_gating(m)) view.put(make_piece(us, gating_type(m)), gating_square(m));
     if (directCapture && (blast_on_capture() || var->petrifyOnCaptureTypes))
@@ -1595,7 +1598,7 @@ Bitboard Position::attackers_to_view(Square target, Color c, const AttackView& v
                 if (missile_attacks_square(c, pt, from, target, range)) result |= from;
             }
         bool special = directAllowed && (has_lion_move(c, pt) || var->lionDogMoveSpecified[pt] || (var->tenjikuTripleStepPieceTypes & pt));
-        if (special || (var->burnActivePieceTypes & pt))
+        if (special || ((var->burnActivePieceTypes | var->burnOnPromotePieces) & pt))
             for (Bitboard b = sources; b;)
             {
                 Square from = pop_lsb(b);
@@ -1622,7 +1625,7 @@ Bitboard Position::multi_attack_targets(Color c, PieceType pt, Square from, Bitb
         if (!(visited & friends) && !(visited & ~(view ? view->board_bb(c, pt) : board_bb(c, pt))))
             result |= visited & ~square_bb(from);
     };
-    uint64_t lion = lion_move_mask(c, pt, from);
+    uint64_t lion = lion_move_mask(c, pt, from, MODALITY_CAPTURE);
     while (lion) { int p = __builtin_ctzll(lion); lion &= lion - 1; add(make_lion(from, p, LionTo[from][p])); }
     uint64_t dog = lion_dog_mask(c, pt, from);
     while (dog) { int p = __builtin_ctzll(dog); dog &= dog - 1; add(make_lion_dog(from, p, LionDogSquares[from][p][lion_dog_legs(p)-1])); }
@@ -1660,6 +1663,43 @@ Bitboard Position::area_attack_targets(Color c, PieceType pt, Square from, Bitbo
     return result;
 }
 
+// The original mover keeps its ordinary active burn. This is only an
+// additional trigger for an actual promotion into an active-burning type.
+PieceType Position::promotion_burn_type(Move m) const {
+    if (!(var->burnOnPromotePieces & type_of(moved_piece(m)))) return NO_PIECE_TYPE;
+    PieceType target = type_of(m) == PROMOTION ? promotion_type(m)
+                     : type_of(m) == PIECE_PROMOTION ? promoted_piece_type(type_of(moved_piece(m)))
+                     : is_path_promotion(m) ? path_promotion_type(m) : NO_PIECE_TYPE;
+    return var->burnActivePieceTypes & target ? target : NO_PIECE_TYPE;
+}
+
+bool Position::promotion_burn_possible(Color c, PieceType pt, Square from, Square to,
+                                       Bitboard captures, const AttackView* view) const {
+    if (!(var->burnOnPromotePieces & pt) || (view ? view->is_promoted(from) : is_promoted(from))) return false;
+    uint8_t kinds = captures ? 0 : PROMO_CAPTURE_NONE;
+    for (Bitboard b = captures; b;)
+    {
+        Square s = pop_lsb(b);
+        kinds |= (view ? view->is_promoted(s) : is_promoted(s)) ? PROMO_CAPTURE_PROMOTED : PROMO_CAPTURE_UNPROMOTED;
+    }
+    auto available = [&](PieceType target) {
+        return (var->burnActivePieceTypes & target)
+            && (!promotion_limit(target) || (view ? popcount(view->pieces(c, target)) : count(c, target)) < promotion_limit(target));
+    };
+    // Burning variants cannot move/create terrain walls, so the geometric
+    // last-move mask is shared with the current position. Capture facts and
+    // target counts above come from the queried overlay.
+    auto eligible = [&](bool mapped) {
+        return promotion_targets(c, pt, from, square_bb(to), mapped, false, kinds)
+             | promotion_targets(c, pt, from, square_bb(to), mapped, true, kinds);
+    };
+    if (available(promoted_piece_type(pt)) && eligible(true)) return true;
+    if ((promotion_pawn_types(c) & pt) && eligible(false))
+        for (PieceSet ps = promotion_piece_types(c); ps;)
+            if (available(pop_lsb(ps))) return true;
+    return false;
+}
+
 Bitboard Position::burn_squares(Move m) const {
     if (!var->hasBurn || is_pass(m)) return 0;
     Color us = sideToMove;
@@ -1676,7 +1716,8 @@ Bitboard Position::burn_squares(Move m) const {
             if (neighbours & enemies & pieces(pop_lsb(ps))) return square_bb(to);
     Bitboard immune = 0;
     for (PieceSet ps = var->burnImmunePieces; ps;) immune |= pieces(pop_lsb(ps));
-    return (var->burnActivePieceTypes & type_of(moved_piece(m))) ? neighbours & enemies & ~immune : Bitboard(0);
+    return ((var->burnActivePieceTypes & type_of(moved_piece(m))) || promotion_burn_type(m))
+         ? neighbours & enemies & ~immune : Bitboard(0);
 }
 
 // A jump detonates after landing (and any direct capture), before passive burning. There
@@ -1718,7 +1759,7 @@ Value Position::capture_value(Move m) const {
 // Burning threatens a square only through a complete movement ending beside
 // it. Passive burners can prevent that movement from producing an active burn.
 bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square target, Bitboard occupied, const AttackView* view) const {
-    if (!(var->burnActivePieceTypes & pt)) return false;
+    if (!((var->burnActivePieceTypes | var->burnOnPromotePieces) & pt)) return false;
     Piece victim = view ? view->piece_on(target) : piece_on(target);
     if (victim && (var->burnImmunePieces & type_of(victim))) return false;
     if (var->hasFreeze && ((view ? view->frozen_pieces(c) : frozen_pieces(c)) & from)) return false;
@@ -1734,7 +1775,9 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
     Bitboard prohibited = 0;
     for (PieceSet ps = prohibited_capture_types(c, pt); ps;) prohibited |= ofType(pop_lsb(ps)) & ofColor(~c);
     auto landing = [&](Square to, Bitboard captures) {
-        if ((attacks_bb<KING>(target) & to) && !(attacks_bb<KING>(to) & passive & ~captures)) result = true;
+        captures &= enemies;
+        if ((attacks_bb<KING>(target) & to) && !(attacks_bb<KING>(to) & passive & ~captures)
+            && ((var->burnActivePieceTypes & pt) || promotion_burn_possible(c, pt, from, to, captures, view))) result = true;
     };
     PieceType moveType = pt == KING ? king_type() : pt;
     Bitboard quiet = moves_bb(c, moveType, from, occupied, view ? view->walls : st->wallSquares);
@@ -1775,6 +1818,8 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
         Bitboard visited = 0;
         for (int i = 0; i < n; ++i) visited |= route[i];
         Bitboard captures = visited & enemies;
+        if (type_of(m) == LION && !(lion_move_mask(c, pt, from, captures ? MODALITY_CAPTURE : MODALITY_QUIET)
+                                 & (1ULL << lion_path_index(m)))) return;
         if (!(visited & (friends | ~geometry_board(pt))) && !(captures & prohibited)) landing(to_sq(m), captures);
     };
     uint64_t lion = lion_move_mask(c, pt, from);
@@ -1852,7 +1897,7 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
 
 Bitboard Position::burn_attackers_to(Square s, Bitboard occupied, Color c) const {
     Bitboard result = 0;
-    for (PieceSet ps = var->burnActivePieceTypes; ps;)
+    for (PieceSet ps = var->burnActivePieceTypes | var->burnOnPromotePieces; ps;)
     {
         PieceType pt = pop_lsb(ps);
         for (Bitboard candidates = pieces(c, pt) & occupied; candidates;)
@@ -2043,7 +2088,7 @@ bool Position::legal(Move m) const {
       Bitboard frozen = frozen_pieces(us);
       if ((frozen & from) || (type_of(m) == CASTLING && (frozen & to))) return false;
   }
-  if (type_of(m) == LION && !(lion_move_mask(us, type_of(moved_piece(m)), from) & (1ULL << lion_path_index(m))))
+  if (type_of(m) == LION && !(lion_move_mask(us, type_of(moved_piece(m)), from, capture(m) ? MODALITY_CAPTURE : MODALITY_QUIET) & (1ULL << lion_path_index(m))))
       return false;
 
   if (type_of(m) == LION_DOG
@@ -2124,7 +2169,7 @@ bool Position::legal(Move m) const {
           for (Square s = from;; s += step)
           {
               AttackView walk(*this);
-              walk.erase(from); walk.put(moved_piece(m), s);
+              walk.erase(from); walk.put(moved_piece(m), s, is_promoted(from));
               if (attackers_to_view(s, ~us, walk)) return false;
               if (s == destination) break;
           }
@@ -3379,7 +3424,8 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       move_piece(from, to);
   }
 
-  // Arrival effects use the moving type before promotion. A dead mover cannot
+  // Arrival effects normally use the original type, with an explicit bonus
+  // burn for selected promotion moves. A dead mover cannot
   // burn back or promote. Burn victims never enter a hand and never trigger
   // capture-based promotion; those policies were decided from direct captures.
   for (Bitboard b = burned; b;)

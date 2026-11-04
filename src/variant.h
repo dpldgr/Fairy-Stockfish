@@ -226,7 +226,11 @@ struct Variant {
   PieceSet tradingRuleAllowCheckers = NO_PIECE_SET;
   uint16_t tradingRuleRowIndex[PIECE_TYPE_NB] = {}; // Stored index plus one; zero means no rule
   std::vector<TradingRuleRow> tradingRuleRows = {};
-  uint64_t lionMoveMask[PIECE_TYPE_NB] = {};
+  uint64_t lionMoveMask[MOVE_MODALITY_NB][PIECE_TYPE_NB] = {};
+  uint64_t lionModalityMask[COLOR_NB][MOVE_MODALITY_NB][PIECE_TYPE_NB] = {};
+  bool hasLionMoves = false;
+  bool burnConfigurationValid = true;
+  bool lionConfigurationValid = true;
   bool lionMoveSpecified[PIECE_TYPE_NB] = {};
   uint64_t lionDogMoveMask[PIECE_TYPE_NB] = {}; // 48 bits: six paths per direction
   bool lionDogMoveSpecified[PIECE_TYPE_NB] = {};
@@ -234,12 +238,16 @@ struct Variant {
   bool lionDogConfigurationValid = true;
   bool lionDogMasksCompatible = true;
   uint32_t lionDogPathMask[COLOR_NB][PIECE_TYPE_NB] = {};
-  uint64_t combined_lion_mask(PieceType pt) const;
+  uint64_t combined_lion_mask(PieceType pt, MoveModality modality) const;
+  uint64_t combined_lion_mask(PieceType pt) const {
+    return combined_lion_mask(pt, MODALITY_QUIET) | combined_lion_mask(pt, MODALITY_CAPTURE);
+  }
   void resolve_lion_dog_masks();
   uint64_t lionEffectivePathMask[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB] = {};
   std::vector<HookMoveSpec> hookMoveSpecs[PIECE_TYPE_NB] = {};
   std::vector<DoubleMoveSpec> doubleMoveSpecs[PIECE_TYPE_NB] = {};
   PieceSet burnActivePieceTypes = NO_PIECE_SET;
+  PieceSet burnOnPromotePieces = NO_PIECE_SET;
   PieceSet burnPassivePieceTypes = NO_PIECE_SET;
   PieceSet tenjikuTripleStepPieceTypes = NO_PIECE_SET;
   bool hasBurn = false;
