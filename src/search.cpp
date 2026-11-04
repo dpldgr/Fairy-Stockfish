@@ -1196,7 +1196,11 @@ moves_loop: // When in check, search starts from here
               // Capture history based pruning when the move doesn't give check
               if (   !givesCheck
                   && lmrDepth < 1
+#if BOARD_SQUARES > 640
+                  && captureHistory.value(movedPiece, to_sq(move), type_of(pos.piece_on(to_sq(move)))) < 0)
+#else
                   && captureHistory[movedPiece][to_sq(move)][type_of(pos.piece_on(to_sq(move)))] < 0)
+#endif
                   continue;
 
               // SEE based pruning
@@ -1907,7 +1911,11 @@ moves_loop: // When in check, search starts from here
     else
     {
         // Increase stats for the best move in case it was a capture move
+#if BOARD_SQUARES > 640
+        captureHistory.update(moved_piece, to_sq(bestMove), captured, bonus1);
+#else
         captureHistory[moved_piece][to_sq(bestMove)][captured] << bonus1;
+#endif
         if (pos.walling())
             thisThread->gateHistory[us][gating_square(bestMove)] << bonus1;
     }
@@ -1924,7 +1932,11 @@ moves_loop: // When in check, search starts from here
         moved_piece = pos.moved_piece(capturesSearched[i]);
         captured = type_of(pos.piece_on(to_sq(capturesSearched[i])));
         if (!(pos.walling() && from_to(capturesSearched[i]) == from_to(bestMove)))
+#if BOARD_SQUARES > 640
+            captureHistory.update(moved_piece, to_sq(capturesSearched[i]), captured, -bonus1);
+#else
             captureHistory[moved_piece][to_sq(capturesSearched[i])][captured] << -bonus1;
+#endif
         if (pos.walling())
             thisThread->gateHistory[us][gating_square(capturesSearched[i])] << -bonus1;
     }

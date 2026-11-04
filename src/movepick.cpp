@@ -111,7 +111,11 @@ void MovePicker::score() {
       if constexpr (Type == CAPTURES)
           m.value =  int((pos.variant()->hasBurn || pos.variant()->hasMissile) ? pos.capture_value(m) : PieceValue[MG][pos.piece_on(to_sq(m))]) * 6
                    + (*gateHistory)[pos.side_to_move()][gating_square(m)]
+#if BOARD_SQUARES > 640
+                   + captureHistory->value(pos.moved_piece(m), to_sq(m), type_of(pos.piece_on(to_sq(m))));
+#else
                    + (*captureHistory)[pos.moved_piece(m)][to_sq(m)][type_of(pos.piece_on(to_sq(m)))];
+#endif
 
       else if constexpr (Type == QUIETS)
           m.value =      (*mainHistory)[pos.side_to_move()][from_to(m)]

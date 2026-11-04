@@ -1670,7 +1670,11 @@ inline Square Position::capture_square(Square to) const {
 
 inline uint64_t Position::lion_move_mask(Color c, PieceType pt, Square from) const {
   assert(var != nullptr);
+#if BOARD_SQUARES > 640
+  return var->lion_effective_path_mask(c, pt, from);
+#else
   return var->lionEffectivePathMask[c][pt][from];
+#endif
 }
 
 inline uint64_t Position::lion_move_mask(Color c, PieceType pt, Square from, MoveModality modality) const {

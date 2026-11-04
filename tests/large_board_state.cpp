@@ -87,6 +87,39 @@ tenjikuTripleStepPieceTypes = {t}
 )ini";
     std::istringstream config(text.str()); variants.parse_istream<false>(config);
     const Variant* v = variants.at("large-state"); UCI::init_variant(v); PSQT::init(v);
+#if BOARD_SQUARES > 640
+    // Independent coordinate oracle for the factored Lion cache, including
+    // asymmetric modalities, Black rotation, and smaller embedded variants.
+    PieceType lion = NO_PIECE_TYPE;
+    for (Piece pc = W_PAWN; pc <= W_KING; ++pc)
+        if (v->pieceToSymbol[pc] == "L") lion = type_of(pc);
+    assert(lion != NO_PIECE_TYPE);
+    const uint64_t quiet = 0x4900520094002500ULL, capture = 0x8800000000002200ULL;
+    const int df[] = {0,1,1,1,0,-1,-1,-1}, dr[] = {1,1,0,-1,-1,-1,0,1};
+    for (auto dimensions : {std::pair<int,int>{8,8}, {25,17}, {FILE_NB,RANK_NB}})
+    {
+        auto shape = std::make_unique<Variant>(*v);
+        shape->maxFile = File(dimensions.first-1); shape->maxRank = Rank(dimensions.second-1);
+        shape->lionMoveMask[MODALITY_QUIET][lion] = quiet;
+        shape->lionMoveMask[MODALITY_CAPTURE][lion] = capture;
+        shape->conclude();
+        for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+            for (Color c : {WHITE,BLACK})
+            {
+                uint64_t expected = 0;
+                for (int path = 0; path < 64; ++path)
+                {
+                    if (!((quiet | capture) & (1ULL << path))) continue;
+                    int first = (path/8 + 4*c)%8, second = (path%8 + 4*c)%8;
+                    int f = file_of(from), r = rank_of(from);
+                    int vf=f+df[first], vr=r+dr[first], tf=vf+df[second], tr=vr+dr[second];
+                    auto valid = [&](int x, int y) { return x>=0 && y>=0 && x<dimensions.first && y<dimensions.second; };
+                    if (valid(f,r) && valid(vf,vr) && valid(tf,tr)) expected |= 1ULL << (first*8+second);
+                }
+                assert(shape->lion_effective_path_mask(c,lion,from) == expected);
+            }
+    }
+#endif
     auto p = std::make_unique<Position>();
     auto root = std::make_unique<StateInfo>(), next = std::make_unique<StateInfo>();
     const Square near = SQ(File(FILE_MAX - 1), Rank(RANK_MAX - 1));
