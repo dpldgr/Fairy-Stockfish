@@ -70,8 +70,8 @@ namespace {
 
     for (const DoubleMoveSpec& spec : pos.double_move_specs(pt))
     {
-        Bitboard firstTargets = (  (moves_bb(Us, spec.firstType, from, occupied) & ~occupied)
-                                 | (attacks_bb(Us, spec.firstType, from, occupied) & enemies))
+        Bitboard firstTargets = (  (moves_bb(Us, spec.firstType, from, occupied, pos.state()->wallSquares) & ~occupied)
+                                 | (attacks_bb(Us, spec.firstType, from, occupied, pos.state()->wallSquares) & enemies))
                               & pos.board_bb(Us, spec.firstType);
         while (firstTargets)
         {
@@ -86,8 +86,8 @@ namespace {
             if (firstCapture)
                 occupiedAfterFirst ^= intermediate;
 
-            Bitboard secondTargets = (  (moves_bb(Us, spec.secondType, intermediate, occupiedAfterFirst) & ~occupiedAfterFirst)
-                                      | (attacks_bb(Us, spec.secondType, intermediate, occupiedAfterFirst) & enemies))
+            Bitboard secondTargets = (  (moves_bb(Us, spec.secondType, intermediate, occupiedAfterFirst, pos.state()->wallSquares) & ~occupiedAfterFirst)
+                                      | (attacks_bb(Us, spec.secondType, intermediate, occupiedAfterFirst, pos.state()->wallSquares) & enemies))
                                    & pos.board_bb(Us, spec.secondType)
                                    & ~friends
                                    & ~square_bb(from);
@@ -221,7 +221,7 @@ namespace {
             b ^= pos.capture_square(to);
 
         if (pos.walling_rule() == ARROW)
-            b &= moves_bb(us, type_of(pos.piece_on(from)), to, pos.pieces() ^ from);
+            b &= moves_bb(us, type_of(pos.piece_on(from)), to, pos.pieces() ^ from, pos.state()->wallSquares);
 
         //Any current or future wall variant must follow the walling region rule if set:
         b &= pos.walling_region(us);
@@ -433,7 +433,7 @@ namespace {
                 while (b)
                 {
                     Square to = pop_lsb(b);
-                    if (!(attacks_bb(Us, pt, to, pos.pieces() ^ from) & pos.pieces(Them)))
+                    if (!(attacks_bb(Us, pt, to, pos.pieces() ^ from, pos.state()->wallSquares) & pos.pieces(Them)))
                         *moveList++ = make<PROMOTION>(from, to, pt);
                 }
             }
@@ -869,7 +869,7 @@ ExtMove* generate(const Position& pos, ExtMove* moveList) {
 
   Color us = pos.side_to_move();
 
-  if (pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes || pos.variant()->hasRangeJump || pos.variant()->hasFreeze)
+  if (pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes || pos.variant()->hasTypedAttacks)
   {
       ExtMove* end = (pos.variant()->hasRangeJump || pos.variant()->hasFreeze)
                    ? (us == WHITE ? generate_range_moves<WHITE>(pos, moveList) : generate_range_moves<BLACK>(pos, moveList))

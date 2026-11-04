@@ -795,7 +795,10 @@ void Position::set_check_info(StateInfo* si) const {
   {
       PieceType pt = pop_lsb(ps);
       PieceType movePt = pt == KING ? king_type() : pt;
-      si->checkSquares[pt] = ksq != SQ_NONE ? attacks_bb(~sideToMove, movePt, ksq, pieces()) : Bitboard(0);
+      si->checkSquares[pt] = ksq == SQ_NONE ? Bitboard(0)
+                           : AttackRiderTypes[movePt] & RIDER_SKIP
+                           ? skip_checking_squares(sideToMove, movePt, ksq, pieces(), si->wallSquares)
+                           : attacks_bb(~sideToMove, movePt, ksq, pieces());
       // Collect special piece types that require slower check and evasion detection
       if ((AttackRiderTypes[movePt] & NON_SLIDING_RIDERS) || (var->hasRangeJump && var->rangeJump[pt].geometry))
           si->nonSlidingRiders |= pieces(pt);
@@ -1238,6 +1241,30 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
 
   if (var->hasFreeze) sliders &= ~frozen_pieces(c);
   Bitboard jumpBlockers = 0, jumpPinners = 0;
+  if (var->hasSkippedRays)
+      for (PieceSet types = var->skippedRayTypes; types;)
+      {
+          PieceType pt = pop_lsb(types), movement = pt == KING ? king_type() : pt;
+          if (!(board_bb(c, pt) & s) || (prohibited_capture_types(c, pt) & type_of(piece_on(s)))) continue;
+          for (Bitboard sources = sliders & pieces(c, pt); sources;)
+          {
+              Square from = pop_lsb(sources);
+              Bitboard between = between_bb(from, s) & ~square_bb(s);
+              if (between & st->wallSquares) continue;
+              for (unsigned index : SkipAttackProfiles[movement])
+              {
+                  const auto& profile = SkipRayProfiles[index];
+                  if (!(profile.destinations[c][from] & s)) continue;
+                  Bitboard b = between & pieces() & ~profile.ignored[c][from];
+                  if (b && !more_than_one(b))
+                  {
+                      jumpBlockers |= b;
+                      if (b & pieces(color_of(piece_on(s)))) jumpPinners |= from;
+                  }
+              }
+          }
+      }
+
   if (var->hasRangeJump || var->hasFreeze)
   {
       AttackView view(*this);
@@ -1265,7 +1292,7 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
                   PieceType moveType = pt == KING ? king_type() : pt;
                   // Removing the only intervening piece can also remove the
                   // screen required by a jump. Base sliding may still attack.
-                  if ((jumps | attacks_bb(c, moveType, source, occupied)) & s)
+                  if ((jumps | attacks_bb(c, moveType, source, occupied, st->wallSquares)) & s)
                   { jumpBlockers |= hard; jumpPinners |= source; }
               }
           }
@@ -1287,23 +1314,25 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
       for (PieceSet ps = piece_types(); ps;)
       {
           PieceType pt = pop_lsb(ps);
-          Bitboard b = sliders & (PseudoAttacks[~c][pt][s] ^ LeaperAttacks[~c][pt][s]) & pieces(c, pt);
+          bool skipped = AttackRiderTypes[pt] & RIDER_SKIP;
+          Bitboard pseudo = skipped ? regular_pseudo_attacks(~c, pt, s) : PseudoAttacks[~c][pt][s];
+          Bitboard b = sliders & (pseudo ^ LeaperAttacks[~c][pt][s]) & pieces(c, pt);
           if (b)
           {
               // Consider asymmetrical moves (e.g., horse)
-              if (AttackRiderTypes[pt] & ASYMMETRICAL_RIDERS)
+              if ((AttackRiderTypes[pt] & ~RIDER_SKIP) & ASYMMETRICAL_RIDERS)
               {
-                  Bitboard asymmetricals = PseudoAttacks[~c][pt][s] & pieces(c, pt);
+                  Bitboard asymmetricals = pseudo & pieces(c, pt);
                   while (asymmetricals)
                   {
                       Square s2 = pop_lsb(asymmetricals);
-                      if (!(attacks_from(c, pt, s2) & s))
+                      if (!((skipped ? regular_attacks_bb(c, pt, s2, pieces()) : attacks_from(c, pt, s2)) & s))
                           snipers |= s2;
                   }
               }
               else
-                  snipers |= b & ~attacks_bb(~c, pt, s, pieces());
-              if (AttackRiderTypes[pt] & ~HOPPING_RIDERS)
+                  snipers |= b & ~(skipped ? regular_attacks_bb(~c, pt, s, pieces()) : attacks_bb(~c, pt, s, pieces()));
+              if ((AttackRiderTypes[pt] & ~RIDER_SKIP) & ~HOPPING_RIDERS)
                   slidingSnipers |= snipers & pieces(pt);
           }
       }
@@ -1539,7 +1568,7 @@ Bitboard Position::attackers_to_view(Square target, Color c, const AttackView& v
             for (Bitboard b = sources; b;)
             {
                 Square from = pop_lsb(b);
-                if (attacks_bb(c, moveType, from, view.occupied) & target) ordinary |= from;
+                if (attacks_bb(c, moveType, from, view.occupied, view.walls) & target) ordinary |= from;
             }
         }
         else if (directAllowed && pt == JANGGI_CANNON)
@@ -1708,9 +1737,9 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
         if ((attacks_bb<KING>(target) & to) && !(attacks_bb<KING>(to) & passive & ~captures)) result = true;
     };
     PieceType moveType = pt == KING ? king_type() : pt;
-    Bitboard quiet = moves_bb(c, moveType, from, occupied);
+    Bitboard quiet = moves_bb(c, moveType, from, occupied, view ? view->walls : st->wallSquares);
     if (double_step_region(c) & from)
-        quiet |= moves_bb<true>(c, moveType, from, occupied);
+        quiet |= moves_bb<true>(c, moveType, from, occupied, view ? view->walls : st->wallSquares);
     if (pt == PAWN)
     {
         quiet = 0;
@@ -1728,7 +1757,7 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
         }
     }
     Bitboard ordinary = ((quiet & ~occupied)
-                        | (attacks_bb(c, moveType, from, occupied) & enemies & ~prohibited))
+                        | (attacks_bb(c, moveType, from, occupied, view ? view->walls : st->wallSquares) & enemies & ~prohibited))
                        & geometry_board(pt) & ~friends;
     if (var->hasRangeJump && var->rangeJump[pt].geometry)
     {
@@ -1766,16 +1795,16 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
     }
     for (const DoubleMoveSpec& spec : double_move_specs(pt))
     {
-        Bitboard first = ((moves_bb(c, spec.firstType, from, occupied) & ~occupied)
-                         | (attacks_bb(c, spec.firstType, from, occupied) & enemies & ~prohibited))
+        Bitboard first = ((moves_bb(c, spec.firstType, from, occupied, view ? view->walls : st->wallSquares) & ~occupied)
+                         | (attacks_bb(c, spec.firstType, from, occupied, view ? view->walls : st->wallSquares) & enemies & ~prohibited))
                         & geometry_board(spec.firstType);
         while (first)
         {
             Square via = pop_lsb(first);
             Bitboard captures = enemies & via;
             Bitboard occ = occupied & ~square_bb(from) & ~captures;
-            Bitboard second = ((moves_bb(c, spec.secondType, via, occ) & ~occ)
-                              | (attacks_bb(c, spec.secondType, via, occ) & enemies & ~prohibited))
+            Bitboard second = ((moves_bb(c, spec.secondType, via, occ, view ? view->walls : st->wallSquares) & ~occ)
+                              | (attacks_bb(c, spec.secondType, via, occ, view ? view->walls : st->wallSquares) & enemies & ~prohibited))
                              & geometry_board(spec.secondType) & ~friends & ~square_bb(from);
             while (second)
             {
@@ -1839,7 +1868,7 @@ Bitboard Position::burn_attackers_to(Square s, Bitboard occupied, Color c) const
 /// given square. Slider attacks use the occupied bitboard to indicate occupancy.
 
 Bitboard Position::attackers_to(Square s, Bitboard occupied, Color c, Bitboard janggiCannons) const {
-  if (var->hasRangeJump || var->hasFreeze)
+  if (var->hasTypedAttacks)
   {
       AttackView view(*this);
       view.occupied = occupied;
@@ -2008,7 +2037,7 @@ bool Position::legal(Move m) const {
   assert(color_of(moved_piece(m)) == us);
   assert(!count<KING>(us) || piece_on(square<KING>(us)) == make_piece(us, KING));
   assert(board_bb() & to);
-  if ((var->hasRangeJump || var->hasFreeze) && type_of(m) == CASTLING && checkers()) return false;
+  if (var->hasTypedAttacks && type_of(m) == CASTLING && checkers()) return false;
   if (var->hasFreeze && type_of(m) != DROP)
   {
       Bitboard frozen = frozen_pieces(us);
@@ -2085,7 +2114,7 @@ bool Position::legal(Move m) const {
               return false;
   }
 
-  if (var->extinctionPseudoRoyal && (var->hasRangeJump || var->hasFreeze))
+  if (var->extinctionPseudoRoyal && var->hasTypedAttacks)
   {
       AttackView view = move_attack_view(m);
       if (type_of(m) == CASTLING && (st->pseudoRoyals & from))
@@ -2158,7 +2187,7 @@ bool Position::legal(Move m) const {
   }
 
   // Check for attacks to pseudo-royal pieces
-  if (var->extinctionPseudoRoyal && !var->hasRangeJump && !var->hasFreeze)
+  if (var->extinctionPseudoRoyal && !var->hasTypedAttacks)
   {
       Square kto = to;
       Bitboard occupied = (type_of(m) != DROP ? pieces() ^ from : pieces());
@@ -2334,7 +2363,7 @@ bool Position::legal(Move m) const {
           if (type_of(piece_on(pop_lsb(victims))) == type_of(moved_piece(m))) return false;
   }
 
-  if (!var->hasRangeJump && !var->hasFreeze && (var->hasBurn || var->tenjikuTripleStepPieceTypes) && count<KING>(us) && type_of(m) != CASTLING)
+  if (!var->hasTypedAttacks && (var->hasBurn || var->tenjikuTripleStepPieceTypes) && count<KING>(us) && type_of(m) != CASTLING)
   {
       Square king = type_of(moved_piece(m)) == KING ? to : square<KING>(us);
       Bitboard occupied = type_of(m) == DROP ? pieces() : pieces() & ~square_bb(from);
@@ -2346,7 +2375,7 @@ bool Position::legal(Move m) const {
       return !(attackers_to(king, occupied, ~us) & occupied & ~square_bb(to));
   }
 
-  if ((var->hasRangeJump || var->hasFreeze) && count<KING>(us) && type_of(m) != CASTLING)
+  if (var->hasTypedAttacks && count<KING>(us) && type_of(m) != CASTLING)
   {
       AttackView view = move_attack_view(m);
       Bitboard king = view.pieces(us, KING);
@@ -2392,7 +2421,7 @@ bool Position::legal(Move m) const {
       if (type_of(piece_on(from)) != KING)
           return true;
 
-      if (var->hasRangeJump || var->hasFreeze)
+      if (var->hasTypedAttacks)
       {
           for (Square s = to; s != from; s += step)
           {
@@ -2653,7 +2682,7 @@ bool Position::trading_rule_legal(Move m) const {
 
 bool Position::geometrically_recapturable_after(Move m) const {
 
-  if (var->hasRangeJump || var->hasFreeze)
+  if (var->hasTypedAttacks)
   {
       AttackView view = move_attack_view(m);
       Square to = to_sq(m);
@@ -2737,7 +2766,7 @@ bool Position::pseudo_legal(const Move m) const {
       if (!(var->wallingRegion[us] & gating_square(m)) || //putting a wall on disallowed square
           wallsquares & gating_square(m)) //or square already with a wall
           return false;
-      if (walling_rule() == ARROW && !(moves_bb(us, type_of(pc), to, pieces() ^ from) & gating_square(m)))
+      if (walling_rule() == ARROW && !(moves_bb(us, type_of(pc), to, pieces() ^ from, st->wallSquares) & gating_square(m)))
           return false;
       if (walling_rule() == PAST && (from != gating_square(m)))
           return false;
@@ -2806,7 +2835,7 @@ bool Position::pseudo_legal(const Move m) const {
   // Evasions generator already takes care to avoid some kind of illegal moves
   // and legal() relies on this. We therefore have to take care that the same
   // kind of moves are filtered out here.
-  if (!var->hasRangeJump && !var->hasFreeze && checkers() && !(checkers() & non_sliding_riders()))
+  if (!var->hasTypedAttacks && checkers() && !(checkers() & non_sliding_riders()))
   {
       if (type_of(pc) != KING)
       {
@@ -2844,7 +2873,7 @@ bool Position::gives_check(Move m) const {
   if (!count<KING>(~sideToMove))
       return false;
 
-  if (var->hasRangeJump || var->hasFreeze)
+  if (var->hasTypedAttacks)
   {
       AttackView view = move_attack_view(m);
       Bitboard king = view.pieces(~sideToMove, KING);
@@ -3683,7 +3712,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           k ^= Zobrist::promoted[pop_lsb(b)];
   st->key = k;
   // Calculate checkers bitboard (if move gives check)
-  if (var->hasBurn || var->tenjikuTripleStepPieceTypes || var->hasRangeJump || var->hasFreeze)
+  if (var->hasBurn || var->tenjikuTripleStepPieceTypes || var->hasTypedAttacks)
       givesCheck = count<KING>(them) && bool(attackers_to(square<KING>(them), us) & pieces(us));
   st->checkersBB = givesCheck ? attackers_to(square<KING>(them), us) & pieces(us) : Bitboard(0);
   assert(givesCheck == bool(st->checkersBB));
@@ -4116,7 +4145,7 @@ bool Position::see_ge(Move m, Value threshold) const {
 
   // Material alone cannot value royal capture or counter-baring, especially
   // when the variant reverses the outcome of remaining bare.
-  if (baring_rule() || var->hasBurn || var->hasRangeJump || var->hasFreeze)
+  if (baring_rule() || var->hasBurn || var->hasTypedAttacks)
       // Conventional SEE does not model burn bycatch or typed range-jump
       // blockers changing on each exchange. Search these moves instead.
       return true;

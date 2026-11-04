@@ -1674,7 +1674,7 @@ moves_loop: // When in check, search starts from here
                && pos.piece_on(to_sq(move))
                && (   (pos.extinction_piece_types() & ALL_PIECES)
                    || (pos.extinction_piece_types() & type_of(pos.piece_on(to_sq(move))))))
-          && !pos.baring_rule() && !pos.variant()->hasBurn && !pos.variant()->hasRangeJump && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
+          && !pos.baring_rule() && !pos.variant()->hasBurn && !pos.variant()->hasTypedAttacks && !pos.variant()->hasMissile
           &&  futilityBase > -VALUE_KNOWN_WIN
           &&  type_of(move) != PROMOTION)
       {
@@ -2137,7 +2137,7 @@ void Tablebases::rank_root_moves(Position& pos, Search::RootMoves& rootMoves) {
     }
 
     // Existing tablebases do not encode baring, burning, area or range-jump rules.
-    if (pos.baring_rule() || pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes || pos.variant()->hasRangeJump || pos.variant()->hasFreeze)
+    if (pos.baring_rule() || pos.variant()->hasBurn || pos.variant()->tenjikuTripleStepPieceTypes || pos.variant()->hasTypedAttacks)
         Cardinality = 0;
 
     if (Cardinality >= popcount(pos.pieces()) && !pos.can_castle(ANY_CASTLING))

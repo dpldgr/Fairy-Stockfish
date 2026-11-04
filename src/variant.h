@@ -257,6 +257,10 @@ struct Variant {
   std::vector<RangeJumpGroup> rangeJumpGroups;
   bool rangeJumpConfigurationValid = true;
   bool hasRangeJump = false;
+  bool hasSkippedRays = false;
+  bool skipRayConfigurationValid = true;
+  bool hasTypedAttacks = false;
+  PieceSet skippedRayTypes = NO_PIECE_SET;
   void resolve_range_jumps();
   bool doubleStep = true;
   Bitboard doubleStepRegion[COLOR_NB] = {Rank2BB, Rank7BB};
@@ -395,7 +399,7 @@ struct Variant {
   Bitboard dropRegions[COLOR_NB][PIECE_TYPE_NB] = {};
   int xboardDropRanks[PIECE_TYPE_NB] = {};
   bool xboardDropRegionsCompatible = true;
-  bool xboard_compatible() const { return xboardDropRegionsCompatible && !hasBurn && !tenjikuTripleStepPieceTypes && !hasRangeJump && !hasFreeze && !hasMissile; }
+  bool xboard_compatible() const { return xboardDropRegionsCompatible && !hasBurn && !tenjikuTripleStepPieceTypes && !hasTypedAttacks && !hasMissile; }
 
   Variant() {
       pieceToSymbol.resize(PIECE_NB);

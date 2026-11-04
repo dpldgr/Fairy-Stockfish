@@ -17,6 +17,7 @@
 */
 
 #include <map>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -63,6 +64,20 @@ namespace {
       bool lame = false;
       bool initial = false;
       int distance = 0;
+      bool skipped = false;
+      unsigned skip = 0;
+      auto number = [&](std::string::size_type& pos, unsigned fallback) {
+          if (pos + 1 == betza.size() || !isdigit(betza[pos + 1])) return fallback;
+          unsigned value = 0;
+          while (pos + 1 < betza.size() && isdigit(betza[pos + 1]))
+          {
+              unsigned digit = betza[++pos] - '0';
+              if (value > (unsigned(std::numeric_limits<int>::max()) - digit) / 10)
+              { p->error = "Skip-ray count/range is too large"; value = 0; }
+              else value = value * 10 + digit;
+          }
+          return value;
+      };
       std::vector<std::string> prelimDirections = {};
       for (std::string::size_type i = 0; i < betza.size(); i++)
       {
@@ -70,6 +85,13 @@ namespace {
           // Modality
           if (c == 'm' || c == 'c')
               moveModalities.push_back(c == 'c' ? MODALITY_CAPTURE : MODALITY_QUIET);
+          // Initial ray prefix, measured in board steps rather than screens.
+          else if (c == 'j')
+          {
+              if (skipped) p->error = "Repeated j modifier";
+              skipped = true;
+              skip = number(i, 1);
+          }
           // Hopper
           else if (c == 'p' || c == 'g')
           {
@@ -105,6 +127,8 @@ namespace {
           // Move atom
           else if (leaperAtoms.find(c) != leaperAtoms.end() || riderAtoms.find(c) != riderAtoms.end())
           {
+              if (skipped && (riderAtoms.find(c) == riderAtoms.end() || hopper || lame))
+                  p->error = "j requires an R, B or Q ray without p, g or n";
               const auto& atoms = riderAtoms.find(c) != riderAtoms.end() ? riderAtoms.find(c)->second
                                                                          : leaperAtoms.find(c)->second;
               // Check for rider
@@ -115,8 +139,11 @@ namespace {
                   rider = true;
                   // limited distance riders
                   if (isdigit(betza[i+1]))
-                      distance = betza[i+1] - '0';
-                  i++;
+                  {
+                      if (skipped) distance = int(number(i, 0));
+                      else { distance = betza[i+1] - '0'; i++; }
+                  }
+                  else i++;
               }
               if (!rider && lame)
                   distance = -1;
@@ -146,7 +173,9 @@ namespace {
                   // Add moves
                   for (auto modality : moveModalities)
                   {
-                      auto& v = hopper ? p->hopper[initial][modality]
+                      std::map<Direction, int> skipDirections;
+                      auto& v = skipped && skip ? skipDirections
+                               : hopper ? p->hopper[initial][modality]
                                : rider ? p->slider[initial][modality]
                                        : p->steps[initial][modality];
                       auto has_dir = [&](std::string s) {
@@ -168,6 +197,20 @@ namespace {
                           v[Direction(-atom.first * FILE_NB + atom.second)] = distance;
                       if (directions.size() == 0 || has_dir("ff") || has_dir("vv") || has_dir("lf") || has_dir("lv") || has_dir("fh") || has_dir("lh") || has_dir("hl"))
                           v[Direction(atom.first * FILE_NB - atom.second)] = distance;
+                      if (skipped && skip && p->error.empty())
+                      {
+                          uint8_t mask = 0;
+                          constexpr Direction compass[] = {NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST};
+                          for (const auto& entry : skipDirections)
+                              for (int d = 0; d < 8; ++d)
+                                  if (entry.first == compass[d]) mask |= uint8_t(1 << d);
+                          auto& terms = p->skipped[initial][modality];
+                          auto term = std::find_if(terms.begin(), terms.end(), [&](const SkipRay& t) {
+                              return t.skip == skip && t.range == unsigned(distance);
+                          });
+                          if (term == terms.end()) terms.push_back({skip, unsigned(distance), mask});
+                          else term->directions |= mask;
+                      }
                   }
               }
               // Reset state
@@ -178,8 +221,13 @@ namespace {
               lame = false;
               initial = false;
               distance = 0;
+              skipped = false;
+              skip = 0;
           }
+          else if (skipped && !isspace(c))
+              p->error = "Invalid modifier in skipped ray";
       }
+      if (skipped) p->error = "j requires a following R, B or Q atom";
       return p;
   }
   // Special multi-leg betza description for Janggi elephant
@@ -188,6 +236,18 @@ namespace {
       p->betza = "mafsmafW"; // for compatibility with XBoard/Winboard
       return p;
   }
+}
+
+bool skip_ray_syntax(const std::string& betza, std::string& error) {
+  if (betza.find('j') == std::string::npos) return false;
+  const PieceInfo* p = from_betza(betza, "skipRay");
+  error = p->error;
+  bool found = false;
+  for (bool initial : {false, true})
+      for (auto mode : {MODALITY_QUIET, MODALITY_CAPTURE})
+          found |= !p->skipped[initial][mode].empty();
+  delete p;
+  return found;
 }
 
 bool range_jump_directions(const std::string& betza, uint8_t& directions) {
