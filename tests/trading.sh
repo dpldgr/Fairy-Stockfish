@@ -33,18 +33,18 @@ tradingRule = c:[any,{c}]
 
 [lion-anti-trade:chess]
 customPiece1 = l:KNAD
-lionMovePieces = l:FFFFFFFFFFFFFFFF
+lionMovePieces = l(FFFFFFFFFFFFFFFF)
 tradingRule = l:[dist!,{l}]
 
 [lion-ineligible:chess]
 customPiece1 = l:KNAD
-lionMovePieces = l:FFFFFFFFFFFFFFFF
+lionMovePieces = l(FFFFFFFFFFFFFFFF)
 tradingRule = l:[dist!,{l}] l:[dist2c!,{l},{p}]
 
 [lion-connector-default:chess]
 customPiece1 = l:KNAD
 customPiece2 = g:W
-lionMovePieces = l:FFFFFFFFFFFFFFFF
+lionMovePieces = l(FFFFFFFFFFFFFFFF)
 tradingRule = l:[dist2c!,{l},{g}]
 
 [lion-connector-jcsa:lion-connector-default]
@@ -52,22 +52,22 @@ tradingRuleJcsaConnector = true
 
 [lion-no-dist2c:chess]
 customPiece1 = l:KNAD
-lionMovePieces = l:FFFFFFFFFFFFFFFF
+lionMovePieces = l(FFFFFFFFFFFFFFFF)
 tradingRule = l:[dist2c,{l}]
 
 [lion-no-adj2c:chess]
 customPiece1 = l:KNAD
-lionMovePieces = l:FFFFFFFFFFFFFFFF
+lionMovePieces = l(FFFFFFFFFFFFFFFF)
 tradingRule = l:[adj2c,{l}]
 
 [lion-no-adj2c-p:chess]
 customPiece1 = l:KNAD
-lionMovePieces = l:FFFFFFFFFFFFFFFF
+lionMovePieces = l(FFFFFFFFFFFFFFFF)
 tradingRule = l:[adj2c,{l},{p}]
 
 [lion-dist2c-protected:chess]
 customPiece1 = l:KNAD
-lionMovePieces = l:FFFFFFFFFFFFFFFF
+lionMovePieces = l(FFFFFFFFFFFFFFFF)
 tradingRule = l:[dist2c!,{l}]
 
 [lion-counterstrike:chess]
@@ -77,7 +77,7 @@ tradingRuleCounterstrike = {l}
 [lion-counterstrike-promotion:chess]
 customPiece1 = c:N
 customPiece2 = l:KNAD
-lionMovePieces = l:FFFFFFFFFFFFFFFF
+lionMovePieces = l(FFFFFFFFFFFFFFFF)
 promotedPieceType = c:l
 promotionRegionWhite = *6
 tradingRuleCounterstrike = {l}

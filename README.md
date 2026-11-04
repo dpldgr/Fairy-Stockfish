@@ -220,10 +220,14 @@ piece = ld:KADGH
 lionDogMovePieces = ld:FFFFFFFFFFFF
 ```
 
-The option takes the same whitespace-separated `symbol:hex-mask` entries as
-`lionMovePieces`, with **12 hexadecimal digits (48 bits)** per mask. It neither
-grants nor disables ordinary moves. A zero mask leaves the piece's ordinary
-movement intact. The same notation can identify promoted piece symbols.
+The option takes whitespace-separated `symbol:hex-mask` entries with
+**12 hexadecimal digits (48 bits)** per mask. It neither grants nor disables
+ordinary moves. A zero mask leaves the piece's ordinary movement intact.
+The same notation can identify promoted piece symbols.
+
+Lion masks instead use `piece(mask)`, `piece(m:mask)`, `piece(c:mask)`, or
+`piece(m:mask,c:mask)` with 16 hexadecimal digits; see
+[the modality and promotion-burn documentation](tests/lion_modalities.md).
 
 Each direction has six consecutive bits, starting at the least significant bit.
 Direction groups are N, NE, E, SE, S, SW, W, NW for White, rotated 180 degrees
@@ -249,7 +253,7 @@ A Furious Fiend can combine the complete Lion and Lion Dog masks:
 
 ```ini
 piece = ff:KNADGH
-lionMovePieces = ff:FFFFFFFFFFFFFFFF
+lionMovePieces = ff(FFFFFFFFFFFFFFFF)
 lionDogMovePieces = ff:FFFFFFFFFFFF
 ```
 

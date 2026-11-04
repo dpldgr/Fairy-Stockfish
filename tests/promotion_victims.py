@@ -44,7 +44,7 @@ promotionPieceTypes = q
 queen = q
 [lion:base]
 piece = em:KADGH +em:<queen>
-lionMovePieces = em:FFFFFFFFFFFFFFFF
+lionMovePieces = em(FFFFFFFFFFFFFFFF)
 [dog:base]
 piece = em:KADGH +em:<queen>
 lionDogMovePieces = em:FFFFFFFFFFFF

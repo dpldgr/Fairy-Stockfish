@@ -27,8 +27,6 @@
 
 namespace Stockfish {
 
-enum MoveModality {MODALITY_QUIET, MODALITY_CAPTURE, MOVE_MODALITY_NB};
-
 struct SkipRay {
   unsigned skip = 0, range = 0;
   uint8_t directions = 0;

@@ -316,6 +316,8 @@ public:
   bool pseudo_legal(const Move m) const;
   bool virtual_drop(Move m) const;
   bool capture(Move m) const; // Direct captures only (including path captures).
+  PieceType promotion_burn_type(Move m) const;
+  bool promotion_burn_possible(Color c, PieceType pt, Square from, Square to, Bitboard captures, const AttackView* view) const;
   Bitboard burn_squares(Move m) const;
   Bitboard removal_squares(Move m) const;
   bool missile_attacks_square(Color c, PieceType pt, Square from, Square target, const RangeJumpContext& range) const;
@@ -332,6 +334,7 @@ public:
   bool capture_or_promotion(Move m) const;
   Square capture_square(Square to) const;
   uint64_t lion_move_mask(Color c, PieceType pt, Square from) const;
+  uint64_t lion_move_mask(Color c, PieceType pt, Square from, MoveModality modality) const;
   bool has_lion_move(Color c, PieceType pt) const;
   uint32_t lion_dog_mask(Color c, PieceType pt, Square from) const;
   Bitboard multi_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE, const AttackView* view = nullptr) const;
@@ -451,16 +454,17 @@ private:
 // retain cached information across moves. Only added squares need array values.
 struct AttackView {
   const Position& pos;
-  Bitboard occupied, walls, removed = 0, added = 0;
+  Bitboard occupied, walls, removed = 0, added = 0, promotedAdded = 0;
   Piece placements[SQUARE_NB];
   mutable Bitboard frozen[COLOR_NB];
   mutable bool freezeReady = false;
   explicit AttackView(const Position& p) : pos(p), occupied(p.pieces()), walls(p.state()->wallSquares) {}
-  AttackView(const AttackView& other) : pos(other.pos), occupied(other.occupied), walls(other.walls), removed(other.removed), added(other.added) {
+  AttackView(const AttackView& other) : pos(other.pos), occupied(other.occupied), walls(other.walls), removed(other.removed), added(other.added), promotedAdded(other.promotedAdded) {
     for (Bitboard b = added; b;) { Square s = pop_lsb(b); placements[s] = other.placements[s]; }
   }
-  void erase(Square s) { freezeReady = false; removed |= s; added -= s; occupied -= s; }
-  void put(Piece pc, Square s) { erase(s); placements[s] = pc; added |= s; occupied |= s; }
+  void erase(Square s) { freezeReady = false; removed |= s; added -= s; occupied -= s; promotedAdded -= s; }
+  void put(Piece pc, Square s, bool promoted = false) { erase(s); placements[s] = pc; added |= s; occupied |= s; if (promoted) promotedAdded |= s; }
+  bool is_promoted(Square s) const { return added & s ? bool(promotedAdded & s) : !(removed & s) && pos.is_promoted(s); }
   Piece piece_on(Square s) const;
   Bitboard pieces(PieceType pt) const;
   Bitboard pieces(Color c) const;
@@ -1667,6 +1671,10 @@ inline Square Position::capture_square(Square to) const {
 inline uint64_t Position::lion_move_mask(Color c, PieceType pt, Square from) const {
   assert(var != nullptr);
   return var->lionEffectivePathMask[c][pt][from];
+}
+
+inline uint64_t Position::lion_move_mask(Color c, PieceType pt, Square from, MoveModality modality) const {
+  return lion_move_mask(c, pt, from) & var->lionModalityMask[c][modality][pt];
 }
 
 inline bool Position::has_lion_move(Color c, PieceType pt) const {

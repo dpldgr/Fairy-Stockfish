@@ -57,10 +57,10 @@ promotedPieceType = kn:ln"""),
     """[inline-symbol-inherited:inline-symbol-legacy]
 piece = kn:FD +kn:<ln>
 [inline-symbol-lion:inline-symbol-forward]
-lionMovePieces = ln:FFFFFFFFFFFFFFFF
+lionMovePieces = ln(FFFFFFFFFFFFFFFF)
 tradingRule = ln:[dist!,{ln}] ln:[dist2c!,{ln},{kn}]
 [inline-legacy-lion:inline-symbol-legacy]
-lionMovePieces = ln:FFFFFFFFFFFFFFFF
+lionMovePieces = ln(FFFFFFFFFFFFFFFF)
 tradingRule = ln:[dist!,{ln}] ln:[dist2c!,{ln},{kn}]
 """,
     variant('inline-symbol-native', """piece = sp:<shogiPawn> +sp:<gg>
