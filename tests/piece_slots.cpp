@@ -3,6 +3,7 @@
 #include "../src/bitboard.h"
 #include "../src/tt.h"
 #include "../src/nnue/features/half_ka_v2.h"
+#include "../src/thread.h"
 
 using namespace Stockfish;
 
@@ -22,6 +23,35 @@ static_assert(encoding_constants());
 int main() {
     for (int i = 1; i < (1 << 16); ++i)
         PopCnt16[i] = PopCnt16[i >> 1] + (i & 1);
+    assert(popcount(AllSquares) == BOARD_SQUARES);
+    assert(!(AllSquares & ~((Bitboard(1) << (BOARD_SQUARES - 1))
+                           | ((Bitboard(1) << (BOARD_SQUARES - 1)) - 1))));
+    for (int s = 0; s < BOARD_SQUARES; ++s)
+    {
+        Bitboard bit = Bitboard(1) << s;
+        assert(popcount(bit) == 1 && lsb(bit) == s && msb(bit) == s);
+        assert((bit >> s) == Bitboard(1));
+        assert(pop_lsb(bit) == s && !bit);
+    }
+    Score score = make_score(-123, 456);
+    assert(mg_value(score) == -123 && eg_value(score) == 456);
+    assert(mg_value(score * 3) == -369 && eg_value(score * 3) == 1368);
+#if BOARD_SQUARES > 640
+    static_assert(!USE_CONTINUATION_HISTORY);
+    static_assert(sizeof(Score) == 8);
+    // No hidden multi-GiB continuation table remains in the worker layout.
+    static_assert(sizeof(Thread) < sizeof(CapturePieceToHistory) + 64 * 1024 * 1024);
+    score = make_score(900000, -700000);
+    score += make_score(-200000, 300000);
+    assert(mg_value(score) == 700000 && eg_value(score) == -400000);
+    score = 3 * score / 2;
+    assert(mg_value(score) == 1050000 && eg_value(score) == -600000);
+    assert(mg_value(-score) == -1050000 && eg_value(-score) == 600000);
+#else
+    static_assert(USE_CONTINUATION_HISTORY);
+    static_assert(sizeof(Score) == 4);
+    static_assert(sizeof(Thread) >= 4 * sizeof(ContinuationHistory));
+#endif
     PieceSet all = {};
     for (int id = 0; id < PIECE_TYPE_NB; ++id)
     {
@@ -110,5 +140,6 @@ int main() {
     assert(lion_path_index(make_lion(SQ_MIN, 63, SQ_MAX)) == 63);
     assert(sizeof(TTEntry) == (sizeof(MoveStorage) == 4 ? 12 : 16));
     std::cout << BOARD_FILES << 'x' << BOARD_RANKS << " slots=" << PIECE_TYPE_NB
-              << " stride=" << PIECE_COLOR_STRIDE << " move=" << sizeof(MoveStorage) * 8 << '\n';
+              << " stride=" << PIECE_COLOR_STRIDE << " move=" << sizeof(MoveStorage) * 8
+              << " worker=" << sizeof(Thread) << " continuation=" << USE_CONTINUATION_HISTORY << '\n';
 }

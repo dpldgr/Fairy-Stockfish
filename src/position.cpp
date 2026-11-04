@@ -187,7 +187,16 @@ std::ostream& print_board(std::ostream& os, const Position& pos) {
   }
 
   for (File f = FILE_A; f <= pos.max_file(); ++f)
+  {
+#if BOARD_FILES > 32
+      std::string label;
+      for (int file = f; file >= 0; file = file / 26 - 1)
+          label.insert(label.begin(), char('a' + file % 26));
+      os << std::setw(width + 2) << label;
+#else
       os << std::string(width+1, ' ') << char('a' + f);
+#endif
+  }
   os << "\n";
 
   return os;
@@ -311,6 +320,7 @@ Bitboard Position::extinction_pieces(Color c, PieceSet types) const {
 // situations. Description of the algorithm in the following paper:
 // https://marcelk.net/2013-04-06/paper/upcoming-rep-v2.pdf
 
+#if BOARD_SQUARES <= 640
 // First and second hash functions for indexing the cuckoo tables
 #ifdef BITBOARD_MULTIWORD
 inline int H1(Key h) { return h & 0x3ffff; }
@@ -335,6 +345,8 @@ Key cuckoo[8192];
 Move cuckooMove[8192];
 #endif
 
+
+#endif
 
 /// Position::init() initializes at startup the various arrays used to compute hash keys
 
@@ -373,6 +385,7 @@ void Position::init() {
   for (Square s = SQ_MIN; s <= SQ_MAX; ++s)
       Zobrist::promoted[s] = rng.rand<Key>();
 
+#if BOARD_SQUARES <= 640
   // Prepare the cuckoo tables
   std::memset(cuckoo, 0, sizeof(cuckoo));
   std::memset(cuckooMove, 0, sizeof(cuckooMove));
@@ -405,6 +418,7 @@ void Position::init() {
   assert(count == 9344);
 #else
   assert(count == 3668);
+#endif
 #endif
 }
 
@@ -4899,6 +4913,12 @@ bool Position::has_repeated() const {
 /// or an earlier position has a move that directly reaches the current position.
 
 bool Position::has_game_cycle(int ply) const {
+#if BOARD_SQUARES > 640
+  // Only the speculative cycle shortcut is disabled; state-key repetition
+  // adjudication in is_optional_game_end() remains available.
+  (void)ply;
+  return false;
+#else
 
   int j;
 
@@ -4941,6 +4961,7 @@ bool Position::has_game_cycle(int ply) const {
       }
   }
   return false;
+#endif
 }
 
 

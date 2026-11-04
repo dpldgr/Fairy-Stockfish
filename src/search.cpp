@@ -123,7 +123,12 @@ namespace {
   template<bool Root>
   uint64_t perft(Position& pos, Depth depth) {
 
+#if BOARD_SQUARES > 640
+    std::unique_ptr<StateInfo> stateStorage(new StateInfo);
+    StateInfo& st = *stateStorage;
+#else
     StateInfo st;
+#endif
     ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
 
     uint64_t cnt, nodes = 0;
@@ -332,8 +337,10 @@ void Thread::search() {
   int iterIdx = 0;
 
   std::memset(ss-7, 0, 10 * sizeof(Stack));
+#if USE_CONTINUATION_HISTORY
   for (int i = 7; i > 0; i--)
       (ss-i)->continuationHistory = &this->continuationHistory[0][0][NO_PIECE][0]; // Use as a sentinel
+#endif
 
   for (int i = 0; i <= MAX_PLY + 2; ++i)
       (ss+i)->ply = i;
@@ -681,7 +688,12 @@ namespace {
     assert(!(PvNode && cutNode));
 
     Move pv[MAX_PLY+1], capturesSearched[32], quietsSearched[64];
+#if BOARD_SQUARES > 640
+    std::unique_ptr<StateInfo> stateStorage(new StateInfo);
+    StateInfo& st = *stateStorage;
+#else
     StateInfo st;
+#endif
     ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
 
     TTEntry* tte;
@@ -965,7 +977,9 @@ namespace {
         Depth R = (1090 - 300 * pos.must_capture() - 250 * !pos.checking_permitted() + 81 * depth) / 256 + std::min(int(eval - beta) / 205, pos.must_capture() || pos.blast_on_capture() ? 0 : 3);
 
         ss->currentMove = MOVE_NULL;
+#if USE_CONTINUATION_HISTORY
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];
+#endif
 
         pos.do_null_move(st);
 
@@ -1034,10 +1048,12 @@ namespace {
                 probCutCount++;
 
                 ss->currentMove = move;
+#if USE_CONTINUATION_HISTORY
                 ss->continuationHistory = &thisThread->continuationHistory[ss->inCheck]
                                                                           [captureOrPromotion]
                                                                           [history_slot(pos.moved_piece(move))]
                                                                           [to_sq(move)];
+#endif
 
                 pos.do_move(move, st);
 
@@ -1090,9 +1106,13 @@ moves_loop: // When in check, search starts from here
         return probCutBeta;
 
 
+#if USE_CONTINUATION_HISTORY
     const PieceToHistory* contHist[] = { (ss-1)->continuationHistory, (ss-2)->continuationHistory,
                                           nullptr                   , (ss-4)->continuationHistory,
                                           nullptr                   , (ss-6)->continuationHistory };
+#else
+    const PieceToHistory* contHist[6] = {};
+#endif
 
     Move countermove = thisThread->counterMoves[pos.piece_on(prevSq)][prevSq];
 
@@ -1185,6 +1205,7 @@ moves_loop: // When in check, search starts from here
           }
           else
           {
+#if USE_CONTINUATION_HISTORY
               // Continuation history based pruning (~20 Elo)
               if (   lmrDepth < 5
                   && (*contHist[0])[history_slot(movedPiece)][to_sq(move)] < CounterMovePruneThreshold
@@ -1201,6 +1222,8 @@ moves_loop: // When in check, search starts from here
                     + (*contHist[3])[history_slot(movedPiece)][to_sq(move)]
                     + (*contHist[5])[history_slot(movedPiece)][to_sq(move)] / 3 < 28255)
                   continue;
+
+#endif
 
               // Prune moves with negative SEE (~20 Elo)
               if (!(pos.walling_rule() == DUCK) && !pos.see_ge(move, Value(-(30 - std::min(lmrDepth, 18) + 10 * !!pos.flag_region(pos.side_to_move())) * lmrDepth * lmrDepth)))
@@ -1284,10 +1307,12 @@ moves_loop: // When in check, search starts from here
       // Speculative prefetch as early as possible
       // Update the current move (this must be done after singular extension search)
       ss->currentMove = move;
+#if USE_CONTINUATION_HISTORY
       ss->continuationHistory = &thisThread->continuationHistory[ss->inCheck]
                                                                 [captureOrPromotion]
                                                                 [history_slot(movedPiece)]
                                                                 [to_sq(move)];
+#endif
 
       // Step 15. Make the move
       pos.do_move(move, st, givesCheck);
@@ -1344,9 +1369,11 @@ moves_loop: // When in check, search starts from here
 
               ss->statScore =  thisThread->mainHistory[us][from_to(move)]
                              + thisThread->gateHistory[us][gating_square(move)] * 2
+#if USE_CONTINUATION_HISTORY
                              + (*contHist[0])[history_slot(movedPiece)][to_sq(move)]
                              + (*contHist[1])[history_slot(movedPiece)][to_sq(move)]
                              + (*contHist[3])[history_slot(movedPiece)][to_sq(move)]
+#endif
                              - 4923;
 
               // Decrease/increase reduction for moves with a good/bad history (~30 Elo)
@@ -1539,7 +1566,12 @@ moves_loop: // When in check, search starts from here
     assert(depth <= 0);
 
     Move pv[MAX_PLY+1];
+#if BOARD_SQUARES > 640
+    std::unique_ptr<StateInfo> stateStorage(new StateInfo);
+    StateInfo& st = *stateStorage;
+#else
     StateInfo st;
+#endif
     ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
 
     TTEntry* tte;
@@ -1547,7 +1579,10 @@ moves_loop: // When in check, search starts from here
     Move ttMove, move, bestMove;
     Depth ttDepth;
     Value bestValue, value, ttValue, futilityValue, futilityBase, oldAlpha;
-    bool pvHit, givesCheck, captureOrPromotion;
+    bool pvHit, givesCheck;
+#if USE_CONTINUATION_HISTORY
+    bool captureOrPromotion;
+#endif
     int moveCount;
 
     if (PvNode)
@@ -1643,9 +1678,13 @@ moves_loop: // When in check, search starts from here
         futilityBase = bestValue + 155;
     }
 
+#if USE_CONTINUATION_HISTORY
     const PieceToHistory* contHist[] = { (ss-1)->continuationHistory, (ss-2)->continuationHistory,
                                           nullptr                   , (ss-4)->continuationHistory,
                                           nullptr                   , (ss-6)->continuationHistory };
+#else
+    const PieceToHistory* contHist[6] = {};
+#endif
 
     // Initialize a MovePicker object for the current position, and prepare
     // to search the moves. Because the depth is <= 0 here, only captures,
@@ -1663,7 +1702,9 @@ moves_loop: // When in check, search starts from here
       assert(is_ok(move));
 
       givesCheck = pos.gives_check(move);
+#if USE_CONTINUATION_HISTORY
       captureOrPromotion = pos.capture_or_promotion(move);
+#endif
 
       moveCount++;
 
@@ -1713,17 +1754,22 @@ moves_loop: // When in check, search starts from here
       }
 
       ss->currentMove = move;
+#if USE_CONTINUATION_HISTORY
       ss->continuationHistory = &thisThread->continuationHistory[ss->inCheck]
                                                                 [captureOrPromotion]
                                                                 [history_slot(pos.moved_piece(move))]
                                                                 [to_sq(move)];
+#endif
 
+#if USE_CONTINUATION_HISTORY
       // Continuation history based pruning
       if (  !captureOrPromotion
           && bestValue > VALUE_TB_LOSS_IN_MAX_PLY
           && (*contHist[0])[history_slot(pos.moved_piece(move))][to_sq(move)] < CounterMovePruneThreshold
           && (*contHist[1])[history_slot(pos.moved_piece(move))][to_sq(move)] < CounterMovePruneThreshold)
           continue;
+
+#endif
 
       // Make and search the move
       pos.do_move(move, st, givesCheck);
@@ -1890,6 +1936,7 @@ moves_loop: // When in check, search starts from here
 
   void update_continuation_histories(Stack* ss, Piece pc, Square to, int bonus) {
 
+#if USE_CONTINUATION_HISTORY
     for (int i : {1, 2, 4, 6})
     {
         // Only update first 2 continuation histories if we are in check
@@ -1898,6 +1945,9 @@ moves_loop: // When in check, search starts from here
         if (is_ok((ss-i)->currentMove))
             (*(ss-i)->continuationHistory)[history_slot(pc)][to] << bonus;
     }
+#else
+    (void)ss; (void)pc; (void)to; (void)bonus;
+#endif
   }
 
 
@@ -2096,7 +2146,12 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
 
 bool RootMove::extract_ponder_from_tt(Position& pos) {
 
+#if BOARD_SQUARES > 640
+    std::unique_ptr<StateInfo> stateStorage(new StateInfo);
+    StateInfo& st = *stateStorage;
+#else
     StateInfo st;
+#endif
     ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
 
     bool ttHit;

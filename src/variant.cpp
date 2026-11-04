@@ -3151,6 +3151,13 @@ Variant* Variant::conclude() {
                   && !cambodianMoves
                   && !diagonalLines && !hasLionDog && !tenjikuTripleStepPieceTypes && !hasBurn && !hasTypedAttacks;
 
+#if BOARD_SQUARES > 640
+    // Giant profiles use classical evaluation; avoid constructing unsupported
+    // feature metadata even when a variant has a unique king.
+    nnueKing = NO_PIECE_TYPE;
+    nnueUsePockets = false;
+    nnueDimensions = nnueMaxPieces = 0;
+#else
     // Initialize calculated NNUE properties
     nnueKing =  pieceTypes & KING ? KING
               : extinctionCondition.type == EXTINCTION_CONDITION_NONE
@@ -3230,6 +3237,8 @@ Variant* Variant::conclude() {
     }
     if (twoBoards)
         nnueMaxPieces *= 2;
+
+#endif
 
     // For endgame evaluation to be applicable, no special win rules must apply.
     // Furthermore, rules significantly changing game mechanics also invalidate it.

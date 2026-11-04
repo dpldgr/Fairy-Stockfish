@@ -240,12 +240,14 @@ namespace {
     return b;
   }
 
+#ifndef BITBOARD_MULTIWORD
   Bitboard lame_leaper_path(std::map<Direction, int> directions, Square s) {
     Bitboard b = 0;
     for (const auto& i : directions)
         b |= lame_leaper_path(i.first, s);
     return b;
   }
+#endif
 
   Bitboard lame_leaper_attack(std::map<Direction, int> directions, Square s, Bitboard occupied) {
     Bitboard b = 0;
@@ -669,6 +671,7 @@ namespace {
   // www.chessprogramming.org/Magic_Bitboards. In particular, here we use the so
   // called "fancy" approach.
 
+#ifndef BITBOARD_MULTIWORD
   template <MovementType MT>
 #ifdef PRECOMPUTED_MAGICS
   void init_magics(Bitboard table[], Magic magics[], std::map<Direction, int> directions, const Bitboard magicsInit[]) {
@@ -779,6 +782,7 @@ namespace {
     delete[] reference;
     delete[] epoch;
   }
+#endif
 }
 
 } // namespace Stockfish
