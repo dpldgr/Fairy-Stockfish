@@ -38,7 +38,8 @@ Above 384 cells:
   independently of how many piece slots are compiled in.
 - Quiescence polls the search limits and stop flag, as main search already does.
   Large capture trees must respect node/time limits even before the first
-  iteration completes.
+  iteration completes. Interrupted children unwind without updating PVs or
+  storing incomplete results in the transposition table.
 - Recursive search/perft state is heap allocated. At 512 piece slots the
   check-square arrays make each state too large for a deep search on an 8 MiB
   worker stack, including the 25×25 profile.

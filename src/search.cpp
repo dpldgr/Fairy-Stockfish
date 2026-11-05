@@ -1606,7 +1606,7 @@ moves_loop: // When in check, search starts from here
     // limits here as well as in the main search so nodes/time/stop still work.
     if (thisThread == Threads.main())
         static_cast<MainThread*>(thisThread)->check_time();
-    if (Threads.stop)
+    if (Threads.stop.load(std::memory_order_relaxed))
         return VALUE_DRAW;
 #endif
 
@@ -1788,6 +1788,13 @@ moves_loop: // When in check, search starts from here
       pos.do_move(move, st, givesCheck);
       value = -qsearch<nodeType>(pos, ss+1, -beta, -alpha, depth - 1);
       pos.undo_move(move);
+
+#if BOARD_SQUARES > 384
+      // A stopped child has no usable score. Unwind before updating the PV
+      // or saving an incomplete quiescence result in the transposition table.
+      if (Threads.stop.load(std::memory_order_relaxed))
+          return VALUE_DRAW;
+#endif
 
       assert(value > -VALUE_INFINITE && value < VALUE_INFINITE);
 
