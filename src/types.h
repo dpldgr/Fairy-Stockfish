@@ -871,11 +871,10 @@ struct DirtyPiece {
   Square to[12];
 };
 
-/// Score enum stores a middlegame and an endgame value in a single integer (enum).
-/// The least significant 16 bits are used to store the middlegame value and the
-/// upper 16 bits are used to store the endgame value. We have to take care to
-/// avoid left-shifting a signed int to avoid undefined behavior.
-#if BOARD_SQUARES > 640
+/// Score packs middlegame and endgame values into one integer. Components use
+/// 16 bits on existing geometries and 32 bits above 384 cells. Avoid shifting
+/// signed integers to keep packing and arithmetic well-defined.
+#if BOARD_SQUARES > 384
 // Large armies can exceed a signed 16-bit component before the final clamp.
 enum Score : int64_t { SCORE_ZERO };
 
@@ -952,7 +951,7 @@ ENABLE_INCR_OPERATORS_ON(File)
 ENABLE_INCR_OPERATORS_ON(Rank)
 ENABLE_INCR_OPERATORS_ON(CheckCount)
 
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
 constexpr Score operator+(Score s, int64_t x) { return Score(uint64_t(s) + uint64_t(x)); }
 constexpr Score operator-(Score s, int64_t x) { return Score(uint64_t(s) - uint64_t(x)); }
 constexpr Score operator-(Score s) { return Score(uint64_t(0) - uint64_t(s)); }
@@ -999,7 +998,7 @@ inline Score operator/(Score s, int i) {
 /// Multiplication of a Score by an integer. We check for overflow in debug mode.
 inline Score operator*(Score s, int i) {
 
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
   return make_score(mg_value(s) * i, eg_value(s) * i);
 #else
   Score result = Score(int(s) * i);
@@ -1012,7 +1011,7 @@ inline Score operator*(Score s, int i) {
 #endif
 }
 
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
 inline Score operator*(int i, Score s) { return s * i; }
 #endif
 

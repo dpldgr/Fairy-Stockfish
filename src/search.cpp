@@ -123,7 +123,7 @@ namespace {
   template<bool Root>
   uint64_t perft(Position& pos, Depth depth) {
 
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
     std::unique_ptr<StateInfo> stateStorage(new StateInfo);
     StateInfo& st = *stateStorage;
 #else
@@ -688,7 +688,7 @@ namespace {
     assert(!(PvNode && cutNode));
 
     Move pv[MAX_PLY+1], capturesSearched[32], quietsSearched[64];
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
     std::unique_ptr<StateInfo> stateStorage(new StateInfo);
     StateInfo& st = *stateStorage;
 #else
@@ -1196,7 +1196,7 @@ moves_loop: // When in check, search starts from here
               // Capture history based pruning when the move doesn't give check
               if (   !givesCheck
                   && lmrDepth < 1
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
                   && captureHistory.value(movedPiece, to_sq(move), type_of(pos.piece_on(to_sq(move)))) < 0)
 #else
                   && captureHistory[movedPiece][to_sq(move)][type_of(pos.piece_on(to_sq(move)))] < 0)
@@ -1570,7 +1570,7 @@ moves_loop: // When in check, search starts from here
     assert(depth <= 0);
 
     Move pv[MAX_PLY+1];
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
     std::unique_ptr<StateInfo> stateStorage(new StateInfo);
     StateInfo& st = *stateStorage;
 #else
@@ -1600,6 +1600,15 @@ moves_loop: // When in check, search starts from here
     bestMove = MOVE_NONE;
     ss->inCheck = pos.checkers();
     moveCount = 0;
+
+#if BOARD_SQUARES > 384
+    // A large capture tree can spend the whole search in quiescence. Poll
+    // limits here as well as in the main search so nodes/time/stop still work.
+    if (thisThread == Threads.main())
+        static_cast<MainThread*>(thisThread)->check_time();
+    if (Threads.stop.load(std::memory_order_relaxed))
+        return VALUE_DRAW;
+#endif
 
     Value gameResult;
     if (pos.is_game_end(gameResult, ss->ply))
@@ -1780,6 +1789,13 @@ moves_loop: // When in check, search starts from here
       value = -qsearch<nodeType>(pos, ss+1, -beta, -alpha, depth - 1);
       pos.undo_move(move);
 
+#if BOARD_SQUARES > 384
+      // A stopped child has no usable score. Unwind before updating the PV
+      // or saving an incomplete quiescence result in the transposition table.
+      if (Threads.stop.load(std::memory_order_relaxed))
+          return VALUE_DRAW;
+#endif
+
       assert(value > -VALUE_INFINITE && value < VALUE_INFINITE);
 
       // Check for a new best move
@@ -1911,7 +1927,7 @@ moves_loop: // When in check, search starts from here
     else
     {
         // Increase stats for the best move in case it was a capture move
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
         captureHistory.update(moved_piece, to_sq(bestMove), captured, bonus1);
 #else
         captureHistory[moved_piece][to_sq(bestMove)][captured] << bonus1;
@@ -1932,7 +1948,7 @@ moves_loop: // When in check, search starts from here
         moved_piece = pos.moved_piece(capturesSearched[i]);
         captured = type_of(pos.piece_on(to_sq(capturesSearched[i])));
         if (!(pos.walling() && from_to(capturesSearched[i]) == from_to(bestMove)))
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
             captureHistory.update(moved_piece, to_sq(capturesSearched[i]), captured, -bonus1);
 #else
             captureHistory[moved_piece][to_sq(capturesSearched[i])][captured] << -bonus1;
@@ -2158,7 +2174,7 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
 
 bool RootMove::extract_ponder_from_tt(Position& pos) {
 
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
     std::unique_ptr<StateInfo> stateStorage(new StateInfo);
     StateInfo& st = *stateStorage;
 #else

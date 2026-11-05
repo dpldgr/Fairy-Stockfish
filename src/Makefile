@@ -834,6 +834,7 @@ else
 	@echo "make build ARCH=x86-64 board_files=25 board_ranks=25 piece_slots=512 gating=no"
 	@echo "make build ARCH=x86-64 board_files=36 board_ranks=36 piece_slots=512 gating=no"
 	@echo "Above 640 cells: continuation history and speculative cycle detection are disabled."
+	@echo "Above 384 cells: wide classical scores, lazy capture history and factored Lion masks."
 	@echo ""
 	@echo "Include all variants (adds Game of the Amazons): "
 	@echo ""

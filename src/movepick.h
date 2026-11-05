@@ -102,7 +102,7 @@ typedef Stats<int16_t, 10692, MAX_LPH, int(SQUARE_NB + 1) * int(1 << SQUARE_BITS
 typedef Stats<Move, NOT_USED, PIECE_NB, SQUARE_NB> CounterMoveHistory;
 
 /// CapturePieceToHistory is addressed by a move's [piece][to][captured piece type]
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
 // Allocate a destination row only when its attacker/victim pair is updated.
 // Reads of an untouched pair return the fill value without allocating. Every
 // exact piece identity and every statistic is retained; there is no eviction.
