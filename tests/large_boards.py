@@ -61,6 +61,7 @@ piece = p:fW +p:<r>
 piece = a:K
 piece = h:R
 piece = l:KNAD
+piece = u:U
 castling = false
 doubleStep = false
 extinctionValue = loss
@@ -74,6 +75,9 @@ promotionPolicy = optional:{{}} mandatory:{{oi}}
 lionMovePieces = l(FFFFFFFFFFFFFFFF)
 hookMovePieces = h:R-sR:1!
 tenjikuTripleStepPieceTypes = {{a}}
+
+[large-limits:large]
+tradingRule = u:[any!,{{k}}]
 ''')
         cls.engine = subprocess.Popen([os.environ['STOCKFISH'], 'load', str(cls.config)],
                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -219,6 +223,39 @@ tenjikuTripleStepPieceTypes = {{a}}
         self.assertRegex(out, r'info depth 4 ')
         best = re.search(r'^bestmove (\S+)', out, re.M).group(1)
         self.assertIn(best, legal)
+
+    def test_universal_leaper_evaluation(self):
+        n = self.size
+        board = {**self.royals(), (1, 0): 'U'}
+        out = self.output(board, commands='eval\n')
+        self.assertRegex(out, r'Final evaluation\s+[+-]?\d')
+        # A mobility bonus must survive multiplication before division even
+        # with hundreds of destinations, for both sides of the evaluation.
+        board[1, 0] = 'u'
+        out = self.output(board, commands='eval\n')
+        self.assertRegex(out, r'Final evaluation\s+[+-]?\d')
+
+    def test_limits_inside_large_capture_tree(self):
+        n = self.size
+        board = {**self.royals(), (0, 1): 'R', (n - 1, n - 2): 'r',
+                 (n // 2, 1): 'U', (n // 2, n - 2): 'u'}
+        for f in range(n):
+            board[f, 5] = 'X'
+            board[f, n - 6] = 'x'
+        self.command('setoption name UCI_Variant value large-limits\nisready\n')
+        watchdog = threading.Timer(30, self.engine.kill)
+        try:
+            # Protected royals keep the universal leapers from ending the game
+            # immediately; quiescence has a large tree of non-royal captures.
+            self.command('position fen ' + fen(board, n) + '\nisready\n')
+            watchdog.start()
+            out = self.command('go nodes 2048\n', search=True)
+            self.assertRegex(out, r'(?m)^bestmove [a-z]', msg=out)
+            self.assertIsNone(self.engine.poll(), out)
+        finally:
+            watchdog.cancel()
+            if self.engine.poll() is None:
+                self.command('setoption name UCI_Variant value large\nisready\n')
 
 
 if __name__ == '__main__':

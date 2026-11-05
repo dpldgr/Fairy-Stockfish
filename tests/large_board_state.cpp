@@ -87,7 +87,7 @@ tenjikuTripleStepPieceTypes = {t}
 )ini";
     std::istringstream config(text.str()); variants.parse_istream<false>(config);
     const Variant* v = variants.at("large-state"); UCI::init_variant(v); PSQT::init(v);
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
     // Independent coordinate oracle for the factored Lion cache, including
     // asymmetric modalities, Black rotation, and smaller embedded variants.
     PieceType lion = NO_PIECE_TYPE;
@@ -156,6 +156,8 @@ tenjikuTripleStepPieceTypes = {t}
     assert(p->is_optional_game_end(result, 0) && result == VALUE_DRAW);
 #if BOARD_SQUARES > 640
     assert(!p->has_game_cycle(8));
+#endif
+#if BOARD_SQUARES > 384
     board = {{SQ_MIN,"K"}, {SQ_MAX,"k"}};
     for (int s = 1; s <= 120; ++s) board[Square(s)] = "R";
     p->set(v, fen(board), false, root.get(), Threads.main());

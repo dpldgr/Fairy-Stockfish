@@ -121,7 +121,7 @@ namespace {
         if (!pieceCount[Us][pt1])
             continue;
 
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
         Score v = QuadraticOurs[pt1][pt1] * pieceCount[Us][pt1];
 #else
         int v = QuadraticOurs[pt1][pt1] * pieceCount[Us][pt1];

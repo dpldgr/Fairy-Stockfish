@@ -36,12 +36,9 @@ int main() {
     Score score = make_score(-123, 456);
     assert(mg_value(score) == -123 && eg_value(score) == 456);
     assert(mg_value(score * 3) == -369 && eg_value(score * 3) == 1368);
-#if BOARD_SQUARES > 640
-    static_assert(!USE_CONTINUATION_HISTORY);
+#if BOARD_SQUARES > 384
     static_assert(sizeof(Score) == 8);
-    // No hidden multi-GiB continuation table remains in the worker layout.
-    static_assert(sizeof(Thread) < sizeof(CapturePieceToHistory) + 64 * 1024 * 1024);
-    static_assert(sizeof(Thread) < 128 * 1024 * 1024);
+    // Capture rows and Lion geometry do not embed board x piece-pair caches.
     static_assert(sizeof(Variant) < 4 * 1024 * 1024);
     auto captures = std::make_unique<CapturePieceToHistory>();
     captures->fill(7);
@@ -78,9 +75,18 @@ int main() {
     assert(mg_value(score) == 1050000 && eg_value(score) == -600000);
     assert(mg_value(-score) == -1050000 && eg_value(-score) == 600000);
 #else
-    static_assert(USE_CONTINUATION_HISTORY);
     static_assert(sizeof(Score) == 4);
+#endif
+#if BOARD_SQUARES <= 640
+    static_assert(USE_CONTINUATION_HISTORY);
     static_assert(sizeof(Thread) >= 4 * sizeof(ContinuationHistory));
+#if BOARD_SQUARES > 384
+    static_assert(sizeof(Thread) < 4 * sizeof(ContinuationHistory) + 128 * 1024 * 1024);
+#endif
+#else
+    static_assert(!USE_CONTINUATION_HISTORY);
+    static_assert(sizeof(Thread) < sizeof(CapturePieceToHistory) + 64 * 1024 * 1024);
+    static_assert(sizeof(Thread) < 128 * 1024 * 1024);
 #endif
     PieceSet all = {};
     for (int id = 0; id < PIECE_TYPE_NB; ++id)

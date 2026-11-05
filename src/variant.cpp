@@ -2765,7 +2765,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
                     }
                 targets |= second & ~square_bb(from);
             }
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
         uint64_t lion = lion_effective_path_mask(c, pt, from);
 #else
         uint64_t lion = lionEffectivePathMask[c][pt][from];
@@ -3076,7 +3076,7 @@ Variant* Variant::conclude() {
     if (!doubleStepRegion[WHITE] && !doubleStepRegion[BLACK])
         doubleStep = false;
 
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
     for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
     {
         lionGeometryPathMask[from] = 0;
@@ -3100,7 +3100,7 @@ Variant* Variant::conclude() {
             lionModalityMask[WHITE][modality][pt] = combined_lion_mask(pt, modality);
             lionModalityMask[BLACK][modality][pt] = flip_lion_path_mask(combined_lion_mask(pt, modality));
         }
-#if BOARD_SQUARES <= 640
+#if BOARD_SQUARES <= 384
         uint64_t lionMaskByColor[COLOR_NB] = {
           combined_lion_mask(pt),
           flip_lion_path_mask(combined_lion_mask(pt))

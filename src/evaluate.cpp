@@ -1486,7 +1486,7 @@ namespace {
         sf -= 4 * !pawnsOnBothFlanks;
     }
 
-#if BOARD_SQUARES > 640
+#if BOARD_SQUARES > 384
     // Preserve the wider components through interpolation, then clamp before
     // converting back to the search/TT value range.
     int64_t interpolated = int64_t(mg) * int(me->game_phase())

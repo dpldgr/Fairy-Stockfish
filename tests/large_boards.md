@@ -20,8 +20,28 @@ are introduced.
 
 Through 640 compiled cells, continuation-history allocation, initialization,
 sentinels, updates, move ordering, pruning and reduction contributions remain
-unchanged. Existing small-board bitboard/move storage and score types remain
-unchanged as well.
+unchanged. Existing profiles through 384 cells also retain their bitboard/move
+storage, score types, dense capture histories and Lion caches.
+
+Above 384 cells:
+
+- Classical evaluation uses 32-bit middle/endgame components in a 64-bit Score,
+  with wider interpolation and a clamp before returning to search value storage.
+  The 25×25 profile needs this for universal-leaper mobility and large material
+  imbalances; intermediate products can exceed 16 bits before division.
+- Capture history stores exact destination rows per attacker/victim pair,
+  allocating a row on its first update. Untouched reads return the fill value
+  without allocation. Clearing releases the rows; no statistics are merged or
+  evicted. The original dense history remains through 384 cells.
+- Lion paths combine per-colour/type modality masks with a per-square geometry
+  mask. This gives the same paths as the old dense cache, reducing its size
+  independently of how many piece slots are compiled in.
+- Quiescence polls the search limits and stop flag, as main search already does.
+  Large capture trees must respect node/time limits even before the first
+  iteration completes.
+- Recursive search/perft state is heap allocated. At 512 piece slots the
+  check-square arrays make each state too large for a deep search on an 8 MiB
+  worker stack, including the 25×25 profile.
 
 Above 640 cells:
 
@@ -29,25 +49,23 @@ Above 640 cells:
   contributions and updates are omitted. Continuation pruning and the futility
   branch that depends on a continuation-history veto are disabled, including
   the continuation pruning in quiescence. Other histories remain available.
-- Capture history stores exact destination rows per attacker/victim pair,
-  allocating a row on its first update. Untouched reads return the fill value
-  without allocation. Clearing releases the rows; no statistics are merged or
-  evicted. The original dense history remains in builds through 640 cells.
-- Lion paths combine per-colour/type modality masks with a per-square geometry
-  mask. This gives the same paths as the old dense cache, reducing that cache
-  from about 10 MiB to 10 KiB per variant at 36×36 / 512 slots.
 - The speculative cuckoo cycle accelerator and its initialization are disabled.
   Normal position-key repetition adjudication is retained.
-- Recursive search/perft state is heap allocated. Position and evaluation
-  storage still consume substantial memory; this is an initial desktop build.
-- Classical evaluation uses 32-bit middle/endgame components in a 64-bit Score,
-  with wider interpolation and a clamp before returning to search value storage.
-  NNUE and its unsupported feature-metadata construction are disabled.
+- Position and evaluation storage still consume substantial memory; this is
+  an initial desktop build.
+- NNUE and its unsupported feature-metadata construction are disabled.
 
 New geometries above the previous 384-cell limit also use larger heap-backed
 move-picker buffers even with the default 64-slot catalogue. Existing catalogue
 capacity options still control the piece/drop bound. The buffers and capture
 histories remain deliberately generous and are candidates for later work.
+
+At 25×25 / 512 slots, the worker object is about 779 MiB, down from 1,400 MiB;
+763 MiB is the unchanged continuation history. A comparable portable one-worker
+Tai load/perft run fell from 2.53 GiB to 1.37 GiB peak RSS. Native BMI2 also
+passed loading, generation, evaluation and bounded Tai searches under a 2 GiB
+Linux address-space limit. Node/time/stop limits are checked in quiescence,
+but move generation and legality probes can still overshoot a node request.
 
 At 36×36 and 512 slots, continuation-history removal saves about 3.20 GiB per
 worker. Lazy capture history removes the former 1.27 GiB startup allocation:
@@ -64,7 +82,7 @@ ray-clearing or disputed piece abilities.
 
 ## Validation
 
-Run layout/encoding checks across capacities and the 640/648-cell boundary:
+Run layout/encoding checks across capacities and the 384/385 and 640/648-cell boundaries:
 
 ```sh
 python3 tests/piece_slots_matrix.py
@@ -82,7 +100,7 @@ STOCKFISH=/path/to/36x36/stockfish BOARD_SIZE=36 python3 tests/large_boards.py
 `main.o`. Use the same dimensions, piece capacity, gating, architecture and debug
 defines as the executable. It verifies make/undo against rebuilt positions for
 normal, promoting, Lion, Lion Dog, hook and triple-area moves near the far board
-corner, repetition adjudication, and (above 640 cells) a material imbalance that
+corner, repetition adjudication, and (above 384 cells) a material imbalance that
 exceeds the old score-component range. It also checks factored Lion masks against
 an independent coordinate oracle for both colours, asymmetric modalities and
 smaller embedded boards. The encoding matrix compares lazy capture-history
