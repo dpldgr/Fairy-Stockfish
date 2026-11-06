@@ -1176,62 +1176,67 @@ moves_loop: // When in check, search starts from here
 
       // Step 13. Pruning at shallow depth (~200 Elo)
       if (  !rootNode
-          && !activeRangeJumpers && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
+          && !pos.variant()->hasFreeze && !pos.variant()->hasMissile
           && (pos.non_pawn_material(us) || pos.count<ALL_PIECES>(us) == pos.count<PAWN>(us))
           && bestValue > VALUE_TB_LOSS_IN_MAX_PLY)
       {
           // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold
           moveCountPruning = moveCount >= futility_move_count(improving, depth, pos);
 
-          // Reduced depth of the next LMR search
-          int lmrDepth = std::max(newDepth - reduction(improving, depth, moveCount), 0);
-
-          if (pos.must_capture() && pos.attackers_to(to_sq(move), ~us))
-          {}
-          else
-
-          if (   captureOrPromotion
-              || givesCheck)
+          // MovePicker exempts range-jumping types from LMP. Keep the other
+          // shallow-pruning safeguards while any range jumper is on board.
+          if (!activeRangeJumpers)
           {
-              // Capture history based pruning when the move doesn't give check
-              if (   !givesCheck
-                  && lmrDepth < 1
+              // Reduced depth of the next LMR search
+              int lmrDepth = std::max(newDepth - reduction(improving, depth, moveCount), 0);
+
+              if (pos.must_capture() && pos.attackers_to(to_sq(move), ~us))
+              {}
+              else
+
+              if (   captureOrPromotion
+                  || givesCheck)
+              {
+                  // Capture history based pruning when the move doesn't give check
+                  if (   !givesCheck
+                      && lmrDepth < 1
 #if BOARD_SQUARES > 384
-                  && captureHistory.value(movedPiece, to_sq(move), type_of(pos.piece_on(to_sq(move)))) < 0)
+                      && captureHistory.value(movedPiece, to_sq(move), type_of(pos.piece_on(to_sq(move)))) < 0)
 #else
-                  && captureHistory[movedPiece][to_sq(move)][type_of(pos.piece_on(to_sq(move)))] < 0)
+                      && captureHistory[movedPiece][to_sq(move)][type_of(pos.piece_on(to_sq(move)))] < 0)
 #endif
-                  continue;
+                      continue;
 
-              // SEE based pruning
-              if (!pos.see_ge(move, Value(-218 - 120 * pos.captures_to_hand()) * depth)) // (~25 Elo)
-                  continue;
-          }
-          else
-          {
+                  // SEE based pruning
+                  if (!pos.see_ge(move, Value(-218 - 120 * pos.captures_to_hand()) * depth)) // (~25 Elo)
+                      continue;
+              }
+              else
+              {
 #if USE_CONTINUATION_HISTORY
-              // Continuation history based pruning (~20 Elo)
-              if (   lmrDepth < 5
-                  && (*contHist[0])[history_slot(movedPiece)][to_sq(move)] < CounterMovePruneThreshold
-                  && (*contHist[1])[history_slot(movedPiece)][to_sq(move)] < CounterMovePruneThreshold)
-                  continue;
+                  // Continuation history based pruning (~20 Elo)
+                  if (   lmrDepth < 5
+                      && (*contHist[0])[history_slot(movedPiece)][to_sq(move)] < CounterMovePruneThreshold
+                      && (*contHist[1])[history_slot(movedPiece)][to_sq(move)] < CounterMovePruneThreshold)
+                      continue;
 
-              // Futility pruning: parent node (~5 Elo)
-              if (   lmrDepth < 7
-                  && !ss->inCheck
-                  && !pos.extinction_single_piece()
-                  && ss->staticEval + (174 + 157 * lmrDepth) * (1 + pos.check_counting()) <= alpha
-                  &&  (*contHist[0])[history_slot(movedPiece)][to_sq(move)]
-                    + (*contHist[1])[history_slot(movedPiece)][to_sq(move)]
-                    + (*contHist[3])[history_slot(movedPiece)][to_sq(move)]
-                    + (*contHist[5])[history_slot(movedPiece)][to_sq(move)] / 3 < 28255)
-                  continue;
+                  // Futility pruning: parent node (~5 Elo)
+                  if (   lmrDepth < 7
+                      && !ss->inCheck
+                      && !pos.extinction_single_piece()
+                      && ss->staticEval + (174 + 157 * lmrDepth) * (1 + pos.check_counting()) <= alpha
+                      &&  (*contHist[0])[history_slot(movedPiece)][to_sq(move)]
+                        + (*contHist[1])[history_slot(movedPiece)][to_sq(move)]
+                        + (*contHist[3])[history_slot(movedPiece)][to_sq(move)]
+                        + (*contHist[5])[history_slot(movedPiece)][to_sq(move)] / 3 < 28255)
+                      continue;
 
 #endif
 
-              // Prune moves with negative SEE (~20 Elo)
-              if (!(pos.walling_rule() == DUCK) && !pos.see_ge(move, Value(-(30 - std::min(lmrDepth, 18) + 10 * !!pos.flag_region(pos.side_to_move())) * lmrDepth * lmrDepth)))
-                  continue;
+                  // Prune moves with negative SEE (~20 Elo)
+                  if (!(pos.walling_rule() == DUCK) && !pos.see_ge(move, Value(-(30 - std::min(lmrDepth, 18) + 10 * !!pos.flag_region(pos.side_to_move())) * lmrDepth * lmrDepth)))
+                      continue;
+              }
           }
       }
 

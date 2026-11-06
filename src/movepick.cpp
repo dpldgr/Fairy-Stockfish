@@ -214,21 +214,54 @@ top:
       [[fallthrough]];
 
   case QUIET_INIT:
-      if (!skipQuiets && !(pos.must_capture() && pos.has_capture()))
+  {
+      bool generateQuiets = !skipQuiets;
+      if (skipQuiets && pos.variant()->hasRangeJump)
+      {
+          // Include ordinary/promoted drops whose placed type can range-jump.
+          generateQuiets = pos.piece_drops()
+                        && (pos.free_drops() || pos.count_in_hand(pos.side_to_move(), ALL_PIECES));
+          for (PieceSet types = pos.variant()->rangeJumpTypes; !generateQuiets && types;)
+              if (pos.pieces(pos.side_to_move(), pop_lsb(types)))
+              {
+                  generateQuiets = true;
+                  break;
+              }
+      }
+      if (generateQuiets && !(pos.must_capture() && pos.has_capture()))
       {
           cur = endBadCaptures;
           endMoves = generate<QUIETS>(pos, cur);
 
+          // LMP keeps every move by a range-jumping type, including ordinary
+          // quiet moves. Avoid scoring/sorting other quiets when already pruning.
+          if (skipQuiets)
+          {
+              ExtMove* kept = cur;
+              for (ExtMove* m = cur; m != endMoves; ++m)
+                  if (pos.variant()->rangeJumpTypes & type_of(pos.moved_piece(*m)))
+                      *kept++ = Move(*m);
+              endMoves = kept;
+          }
           score<QUIETS>();
           partial_insertion_sort(cur, endMoves, -3000 * depth);
       }
 
       ++stage;
+  }
       [[fallthrough]];
 
   case QUIET:
       if (   !skipQuiets
           && select<Next>([&](){return   *cur != refutations[0].move
+                                      && *cur != refutations[1].move
+                                      && *cur != refutations[2].move;}))
+          return *(cur - 1);
+
+      // The threshold can be reached after the quiet list has been generated.
+      if (   skipQuiets && pos.variant()->hasRangeJump
+          && select<Next>([&](){return   (pos.variant()->rangeJumpTypes & type_of(pos.moved_piece(*cur)))
+                                      && *cur != refutations[0].move
                                       && *cur != refutations[1].move
                                       && *cur != refutations[2].move;}))
           return *(cur - 1);
