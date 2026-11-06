@@ -881,7 +881,7 @@ namespace {
 
     CapturePieceToHistory& captureHistory = thisThread->captureHistory;
 
-    // Detect on-board range jumpers once for the pruning and reduction guards.
+    // Detect on-board range jumpers for the whole-node futility guard.
     bool activeRangeJumpers = false;
     if (pos.variant()->hasRangeJump)
         for (PieceSet types = pos.variant()->rangeJumpTypes; types;)
@@ -1169,6 +1169,9 @@ moves_loop: // When in check, search starts from here
       extension = 0;
       captureOrPromotion = pos.capture_or_promotion(move);
       movedPiece = pos.moved_piece(move);
+      // Use the original moving form, before promotion/transformation or removal.
+      const bool rangeJumperMove = pos.variant()->hasRangeJump
+                                && bool(pos.variant()->rangeJumpTypes & type_of(movedPiece));
       givesCheck = pos.gives_check(move);
 
       // Calculate new depth for this move
@@ -1183,9 +1186,9 @@ moves_loop: // When in check, search starts from here
           // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold
           moveCountPruning = moveCount >= futility_move_count(improving, depth, pos);
 
-          // MovePicker exempts range-jumping types from LMP. Keep the other
-          // shallow-pruning safeguards while any range jumper is on board.
-          if (!activeRangeJumpers)
+          // Protect every move by a range-jumping type, matching MovePicker's
+          // LMP exemption, while applying normal pruning to other movers.
+          if (!rangeJumperMove)
           {
               // Reduced depth of the next LMR search
               int lmrDepth = std::max(newDepth - reduction(improving, depth, moveCount), 0);
@@ -1331,7 +1334,7 @@ moves_loop: // When in check, search starts from here
       // been searched. In general we would like to reduce them, but there are many
       // cases where we extend a son if it has good chances to be "interesting".
       if (    depth >= 3
-          && !activeRangeJumpers && moveCount > 1 + 2 * rootNode
+          && !rangeJumperMove && moveCount > 1 + 2 * rootNode
           && !(pos.must_capture() && pos.has_capture())
           && (  !captureOrPromotion
               || (cutNode && (ss-1)->moveCount > 1)

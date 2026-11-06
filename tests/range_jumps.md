@@ -37,8 +37,12 @@ reductions as well as quiet-move skipping.
 
 Main-search late-move pruning retains every move whose moving type has range
 jump ability, including its ordinary quiet moves and compound paths. Other
-quiets can be skipped at the usual move-count threshold. The existing Step 7,
-non-LMP Step 13 and Step 16 safeguards still use on-board range-jumper presence.
+quiets can be skipped at the usual move-count threshold. Step 13's remaining
+move pruning and Step 16's late-move reductions also exempt range-jumping types,
+while using their normal rules for other movers. The shared exemption uses the
+original moving type, before promotion, transformation or removal. Step 7's
+whole-node futility safeguard still uses on-board range-jumper presence, and
+the conservative SEE fallback for typed attacks remains in place.
 
 `range_jumper_lmp.cpp` exercises the move picker directly. It compares complete
 move sets with LMP enabled before quiet generation and partway through the quiet
