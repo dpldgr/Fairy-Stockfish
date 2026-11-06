@@ -2825,7 +2825,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
 }
 
 void Variant::resolve_promotion_rules() {
-    promotionVictimState = false;
+    promotionVictimState = hasContagiousCaptures;
     for (Color c : {WHITE, BLACK})
     {
         lastPromotionTypes[c] = NO_PIECE_SET;
@@ -3050,6 +3050,17 @@ void Variant::resolve_baring_royal_types() {
 }
 
 Variant* Variant::conclude() {
+    hasContagiousCaptures = false;
+    for (int victim = PAWN; victim < PIECE_TYPE_NB; ++victim)
+        if (contagiousCaptureType[victim])
+        {
+            if (!(pieceTypes & PieceType(victim)) || !(pieceTypes & contagiousCaptureType[victim]))
+            {
+                contagiousConfigurationValid = false;
+                std::cerr << "transformOnCapturePieces - Inherited mapping refers to an undefined piece" << std::endl;
+            }
+            hasContagiousCaptures = true;
+        }
     hasSkippedRays = false;
     skipRayConfigurationValid = true;
     skippedRayTypes = NO_PIECE_SET;
@@ -3123,6 +3134,9 @@ Variant* Variant::conclude() {
         PieceSet targets = piece_set(promotedPieceType[pt]) & ~piece_set(NO_PIECE_TYPE);
         for (Color c : {WHITE, BLACK})
             if (promotionPawnTypes[c] & pt) targets |= promotionPieceTypes[c];
+        if (hasContagiousCaptures && !(contagiousImmunePieces & pt))
+            for (PieceSet victims = pieceTypes; victims;)
+                targets |= contagiousCaptureType[pop_lsb(victims)];
         if (!(targets & burnActivePieceTypes))
         {
             burnConfigurationValid = false;
@@ -3143,7 +3157,7 @@ Variant* Variant::conclude() {
         }
     }
     hasFreeze = bool(freezeEffectPieces & pieceTypes);
-    hasTypedAttacks = hasRangeJump || hasFreeze || hasSkippedRays || hasLionMoves || bool(burnOnPromotePieces);
+    hasTypedAttacks = hasRangeJump || hasFreeze || hasSkippedRays || hasLionMoves || bool(burnOnPromotePieces) || hasContagiousCaptures;
     freezeEmitterTypes.clear(); freezeImmuneTypes.clear();
     for (PieceSet ps = freezeEffectPieces & pieceTypes; ps;) freezeEmitterTypes.push_back(pop_lsb(ps));
     for (PieceSet ps = freezeImmunePieces & pieceTypes; ps;) freezeImmuneTypes.push_back(pop_lsb(ps));
@@ -3422,7 +3436,14 @@ void VariantMap::add(std::string s, Variant* v, bool configured) {
   if (v->maxFile <= FILE_MAX && v->maxRank <= RANK_MAX)
   {
       v->conclude();
-      if (!v->rangeJumpConfigurationValid || !v->skipRayConfigurationValid || !v->lionConfigurationValid || !v->burnConfigurationValid) { delete v; return; }
+      if (!v->rangeJumpConfigurationValid || !v->skipRayConfigurationValid || !v->lionConfigurationValid || !v->burnConfigurationValid
+          || !v->contagiousConfigurationValid) { delete v; return; }
+      if (v->hasContagiousCaptures && (v->gating || v->seirawanGating || v->wallingRule || v->flipEnclosedPieces))
+      {
+          std::cerr << "transformOnCapturePieces - Unsupported combination with gating, wall placement or enclosure rules: " << s << std::endl;
+          delete v;
+          return;
+      }
       if (!WIDE_MOVES && v->tenjikuTripleStepPieceTypes)
       {
           std::cerr << "tenjikuTripleStepPieceTypes - Requires a 64-bit move build (e.g. board_files=16 board_ranks=16): " << s << std::endl;

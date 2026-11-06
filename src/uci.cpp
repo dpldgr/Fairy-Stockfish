@@ -702,6 +702,8 @@ string UCI::move(const Position& pos, Move m) {
 
   if (type_of(m) == PROMOTION || is_path_pawn_promotion(m))
       move += pos.piece_symbol(make_piece(BLACK, is_path_promotion(m) ? path_promotion_type(m) : promotion_type(m)));
+  else if (type_of(m) == EN_PASSANT && pos.contagious_promotion_type(m))
+      move += pos.piece_symbol(make_piece(BLACK, pos.contagious_promotion_type(m)));
   else if (type_of(m) == PIECE_PROMOTION || is_path_promotion(m))
       move += '+';
   else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m))

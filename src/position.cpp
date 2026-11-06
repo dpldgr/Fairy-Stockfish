@@ -1491,6 +1491,45 @@ Bitboard Position::range_jump_targets(Color c, PieceType pt, Square from, const 
     return geometry.attacks(c, from, blockers) & ~geometry.attacks(c, from, view.occupied) & board_bb(c, pt);
 }
 
+PieceSet Position::contagious_capture_types(Color c, PieceType pt, const Square* route, int n,
+                                           const AttackView* view) const {
+    PieceSet result = NO_PIECE_SET;
+    if (!var->hasContagiousCaptures || (var->contagiousImmunePieces & pt)) return result;
+    Bitboard visited = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        Square s = route[i];
+        if (visited & s) continue;
+        visited |= s;
+        Piece victim = view ? view->piece_on(s) : piece_on(s);
+        if (!victim || color_of(victim) == c) continue;
+        PieceType target = var->contagiousCaptureType[type_of(victim)];
+        if (!target) continue;
+        if (var->contagiousCapturePolicy == CONTAGIOUS_FIRST) return piece_set(target);
+        if (var->contagiousCapturePolicy == CONTAGIOUS_LAST) result = piece_set(target);
+        else result |= target;
+    }
+    return result;
+}
+
+PieceSet Position::contagious_capture_types(Move m) const {
+    if (!var->hasContagiousCaptures || type_of(m) == DROP || type_of(m) == CASTLING || type_of(m) == MISSILE)
+        return NO_PIECE_SET;
+    Square route[3];
+    int n;
+    if (is_multi_move(m)) n = move_path(m, route);
+    else { route[0] = type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m); n = 1; }
+    return contagious_capture_types(sideToMove, type_of(moved_piece(m)), route, n);
+}
+
+PieceType Position::contagious_promotion_type(Move m) const {
+    if (!var->hasContagiousCaptures) return NO_PIECE_TYPE;
+    PieceType target = type_of(m) == PROMOTION ? promotion_type(m)
+                     : is_path_pawn_promotion(m) ? path_promotion_type(m)
+                     : type_of(m) == EN_PASSANT ? gating_type(m) : NO_PIECE_TYPE;
+    return target && (contagious_capture_types(m) & target) ? target : NO_PIECE_TYPE;
+}
+
 // Exact post-move geometry for legality, checking and recapture queries. Hashes,
 // history, pockets and search counters remain untouched.
 AttackView Position::move_attack_view(Move m) const {
@@ -1531,11 +1570,13 @@ AttackView Position::move_attack_view(Move m) const {
     if (!(burned & to))
     {
         Piece result = mover;
-        if (type_of(m) == PROMOTION) result = make_piece(us, promotion_type(m));
+        PieceType transformed = type_of(m) == EN_PASSANT ? contagious_promotion_type(m) : NO_PIECE_TYPE;
+        if (transformed) result = make_piece(us, transformed);
+        else if (type_of(m) == PROMOTION) result = make_piece(us, promotion_type(m));
         else if (type_of(m) == PIECE_PROMOTION) result = make_piece(us, promoted_piece_type(type_of(mover)));
         else if (is_path_promotion(m)) result = make_piece(us, path_promotion_type(m));
         else if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)) result = unpromoted_piece_on(from);
-        bool promoted = type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m)
+        bool promoted = transformed || type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m)
                      || (type_of(m) == DROP ? type_of(mover) != in_hand_piece_type(m) : is_promoted(from));
         if (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)) promoted = false;
         view.put(result, to, promoted);
@@ -1683,7 +1724,8 @@ PieceType Position::promotion_burn_type(Move m) const {
     if (!(var->burnOnPromotePieces & type_of(moved_piece(m)))) return NO_PIECE_TYPE;
     PieceType target = type_of(m) == PROMOTION ? promotion_type(m)
                      : type_of(m) == PIECE_PROMOTION ? promoted_piece_type(type_of(moved_piece(m)))
-                     : is_path_promotion(m) ? path_promotion_type(m) : NO_PIECE_TYPE;
+                     : is_path_promotion(m) ? path_promotion_type(m)
+                     : type_of(m) == EN_PASSANT ? contagious_promotion_type(m) : NO_PIECE_TYPE;
     return var->burnActivePieceTypes & target ? target : NO_PIECE_TYPE;
 }
 
@@ -1788,10 +1830,31 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
         for (PieceSet ps = var->burnPassivePieceTypes; ps;) passive |= ofType(pop_lsb(ps)) & enemies;
     Bitboard prohibited = 0;
     for (PieceSet ps = prohibited_capture_types(c, pt); ps;) prohibited |= ofType(pop_lsb(ps)) & ofColor(~c);
-    auto landing = [&](Square to, Bitboard captures) {
+    auto landing = [&](Square to, Bitboard captures, Square first = SQ_NONE, Square second = SQ_NONE) {
         captures &= enemies;
-        if ((attacks_bb<KING>(target) & to) && !(attacks_bb<KING>(to) & passive & ~captures)
-            && ((var->burnActivePieceTypes & pt) || promotion_burn_possible(c, pt, from, to, captures, view))) result = true;
+        if (!(attacks_bb<KING>(target) & to) || (attacks_bb<KING>(to) & passive & ~captures)) return;
+        if (var->burnActivePieceTypes & pt) { result = true; return; }
+        if (var->hasContagiousCaptures)
+        {
+            Square ordered[3]; int n = 0;
+            if (first != SQ_NONE && (captures & first)) ordered[n++] = first;
+            if (second != SQ_NONE && (captures & second)) ordered[n++] = second;
+            if (captures & to) ordered[n++] = to;
+            PieceSet targets = contagious_capture_types(c, pt, ordered, n, view);
+            if (targets)
+            {
+                while (targets)
+                {
+                    PieceType transformed = pop_lsb(targets);
+                    int count = view ? popcount(view->pieces(c, transformed)) : this->count(c, transformed);
+                    if ((var->burnOnPromotePieces & pt) && (var->burnActivePieceTypes & transformed)
+                        && (!promotion_limit(transformed) || pt == transformed || count < promotion_limit(transformed)))
+                        result = true;
+                }
+                return;
+            }
+        }
+        if (promotion_burn_possible(c, pt, from, to, captures, view)) result = true;
     };
     PieceType moveType = pt == KING ? king_type() : pt;
     Bitboard quiet = moves_bb(c, moveType, from, occupied, view ? view->walls : st->wallSquares);
@@ -1834,7 +1897,8 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
         Bitboard captures = visited & enemies;
         if (type_of(m) == LION && !(lion_move_mask(c, pt, from, captures ? MODALITY_CAPTURE : MODALITY_QUIET)
                                  & (1ULL << lion_path_index(m)))) return;
-        if (!(visited & (friends | ~geometry_board(pt))) && !(captures & prohibited)) landing(to_sq(m), captures);
+        if (!(visited & (friends | ~geometry_board(pt))) && !(captures & prohibited))
+            landing(to_sq(m), captures, route[0], n == 3 ? route[1] : SQ_NONE);
     };
     uint64_t lion = lion_move_mask(c, pt, from);
     while (lion) { int p = __builtin_ctzll(lion); lion &= lion - 1; path(make_lion(from, p, LionTo[from][p])); }
@@ -1872,7 +1936,7 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
                 int df2 = file_of(to) - file_of(via), dr2 = rank_of(to) - rank_of(via);
                 if (spec.outwardOnly && df1 * df2 + dr1 * dr2 <= 0) continue;
                 Bitboard victims = captures | (enemies & to);
-                if (popcount(victims) <= spec.captureLimit) landing(to, victims);
+                if (popcount(victims) <= spec.captureLimit) landing(to, victims, via);
             }
         }
     }
@@ -1900,7 +1964,7 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
                     if (to == SQ_NONE || !(board_bb() & to) || (friends & to) || (enemies & prohibited & to)) break;
                     Bitboard captures = firstCapture | (enemies & to);
                     if (popcount(captures) > spec.captureLimit) break;
-                    landing(to, captures);
+                    landing(to, captures, via);
                     if (enemies & to) break;
                 }
                 if (firstCapture) break;
@@ -2810,7 +2874,7 @@ bool Position::pseudo_legal(const Move m) const {
 
   // Use a slower but simpler function for uncommon cases
   // yet we skip the legality check of MoveList<LEGAL>().
-  if (type_of(m) != NORMAL || is_gating(m) || var->hasBurn || var->tenjikuTripleStepPieceTypes || var->hasFreeze || var->hasMissile)
+  if (type_of(m) != NORMAL || is_gating(m) || var->hasBurn || var->tenjikuTripleStepPieceTypes || var->hasFreeze || var->hasMissile || var->hasContagiousCaptures)
       return checkers() ? MoveList<    EVASIONS>(*this).contains(m)
                         : MoveList<NON_EVASIONS>(*this).contains(m);
 
@@ -3106,6 +3170,13 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Square from = from_sq(m);
   Square to = to_sq(m);
   Piece pc = moved_piece(m);
+  PieceType contagiousTarget = var->hasContagiousCaptures ? contagious_promotion_type(m) : NO_PIECE_TYPE;
+  if (var->hasContagiousCaptures)
+  {
+      st->contagiousTransformation = false;
+      st->contagiousSourcePromoted = type_of(m) != DROP && is_promoted(from);
+      st->contagiousUnpromotedSource = type_of(m) != DROP ? unpromoted_piece_on(from) : NO_PIECE;
+  }
   Bitboard allPathCaptures = is_multi_move(m) ? path_capture_squares(m) : Bitboard(0);
   Piece captured = (is_multi_move(m)) && to == from ? NO_PIECE : piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
   bool jumpForEp = false;
@@ -3466,10 +3537,31 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       }
   }
 
+  // Substitution replaces ordinary promotion, even for an already-promoted
+  // source. Keep its original provenance only for undo; the replacement uses
+  // the existing variable-promotion FEN form (target~).
+  if (contagiousTarget && !moverBurned)
+  {
+      Piece replacement = make_piece(us, contagiousTarget);
+      st->contagiousTransformation = true;
+      st->promotionPawn = pc;
+      remove_piece(to);
+      put_piece(replacement, to, true);
+      k ^= Zobrist::psq[pc][to] ^ Zobrist::psq[replacement][to];
+      if (replacement != pc)
+          st->materialKey ^= Zobrist::psq[replacement][pieceCount[replacement]-1]
+                           ^ Zobrist::psq[pc][pieceCount[pc]];
+      if (type_of(pc) == PAWN) st->pawnKey ^= Zobrist::psq[pc][to];
+      else st->nonPawnMaterial[us] -= PieceValue[MG][pc];
+      if (contagiousTarget == PAWN) st->pawnKey ^= Zobrist::psq[replacement][to];
+      else if (contagiousTarget != KING) st->nonPawnMaterial[us] += PieceValue[MG][replacement];
+      st->rule50 = 0;
+  }
+
   // If the moving piece is a pawn do some special extra work
   if (type_of(pc) == PAWN)
   {
-      if (!moverBurned && (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m)))
+      if (!contagiousTarget && !moverBurned && (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m)))
       {
           Piece promotion = make_piece(us, is_path_promotion(m) ? path_promotion_type(m) : type_of(m) == PROMOTION ? promotion_type(m) : promoted_piece_type(PAWN));
 
@@ -3503,7 +3595,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       }
 
       // Set en passant square(s) if the moved pawn can be captured
-      else if (   !moverBurned && !jumpForEp && type_of(m) != DROP
+      else if (   !contagiousTarget && !moverBurned && !jumpForEp && type_of(m) != DROP
           && (   std::abs(int(to) - int(from)) == 2 * NORTH
               || std::abs(int(to) - int(from)) == 3 * NORTH))
       {
@@ -3527,7 +3619,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       // Update pawn hash key
       st->pawnKey ^= (type_of(m) != DROP ? Zobrist::psq[pc][from] : 0) ^ Zobrist::psq[pc][to];
   }
-  else if (!moverBurned && (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m)))
+  else if (!contagiousTarget && !moverBurned && (type_of(m) == PROMOTION || type_of(m) == PIECE_PROMOTION || is_path_promotion(m)))
   {
       Piece promotion = make_piece(us, is_path_promotion(m) ? path_promotion_type(m) : type_of(m) == PROMOTION ? promotion_type(m) : promoted_piece_type(type_of(pc)));
 
@@ -3555,7 +3647,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       // Update material
       st->nonPawnMaterial[us] += PieceValue[MG][promotion] - PieceValue[MG][pc];
   }
-  else if (!moverBurned && (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)))
+  else if (!contagiousTarget && !moverBurned && (type_of(m) == PIECE_DEMOTION || is_path_demotion(m)))
   {
       Piece demotion = unpromoted_piece_on(to);
 
@@ -3891,7 +3983,13 @@ void Position::undo_move(Move m) {
       st->gatesBB[us] |= gating_square(m);
   }
 
-  if (!moverBurned && (type_of(m) == PROMOTION || is_path_pawn_promotion(m)))
+  if (var->hasContagiousCaptures && st->contagiousTransformation)
+  {
+      remove_piece(to);
+      pc = st->promotionPawn;
+      put_piece(pc, to, st->contagiousSourcePromoted, st->contagiousUnpromotedSource);
+  }
+  else if (!moverBurned && (type_of(m) == PROMOTION || is_path_pawn_promotion(m)))
   {
       assert((promotion_zone(us, is_path_pawn_promotion(m) ? type_of(st->promotionPawn) : PAWN)
               & (square_bb(from) | to)) || sittuyin_promotion());

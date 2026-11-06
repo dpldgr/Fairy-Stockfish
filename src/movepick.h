@@ -212,12 +212,10 @@ private:
   // Wide catalogues and area routes can exceed the fixed move-list bound.
   std::unique_ptr<ExtMove[]> moveStorage{new ExtMove[pos.move_capacity()]};
   ExtMove* moves = moveStorage.get();
-#elif WIDE_MOVES
-  ExtMove ordinaryMoves[MAX_MOVES];
-  std::unique_ptr<ExtMove[]> areaMoveStorage{pos.variant()->tenjikuTripleStepPieceTypes ? new ExtMove[pos.move_capacity()] : nullptr};
-  ExtMove* moves = areaMoveStorage ? areaMoveStorage.get() : ordinaryMoves;
 #else
-  ExtMove moves[MAX_MOVES];
+  ExtMove ordinaryMoves[MAX_MOVES];
+  std::unique_ptr<ExtMove[]> areaMoveStorage{(pos.variant()->tenjikuTripleStepPieceTypes || pos.variant()->hasContagiousCaptures) ? new ExtMove[pos.move_capacity()] : nullptr};
+  ExtMove* moves = areaMoveStorage ? areaMoveStorage.get() : ordinaryMoves;
 #endif
 };
 
