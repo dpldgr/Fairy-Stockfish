@@ -170,6 +170,12 @@ struct TradingRuleRow {
   std::vector<TradingRule> rules = {};
 };
 
+enum ContagiousCapturePolicy {
+  CONTAGIOUS_FIRST,
+  CONTAGIOUS_LAST,
+  CONTAGIOUS_CHOOSE
+};
+
 enum ShuffleSquaresMethod {
   SHUFFLE_NONE,
   SHUFFLE_MIRROR,
@@ -213,6 +219,11 @@ struct Variant {
   bool mandatoryPawnPromotion = true;
   bool mandatoryPiecePromotion = false;
   bool pieceDemotion = false;
+  PieceType contagiousCaptureType[PIECE_TYPE_NB] = {};
+  PieceSet contagiousImmunePieces = NO_PIECE_SET;
+  ContagiousCapturePolicy contagiousCapturePolicy = CONTAGIOUS_CHOOSE;
+  bool hasContagiousCaptures = false;
+  bool contagiousConfigurationValid = true;
   bool blastOnCapture = false;
   PieceSet blastImmuneTypes = NO_PIECE_SET;
   PieceSet mutuallyImmuneTypes = NO_PIECE_SET;

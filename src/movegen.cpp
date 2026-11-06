@@ -480,6 +480,11 @@ namespace {
 
   ExtMove* append_path_promotion(const Position& pos, ExtMove* list, Move m, PieceType pt) {
     Color us = pos.side_to_move();
+    if (pos.variant()->hasContagiousCaptures && pos.contagious_capture_types(m))
+    {
+        *list++ = m;
+        return list;
+    }
     if ((pos.variant()->hasBurn && (pos.burn_squares(m) & to_sq(m)))
         || (!pos.promoted_piece_type(pt) && !pos.piece_demotion() && !(pos.promotion_pawn_types(us) & pt)))
     {
@@ -490,7 +495,8 @@ namespace {
     PieceType rulePt = pos.is_promoted(from) && pos.unpromoted_piece_on(from)
                      ? type_of(pos.unpromoted_piece_on(from)) : pt;
     PieceType promotion = pos.is_promoted(from) ? NO_PIECE_TYPE : pos.promoted_piece_type(pt);
-    bool demote = pos.piece_demotion() && pos.is_promoted(from);
+    bool demote = pos.piece_demotion() && pos.is_promoted(from)
+               && (!pos.variant()->hasContagiousCaptures || pos.unpromoted_piece_on(from));
     Bitboard victims = is_multi_move(m) ? pos.path_capture_squares(m)
                       : pos.capture(m) ? square_bb(to) : Bitboard(0);
     uint8_t captures = victims ? 0 : PROMO_CAPTURE_NONE;
@@ -619,12 +625,14 @@ namespace {
         PieceType rulePt = pos.is_promoted(from) && pos.unpromoted_piece_on(from)
                          ? type_of(pos.unpromoted_piece_on(from)) : Pt;
         Bitboard mappedTargets = 0;
-        if (promPt || (pos.piece_demotion() && pos.is_promoted(from)))
+        bool demote = pos.piece_demotion() && pos.is_promoted(from)
+                   && (!pos.variant()->hasContagiousCaptures || pos.unpromoted_piece_on(from));
+        if (promPt || demote)
             mappedTargets = pos.promotion_targets(Us, rulePt, from, b1, true)
                           | pos.promotion_targets(Us, rulePt, from, b1, true, true);
         Bitboard b2 = promPt && (!pos.promotion_limit(promPt) || pos.promotion_limit(promPt) > pos.count(Us, promPt))
                     ? mappedTargets : Bitboard(0);
-        Bitboard b3 = pos.piece_demotion() && pos.is_promoted(from) ? mappedTargets : Bitboard(0);
+        Bitboard b3 = demote ? mappedTargets : Bitboard(0);
         Bitboard pawnPromotions = (pos.promotion_pawn_types(Us) & Pt)
                                ? pos.promotion_targets(Us, Pt, from, b & (Type == EVASIONS ? target : ~pos.pieces(Us)), false)
                                  | pos.promotion_targets(Us, Pt, from, b & (Type == EVASIONS ? target : ~pos.pieces(Us)), false, true)
@@ -850,6 +858,43 @@ namespace {
     return generate_all<Us, NON_EVASIONS>(pos, list, &range);
   }
 
+  ExtMove* apply_capture_transformations(const Position& pos, ExtMove* begin, ExtMove* end) {
+    ExtMove* out = begin;
+    ExtMove* extra = end;
+    // Current explicit routes directly capture at most three distinct victims.
+    // Compact originals while appending extra choices beyond the original list.
+    for (ExtMove* cur = begin; cur != end; ++cur)
+    {
+        Move move = *cur;
+        PieceSet targets = pos.contagious_capture_types(move);
+        if (!targets || (pos.variant()->hasBurn && (pos.burn_squares(move) & to_sq(move))))
+        {
+            *out++ = move;
+            continue;
+        }
+        bool first = true;
+        PieceType source = type_of(pos.moved_piece(move));
+        while (targets)
+        {
+            PieceType target = pop_lsb(targets);
+            if (pos.promotion_limit(target) && source != target
+                && pos.count(pos.side_to_move(), target) >= pos.promotion_limit(target))
+                continue;
+            Move result = is_multi_move(move) ? with_path_promotion(move, target, false)
+                        : type_of(move) == EN_PASSANT ? make<EN_PASSANT>(from_sq(move), to_sq(move), target)
+                        : make<PROMOTION>(from_sq(move), to_sq(move), target);
+            if (first) { *out++ = result; first = false; }
+            else
+            {
+                assert(size_t(extra - begin) < pos.move_capacity());
+                *extra++ = result;
+            }
+        }
+    }
+    for (ExtMove* cur = end; cur != extra; ++cur) *out++ = Move(*cur);
+    return out;
+  }
+
 } // namespace
 
 
@@ -876,6 +921,8 @@ ExtMove* generate(const Position& pos, ExtMove* moveList) {
       ExtMove* end = (pos.variant()->hasRangeJump || pos.variant()->hasFreeze)
                    ? (us == WHITE ? generate_range_moves<WHITE>(pos, moveList) : generate_range_moves<BLACK>(pos, moveList))
                    : (us == WHITE ? generate_all<WHITE, NON_EVASIONS>(pos, moveList) : generate_all<BLACK, NON_EVASIONS>(pos, moveList));
+      if (pos.variant()->hasContagiousCaptures)
+          end = apply_capture_transformations(pos, moveList, end);
       if (pos.variant()->hasFreeze)
       {
           Bitboard frozen = pos.frozen_pieces(us);

@@ -1321,7 +1321,57 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         }
     }
 
+    const auto transformations = config.find("transformOnCapturePieces");
+    if (transformations != config.end())
+    {
+        std::array<PieceType, PIECE_TYPE_CAPACITY> parsed = {};
+        std::string value = trim(transformations->second);
+        bool valid = value == "-";
+        if (value.size() >= 2 && value.front() == '{' && value.back() == '}')
+        {
+            value = trim(value.substr(1, value.size() - 2));
+            valid = value.empty() || value.back() != ',';
+            std::stringstream entries(value);
+            std::string entry;
+            while (valid && std::getline(entries, entry, ','))
+            {
+                size_t colon = entry.find(':');
+                std::string victimSymbol = trim(entry.substr(0, colon));
+                std::string targetSymbol = colon == std::string::npos ? victimSymbol : trim(entry.substr(colon + 1));
+                bool ambiguousVictim = false, ambiguousTarget = false;
+                PieceType victim = piece_type_by_symbol(v, victimSymbol, &ambiguousVictim);
+                PieceType target = piece_type_by_symbol(v, targetSymbol, &ambiguousTarget);
+                valid = !victimSymbol.empty() && !targetSymbol.empty() && !ambiguousVictim && !ambiguousTarget
+                     && victim != NO_PIECE_TYPE && target != NO_PIECE_TYPE
+                     && target != KING && !parsed[victim];
+                if (valid) parsed[victim] = target;
+            }
+        }
+        if (valid)
+            std::copy(parsed.begin(), parsed.end(), v->contagiousCaptureType);
+        else
+        {
+            v->contagiousConfigurationValid = false;
+            std::cerr << "transformOnCapturePieces - Expected unique defined victims in {piece,piece:target}; targets must not be the native checkmate King: "
+                      << transformations->second << std::endl;
+        }
+    }
+    const auto selection = config.find("transformOnCapturePolicy");
+    if (selection != config.end())
+    {
+        std::string value = trim(selection->second);
+        if (value == "first") v->contagiousCapturePolicy = CONTAGIOUS_FIRST;
+        else if (value == "last") v->contagiousCapturePolicy = CONTAGIOUS_LAST;
+        else if (value == "choose") v->contagiousCapturePolicy = CONTAGIOUS_CHOOSE;
+        else
+        {
+            v->contagiousConfigurationValid = false;
+            std::cerr << "transformOnCapturePolicy - Expected first, last or choose: " << value << std::endl;
+        }
+    }
+
     const std::pair<const char*, PieceSet*> arrivalOptions[] = {
+        {"transformOnCaptureImmunePieces", &v->contagiousImmunePieces},
         {"burnActivePieceTypes", &v->burnActivePieceTypes},
         {"burnPassivePieceTypes", &v->burnPassivePieceTypes},
         {"freezeEffectPieces", &v->freezeEffectPieces},
@@ -1341,6 +1391,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
                 *setting.second = (parsed & ALL_PIECES) ? v->pieceTypes : parsed;
             else
             {
+                if (std::string(setting.first) == "transformOnCaptureImmunePieces") v->contagiousConfigurationValid = false;
                 if (std::string(setting.first) == "missileEffectPieces") v->rangeJumpConfigurationValid = false;
                 std::cerr << setting.first << " - Invalid piece set: " << option->second << std::endl;
             }

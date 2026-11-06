@@ -83,6 +83,9 @@ struct StateInfo {
   PieceType  tradingCounterstrikeAttacker;
   Bitboard   tradingCounterstrikeSquares;
   Piece      promotionPawn;
+  Piece      contagiousUnpromotedSource;
+  bool       contagiousSourcePromoted;
+  bool       contagiousTransformation;
   Bitboard   nonSlidingRiders;
   Bitboard   flippedPieces;
   Bitboard   pseudoRoyalCandidates;
@@ -317,6 +320,10 @@ public:
   bool virtual_drop(Move m) const;
   bool capture(Move m) const; // Direct captures only (including path captures).
   PieceType promotion_burn_type(Move m) const;
+  PieceSet contagious_capture_types(Color c, PieceType pt, const Square* route, int count,
+                                   const AttackView* view = nullptr) const;
+  PieceSet contagious_capture_types(Move m) const;
+  PieceType contagious_promotion_type(Move m) const;
   bool promotion_burn_possible(Color c, PieceType pt, Square from, Square to, Bitboard captures, const AttackView* view) const;
   Bitboard burn_squares(Move m) const;
   Bitboard removal_squares(Move m) const;
@@ -324,7 +331,10 @@ public:
   bool capture_or_burn(Move m) const;
   Value capture_value(Move m) const;
   size_t area_move_capacity() const;
-  size_t move_capacity() const { return var->tenjikuTripleStepPieceTypes ? MAX_MOVES + area_move_capacity() : MAX_MOVES; }
+  size_t move_capacity() const {
+    size_t capacity = var->tenjikuTripleStepPieceTypes ? MAX_MOVES + area_move_capacity() : MAX_MOVES;
+    return var->hasContagiousCaptures ? 3 * capacity : capacity;
+  }
   Bitboard area_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE, const AttackView* view = nullptr) const;
   Bitboard burn_attackers_to(Square s, Bitboard occupied, Color c) const;
   bool burn_attacks_square(Color c, PieceType pt, Square from, Square target, Bitboard occupied, const AttackView* view = nullptr) const;
@@ -567,6 +577,15 @@ inline Square Position::promotion_square(Color c, Square s, PieceType pt) const 
 }
 
 inline Bitboard Position::promotion_targets(Color c, PieceType pt, Square from, Bitboard targets, bool mapped, bool mandatory, uint8_t captureKinds) const {
+    // A qualifying capture substitutes its selected result instead of taking
+    // an ordinary promotion, including mandatory promotions with no target.
+    if (captureKinds == PROMO_CAPTURE_AUTO && var->hasContagiousCaptures
+        && !(var->contagiousImmunePieces & type_of(piece_on(from))))
+        for (Bitboard victims = targets & pieces(~c); victims;)
+        {
+            Square victim = pop_lsb(victims);
+            if (var->contagiousCaptureType[type_of(piece_on(victim))]) targets &= ~square_bb(victim);
+        }
     // Automatic classification is used for ordinary moves. A mover killed on
     // arrival never reaches promotion. Multi-leg callers pass explicit capture
     // facts and resolve passive burning against their complete route instead.

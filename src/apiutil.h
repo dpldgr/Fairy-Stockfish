@@ -340,7 +340,9 @@ inline const std::string move_to_san(Position& pos, Move m, Notation n) {
             san += square(pos, to, n);
 
         // Suffix
-        if (type_of(m) == PROMOTION)
+        if (pos.variant()->hasContagiousCaptures && pos.contagious_promotion_type(m))
+            san += std::string("=") + pos.piece_symbol(make_piece(WHITE, pos.contagious_promotion_type(m)));
+        else if (type_of(m) == PROMOTION)
             san += std::string("=") + (char)toupper(pos.piece_to_char()[make_piece(us, promotion_type(m))]);
         else if (type_of(m) == PIECE_PROMOTION)
             san += is_shogi(n) ? std::string("+") : std::string("=") + (char)toupper(pos.piece_to_char()[make_piece(us, pos.promoted_piece_type(type_of(pos.moved_piece(m))))]);
@@ -374,6 +376,7 @@ inline bool has_insufficient_material(Color c, const Position& pos) {
 
     // Other win rules
     if (   pos.captures_to_hand()
+        || pos.variant()->hasContagiousCaptures
         || pos.count_in_hand(c, ALL_PIECES)
         || (pos.extinction_value() != VALUE_NONE && !pos.extinction_pseudo_royal())
         || (pos.variant()->nFoldRule && pos.variant()->nFoldValue != VALUE_DRAW)
