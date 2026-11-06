@@ -35,6 +35,22 @@ VG move `h13b7` and mate 2 at depth 6. Forcing White's preceding `f4p14`
 must score mate -2 at depth 4. These cases cover early static pruning and
 reductions as well as quiet-move skipping.
 
+Main-search late-move pruning retains every move whose moving type has range
+jump ability, including its ordinary quiet moves and compound paths. Other
+quiets can be skipped at the usual move-count threshold. The existing Step 7,
+non-LMP Step 13 and Step 16 safeguards still use on-board range-jumper presence.
+
+`range_jumper_lmp.cpp` exercises the move picker directly. It compares complete
+move sets with LMP enabled before quiet generation and partway through the quiet
+list, including low-history range-jumper moves, both colours, multiple types,
+compound paths, TT/killer/countermove duplicates, ordinary/promoted/free drops,
+high piece IDs, enemy-only/absent jumpers and losing captures. It verifies that
+normal quiets are pruned and captures remain available. Link it using the same
+engine objects/defines described below, replacing `range_jump_state.cpp` with
+`range_jumper_lmp.cpp`. Include the architecture and `PRECOMPUTED_MAGICS` flags
+emitted by the matching Make build. It also runs against full ASan/UBSan engine
+objects.
+
 `range_jump_state.cpp` compares typed hypothetical attack queries with queries
 after actually making every legal move. It checks promotion provenance,
 material, pockets, PSQT, hashes and exact undo against fresh positions, and
