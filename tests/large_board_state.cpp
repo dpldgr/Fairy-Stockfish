@@ -57,7 +57,7 @@ static void fresh(const Position& p) {
 }
 
 int main(int argc, char** argv) {
-    static_assert(BOARD_SQUARES > 384);
+    static_assert(BOARD_SQUARES > 256);
     pieceMap.init(); variants.init(); CommandLine::init(argc, argv); UCI::init(Options);
     PSQT::init(variants.at("chess")); Bitboards::init(); Position::init();
     Bitbases::init(); Endgames::init(); Threads.set(1); Search::clear(); Eval::useNNUE = false;
@@ -157,7 +157,7 @@ tenjikuTripleStepPieceTypes = {t}
 #if BOARD_SQUARES > 640
     assert(!p->has_game_cycle(8));
 #endif
-#if BOARD_SQUARES > 384
+#if BOARD_SQUARES > 256
     board = {{SQ_MIN,"K"}, {SQ_MAX,"k"}};
     for (int s = 1; s <= 120; ++s) board[Square(s)] = "R";
     p->set(v, fen(board), false, root.get(), Threads.main());
@@ -168,5 +168,5 @@ tenjikuTripleStepPieceTypes = {t}
 #endif
     std::cout << "PASS " << FILE_NB << 'x' << RANK_NB << ": " << exercised
               << " make/undo/reload routes; repetition; evaluation; worker=" << sizeof(Thread) << std::endl;
-    Threads.set(0); variants.clear_all();
+    Threads.set(0); variants.clear_all(); pieceMap.clear_all();
 }

@@ -36,8 +36,18 @@ int main() {
     Score score = make_score(-123, 456);
     assert(mg_value(score) == -123 && eg_value(score) == 456);
     assert(mg_value(score * 3) == -369 && eg_value(score * 3) == 1368);
-#if BOARD_SQUARES > 384
+#if BOARD_SQUARES > 256
     static_assert(sizeof(Score) == 8);
+    score = make_score(900000, -700000);
+    score += make_score(-200000, 300000);
+    assert(mg_value(score) == 700000 && eg_value(score) == -400000);
+    score = 3 * score / 2;
+    assert(mg_value(score) == 1050000 && eg_value(score) == -600000);
+    assert(mg_value(-score) == -1050000 && eg_value(-score) == 600000);
+#else
+    static_assert(sizeof(Score) == 4);
+#endif
+#if BOARD_SQUARES > 384
     // Capture rows and Lion geometry do not embed board x piece-pair caches.
     static_assert(sizeof(Variant) < 4 * 1024 * 1024);
     auto captures = std::make_unique<CapturePieceToHistory>();
@@ -68,14 +78,6 @@ int main() {
                 assert(readOnly.value(attackers[a], destinations[d], victims[v]) == reference[a][d][v]);
     captures->fill(-3);
     assert(captures->allocated_rows() == 0 && readOnly.value(B_KING, SQ_MAX, KING) == -3);
-    score = make_score(900000, -700000);
-    score += make_score(-200000, 300000);
-    assert(mg_value(score) == 700000 && eg_value(score) == -400000);
-    score = 3 * score / 2;
-    assert(mg_value(score) == 1050000 && eg_value(score) == -600000);
-    assert(mg_value(-score) == -1050000 && eg_value(-score) == 600000);
-#else
-    static_assert(sizeof(Score) == 4);
 #endif
 #if BOARD_SQUARES <= 640
     static_assert(USE_CONTINUATION_HISTORY);

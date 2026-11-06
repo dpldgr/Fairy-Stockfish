@@ -21,14 +21,18 @@ are introduced.
 Through 640 compiled cells, continuation-history allocation, initialization,
 sentinels, updates, move ordering, pruning and reduction contributions remain
 unchanged. Existing profiles through 384 cells also retain their bitboard/move
-storage, score types, dense capture histories and Lion caches.
+storage, dense capture histories and Lion caches.
 
-Above 384 cells:
+Above 256 cells:
 
 - Classical evaluation uses 32-bit middle/endgame components in a 64-bit Score,
   with wider interpolation and a clamp before returning to search value storage.
-  The 25×25 profile needs this for universal-leaper mobility and large material
-  imbalances; intermediate products can exceed 16 bits before division.
+  This includes 17×17 and 19×19. Custom mobility is calculated component by
+  component before packing on every geometry, so universal leapers are safe
+  on narrower builds too, including 16×16. See `emperor_evaluation.py`.
+
+Above 384 cells:
+
 - Capture history stores exact destination rows per attacker/victim pair,
   allocating a row on its first update. Untouched reads return the fill value
   without allocation. Clearing releases the rows; no statistics are merged or
@@ -83,7 +87,7 @@ ray-clearing or disputed piece abilities.
 
 ## Validation
 
-Run layout/encoding checks across capacities and the 384/385 and 640/648-cell boundaries:
+Run layout/encoding checks across capacities and the 256/272, 384/385 and 640/648-cell boundaries:
 
 ```sh
 python3 tests/piece_slots_matrix.py
@@ -97,11 +101,30 @@ STOCKFISH=/path/to/25x25/stockfish BOARD_SIZE=25 python3 tests/large_boards.py
 STOCKFISH=/path/to/36x36/stockfish BOARD_SIZE=36 python3 tests/large_boards.py
 ```
 
+For Emperor evaluation on narrow and wide score profiles, run the matching
+assertions-enabled executable at each compiled size:
+
+```sh
+STOCKFISH=/path/to/8x8/stockfish BOARD_SIZE=8 python3 tests/emperor_evaluation.py
+STOCKFISH=/path/to/12x12/stockfish BOARD_SIZE=12 python3 tests/emperor_evaluation.py
+STOCKFISH=/path/to/16x16/stockfish BOARD_SIZE=16 python3 tests/emperor_evaluation.py
+STOCKFISH=/path/to/17x17/stockfish BOARD_SIZE=17 python3 tests/emperor_evaluation.py
+STOCKFISH=/path/to/19x19/stockfish BOARD_SIZE=19 python3 tests/emperor_evaluation.py
+```
+
+The tests compare actual mobility trace terms with an independent coordinate
+oracle for both colours, quiet/capture modalities, walls, crowded positions and
+multiple Emperors, then complete a shallow search with Emperor trading rules.
+They exercise multiplication overflow on 16x16 without widening that profile's
+score storage, and the wider score path on 17x17/19x19. A full sanitizer build can
+run the same tests with `ASAN_OPTIONS=detect_leaks=1:abort_on_error=1` and
+`UBSAN_OPTIONS=halt_on_error=1`.
+
 `large_board_state.cpp` links against matching engine object files except
 `main.o`. Use the same dimensions, piece capacity, gating, architecture and debug
 defines as the executable. It verifies make/undo against rebuilt positions for
 normal, promoting, Lion, Lion Dog, hook and triple-area moves near the far board
-corner, repetition adjudication, and (above 384 cells) a material imbalance that
+corner, repetition adjudication, and (above 256 cells) a material imbalance that
 exceeds the old score-component range. It also checks factored Lion masks against
 an independent coordinate oracle for both colours, asymmetric modalities and
 smaller embedded boards. The encoding matrix compares lazy capture-history

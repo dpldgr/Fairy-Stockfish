@@ -515,7 +515,10 @@ namespace {
         if (Pt <= QUEEN)
             mobility[Us] += MobilityBonus[Pt - 2][mob];
         else
-            mobility[Us] += MaxMobility * (mob - 2) / (8 + mob);
+            // Divide each component before packing: the intermediate product
+            // can exceed a narrow Score even on a 16x16 universal leaper.
+            mobility[Us] += make_score(mg_value(MaxMobility) * (mob - 2) / (8 + mob),
+                                      eg_value(MaxMobility) * (mob - 2) / (8 + mob));
 
         // Piece promotion bonus
         if (pos.promoted_piece_type(Pt) != NO_PIECE_TYPE)
@@ -1486,7 +1489,7 @@ namespace {
         sf -= 4 * !pawnsOnBothFlanks;
     }
 
-#if BOARD_SQUARES > 384
+#if BOARD_SQUARES > 256
     // Preserve the wider components through interpolation, then clamp before
     // converting back to the search/TT value range.
     int64_t interpolated = int64_t(mg) * int(me->game_phase())
