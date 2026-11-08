@@ -2728,6 +2728,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
                 Bitboard occupied = walls | pop_lsb(screens);
                 targets |= moves_bb(c, type, from, occupied, walls) | attacks_bb(c, type, from, occupied, walls);
             }
+        if (hasCountedHoppers) targets |= counted_hopper_potential(c, type, from, walls);
         return targets & board;
     };
     Bitboard immobile = 0;
@@ -2739,8 +2740,11 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
         if (tenjikuTripleStepPieceTypes & pt) targets |= PseudoAttacks[c][KING][from];
         if (rangeJump[pt].geometry) targets |= range_jump_potential(c, pt, from, walls);
         if (doubleStepRegion[c] & from)
+        {
             targets |= walls ? moves_bb<true>(c, movePt, from, walls, walls)
                              : PseudoMoves[1][c][movePt][from];
+            if (hasCountedHoppers) targets |= counted_hopper_potential(c, movePt, from, walls, true);
+        }
         if (pt == SOLDIER && relative_rank(c, from, maxRank) < soldierPromotionRank)
             targets &= file_bb(file_of(from));
         if (diagonalLines & from)
@@ -3061,6 +3065,8 @@ Variant* Variant::conclude() {
             }
             hasContagiousCaptures = true;
         }
+    hasCountedHoppers = false;
+    countedHopperTypes = NO_PIECE_SET;
     hasSkippedRays = false;
     skipRayConfigurationValid = true;
     skippedRayTypes = NO_PIECE_SET;
@@ -3071,6 +3077,10 @@ Variant* Variant::conclude() {
         std::string error;
         if (skip_ray_syntax(customPiece[movement - CUSTOM_PIECES], error))
         { hasSkippedRays = true; skippedRayTypes |= pt; }
+        std::string countedError;
+        if (counted_hopper_syntax(customPiece[movement - CUSTOM_PIECES], countedError))
+        { hasCountedHoppers = true; countedHopperTypes |= pt; }
+        if (!countedError.empty()) error = countedError;
         if (!error.empty())
         {
             skipRayConfigurationValid = false;
@@ -3157,7 +3167,7 @@ Variant* Variant::conclude() {
         }
     }
     hasFreeze = bool(freezeEffectPieces & pieceTypes);
-    hasTypedAttacks = hasRangeJump || hasFreeze || hasSkippedRays || hasLionMoves || bool(burnOnPromotePieces) || hasContagiousCaptures;
+    hasTypedAttacks = hasRangeJump || hasFreeze || hasSkippedRays || hasCountedHoppers || hasLionMoves || bool(burnOnPromotePieces) || hasContagiousCaptures;
     freezeEmitterTypes.clear(); freezeImmuneTypes.clear();
     for (PieceSet ps = freezeEffectPieces & pieceTypes; ps;) freezeEmitterTypes.push_back(pop_lsb(ps));
     for (PieceSet ps = freezeImmunePieces & pieceTypes; ps;) freezeImmuneTypes.push_back(pop_lsb(ps));

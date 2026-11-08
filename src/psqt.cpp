@@ -148,6 +148,13 @@ int slider_fraction(std::map<Direction, int> slider) {
 }
 
 
+// Count capabilities, rather than selector alternatives or overlapping terms.
+int counted_directions(const PieceInfo* pi, MoveModality modality) {
+    uint8_t directions = 0;
+    for (const auto& term : pi->counted[0][modality]) directions |= term.directions;
+    return __builtin_popcount(unsigned(directions));
+}
+
 // Estimate piece value
 Value piece_value(Phase phase, PieceType pt)
 {
@@ -161,8 +168,8 @@ Value piece_value(Phase phase, PieceType pt)
             + (phase == MG ? 185 : 185) * slider_fraction(pi->slider[0][MODALITY_CAPTURE]) / 100
             + (phase == MG ?  55 :  45) * slider_fraction(pi->slider[0][MODALITY_QUIET]) / 100
             // Hoppers are more useful with more pieces on the board
-            + (phase == MG ? 100 :  80) * pi->hopper[0][MODALITY_CAPTURE].size()
-            + (phase == MG ?  85 :  60) * pi->hopper[0][MODALITY_QUIET].size()
+            + (phase == MG ? 100 :  80) * (pi->hopper[0][MODALITY_CAPTURE].size() + counted_directions(pi, MODALITY_CAPTURE))
+            + (phase == MG ?  85 :  60) * (pi->hopper[0][MODALITY_QUIET].size() + counted_directions(pi, MODALITY_QUIET))
             // Rook sliding directions are more valuable, especially in endgame
             + (phase == MG ?  15 :  15) * std::count_if(pi->slider[0][MODALITY_CAPTURE].begin(), pi->slider[0][MODALITY_CAPTURE].end(), [](const std::pair<const Direction, int>& d) { return std::abs(d.first) == NORTH || std::abs(d.first) == 1; })
             + (phase == MG ?  30 :  50) * std::count_if(pi->slider[0][MODALITY_QUIET].begin(), pi->slider[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return std::abs(d.first) == NORTH || std::abs(d.first) == 1; });
@@ -216,7 +223,7 @@ void init(const Variant* v) {
       
       const PieceInfo* pi = pieceMap.find(pt)->second;
       bool isUniversal = pi->universal[0][MODALITY_QUIET] || pi->universal[0][MODALITY_CAPTURE];
-      bool isSlider = pi->slider[0][MODALITY_QUIET].size() || pi->slider[0][MODALITY_CAPTURE].size() || pi->hopper[0][MODALITY_QUIET].size() || pi->hopper[0][MODALITY_CAPTURE].size();
+      bool isSlider = pi->slider[0][MODALITY_QUIET].size() || pi->slider[0][MODALITY_CAPTURE].size() || (pi->hopper[0][MODALITY_QUIET].size() + counted_directions(pi, MODALITY_QUIET)) || (pi->hopper[0][MODALITY_CAPTURE].size() + counted_directions(pi, MODALITY_CAPTURE));
       bool isPawn = !isUniversal && !isSlider && pi->steps[0][MODALITY_QUIET].size() && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return d.first < SOUTH / 2; });
       bool isSlowLeaper = !isUniversal && !isSlider && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return dist(d.first) > 1; });
 
@@ -228,7 +235,7 @@ void init(const Variant* v) {
           constexpr int r0 = rm + RANK_8;
           int r1 = rm + (v->maxRank + v->maxFile - 2 * v->capturesToHand) / 2;
           int leaper = pi->steps[0][MODALITY_QUIET].size() + pi->steps[0][MODALITY_CAPTURE].size();
-          int slider = pi->slider[0][MODALITY_QUIET].size() + pi->slider[0][MODALITY_CAPTURE].size() + pi->hopper[0][MODALITY_QUIET].size() + pi->hopper[0][MODALITY_CAPTURE].size();
+          int slider = pi->slider[0][MODALITY_QUIET].size() + pi->slider[0][MODALITY_CAPTURE].size() + (pi->hopper[0][MODALITY_QUIET].size() + counted_directions(pi, MODALITY_QUIET)) + (pi->hopper[0][MODALITY_CAPTURE].size() + counted_directions(pi, MODALITY_CAPTURE));
           score = make_score(mg_value(score) * (lc * leaper + r1 * slider) / (lc * leaper + r0 * slider),
                              eg_value(score) * (lc * leaper + r1 * slider) / (lc * leaper + r0 * slider));
       }

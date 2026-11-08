@@ -49,8 +49,15 @@ RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
 std::vector<SkipRayProfile> SkipRayProfiles;
 std::vector<unsigned> SkipAttackProfiles[PIECE_TYPE_NB];
 std::vector<unsigned> SkipMoveProfiles[2][PIECE_TYPE_NB];
+std::vector<CountedHopperProfile> CountedHopperProfiles;
+std::vector<unsigned> CountedAttackProfiles[PIECE_TYPE_NB];
+std::vector<unsigned> CountedMoveProfiles[2][PIECE_TYPE_NB];
+struct CountedRayGeometry { Bitboard rays[8][SQUARE_NB]; };
+static std::unique_ptr<CountedRayGeometry> CountedRays;
+
 struct SkipRayBaseAttacks { Bitboard squares[COLOR_NB][SQUARE_NB]; };
 static std::unique_ptr<SkipRayBaseAttacks> SkipRayBase[PIECE_TYPE_NB];
+static std::unique_ptr<SkipRayBaseAttacks> CountedMoveBase[2][PIECE_TYPE_NB];
 
 Magic RookMagicsH[SQUARE_NB];
 Magic RookMagicsV[SQUARE_NB];
@@ -279,13 +286,84 @@ Bitboard skip_ray_attacks(Color c, PieceType pt, Square from, Bitboard occupied,
     return result & ~walls;
 }
 
+Bitboard counted_hopper_attacks(Color c, PieceType pt, Square from, Bitboard occupied,
+                               Bitboard walls, bool quiet, bool initial) {
+    Bitboard result = 0;
+    const auto& profiles = quiet ? CountedMoveProfiles[initial][pt] : CountedAttackProfiles[pt];
+    constexpr RiderType straight[] = {RIDER_ROOK_V, RIDER_BISHOP, RIDER_ROOK_H, RIDER_BISHOP,
+                                      RIDER_ROOK_V, RIDER_BISHOP, RIDER_ROOK_H, RIDER_BISHOP};
+    for (unsigned index : profiles)
+    {
+        const auto& profile = CountedHopperProfiles[index];
+        Bitboard first = 0;
+        // Start after the first screen directly, using the existing Cannon tables.
+        if (profile.riders & RIDER_ROOK_V) first |= rider_attacks_bb<RIDER_CANNON_V>(from, occupied);
+        if (profile.riders & RIDER_ROOK_H) first |= rider_attacks_bb<RIDER_CANNON_H>(from, occupied);
+        if (profile.riders & RIDER_BISHOP) first |= rider_attacks_bb<RIDER_CANNON_DIAG>(from, occupied);
+        unsigned last = 63u - unsigned(__builtin_clzll(profile.counts));
+        for (int d = 0; d < 8; ++d)
+            if (profile.directions & (1 << d))
+            {
+                int actual = (d + (c == BLACK ? 4 : 0)) % 8;
+                Bitboard ray = CountedRays->rays[actual][from];
+                if (walls) ray &= rider_attacks_bb(straight[d], from, walls) & ~walls;
+                Bitboard segment = first & ray;
+                bool increasing = actual < 3 || actual == 7;
+                auto nearest = [&](Bitboard b) { return increasing ? lsb(b) : msb(b); };
+                for (unsigned count = 1; segment && count <= last; ++count)
+                {
+                    if (profile.counts & (uint64_t(1) << count))
+                        result |= (profile.range == 1 ? square_bb(nearest(segment)) : segment)
+                                & profile.destinations[c][from];
+                    Bitboard screens = segment & occupied;
+                    if (!screens) break;
+                    Square screen = nearest(screens);
+                    Bitboard remaining = ray & CountedRays->rays[actual][screen];
+                    Bitboard next = remaining & occupied;
+                    segment = next ? remaining & ~CountedRays->rays[actual][nearest(next)] : remaining;
+                }
+            }
+    }
+    return result;
+}
+
+Bitboard counted_piece_attacks(Color c, PieceType pt, Square from, Bitboard occupied,
+                               Bitboard walls, bool quiet, bool initial) {
+    Bitboard result = quiet ? LeaperMoves[initial][c][pt][from] : LeaperAttacks[c][pt][from];
+    RiderType riders = quiet ? MoveRiderTypes[initial][pt] : AttackRiderTypes[pt];
+    for (RiderType regular = riders & ~SPECIAL_RIDERS; regular;)
+        result |= rider_attacks_bb(pop_rider(&regular), from, occupied);
+    // A counted term's broad pseudo-ray must not extend another term's range.
+    result &= quiet ? CountedMoveBase[initial][pt]->squares[c][from] : SkipRayBase[pt]->squares[c][from];
+    if (riders & RIDER_SKIP) result |= skip_ray_attacks(c, pt, from, occupied, walls, quiet, initial);
+    return result | counted_hopper_attacks(c, pt, from, occupied, walls, quiet, initial);
+}
+
+Bitboard counted_hopper_potential(Color c, PieceType pt, Square from, Bitboard walls, bool initial) {
+    Bitboard result = 0;
+    for (const auto* profiles : {&CountedAttackProfiles[pt], &CountedMoveProfiles[initial][pt]})
+        for (unsigned index : *profiles)
+        {
+            const auto& profile = CountedHopperProfiles[index];
+            if (!walls) result |= profile.destinations[c][from];
+            else
+            {
+                Bitboard rays = 0;
+                for (RiderType riders = profile.riders; riders;)
+                    rays |= rider_attacks_bb(pop_rider(&riders), from, walls);
+                result |= profile.destinations[c][from] & rays & ~walls;
+            }
+        }
+    return result;
+}
+
 Bitboard regular_pseudo_attacks(Color c, PieceType pt, Square from) {
     return SkipRayBase[pt] ? SkipRayBase[pt]->squares[c][from] : PseudoAttacks[c][pt][from];
 }
 
 Bitboard regular_attacks_bb(Color c, PieceType pt, Square from, Bitboard occupied) {
     Bitboard result = LeaperAttacks[c][pt][from];
-    for (RiderType riders = AttackRiderTypes[pt] & ~RIDER_SKIP; riders;)
+    for (RiderType riders = AttackRiderTypes[pt] & ~SPECIAL_RIDERS; riders;)
         result |= rider_attacks_bb(pop_rider(&riders), from, occupied);
     return result & regular_pseudo_attacks(c, pt, from);
 }
@@ -380,6 +458,43 @@ void Bitboards::init_pieces() {
   if (std::getenv("FSF_INIT_TELEMETRY"))
       sync_cout << "info string Bitboards::init_pieces(): entered" << sync_endl;
 
+  CountedHopperProfiles.clear();
+  auto counted_index = [](const CountedHopper& term) {
+      for (unsigned i = 0; i < CountedHopperProfiles.size(); ++i)
+          if (CountedHopperProfiles[i].counts == term.counts && CountedHopperProfiles[i].range == term.range
+              && CountedHopperProfiles[i].directions == term.directions) return i;
+      constexpr int df[] = {0,1,1,1,0,-1,-1,-1}, dr[] = {1,1,0,-1,-1,-1,0,1};
+      if (!CountedRays)
+      {
+          CountedRays.reset(new CountedRayGeometry{});
+          for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+              for (int d = 0; d < 8; ++d)
+                  for (int f = file_of(from) + df[d], r = rank_of(from) + dr[d];
+                       f >= 0 && f < FILE_NB && r >= 0 && r < RANK_NB; f += df[d], r += dr[d])
+                      CountedRays->rays[d][from] |= make_square(File(f), Rank(r));
+      }
+      CountedHopperProfile profile{};
+      profile.counts = term.counts; profile.range = term.range; profile.directions = term.directions;
+      if (term.directions & 0xAA) profile.riders |= RIDER_BISHOP;
+      if (term.directions & 0x11) profile.riders |= RIDER_ROOK_V;
+      if (term.directions & 0x44) profile.riders |= RIDER_ROOK_H;
+      unsigned minimum = unsigned(__builtin_ctzll(term.counts));
+      for (Color c : {WHITE, BLACK})
+          for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+              for (int d = 0; d < 8; ++d)
+                  if (term.directions & (1 << d))
+                  {
+                      int actual = (d + (c == BLACK ? 4 : 0)) % 8;
+                      unsigned distance = 1;
+                      for (int f = file_of(from) + df[actual], r = rank_of(from) + dr[actual];
+                           f >= 0 && f < FILE_NB && r >= 0 && r < RANK_NB;
+                           f += df[actual], r += dr[actual], ++distance)
+                          if (distance > minimum && (term.range <= 1 || distance <= term.range))
+                              profile.destinations[c][from] |= make_square(File(f), Rank(r));
+                  }
+      CountedHopperProfiles.push_back(std::move(profile));
+      return unsigned(CountedHopperProfiles.size() - 1);
+  };
   SkipRayProfiles.clear();
   auto profile_index = [](const SkipRay& term) {
       for (unsigned i = 0; i < SkipRayProfiles.size(); ++i)
@@ -413,17 +528,25 @@ void Bitboards::init_pieces() {
   for (PieceType pt = PAWN; pt <= KING; ++pt)
   {
       const PieceInfo* pi = pieceMap.find(pt)->second;
+      CountedAttackProfiles[pt].clear();
       SkipAttackProfiles[pt].clear();
       SkipRayBase[pt].reset();
       for (bool initial : {false, true})
       {
+          CountedMoveBase[initial][pt].reset();
+          CountedMoveProfiles[initial][pt].clear();
+          for (const auto& term : pi->counted[initial][MODALITY_QUIET])
+              CountedMoveProfiles[initial][pt].push_back(counted_index(term));
+          if (!CountedMoveProfiles[initial][pt].empty()) CountedMoveBase[initial][pt].reset(new SkipRayBaseAttacks{});
           SkipMoveProfiles[initial][pt].clear();
           for (const auto& term : pi->skipped[initial][MODALITY_QUIET])
               SkipMoveProfiles[initial][pt].push_back(profile_index(term));
       }
       for (const auto& term : pi->skipped[false][MODALITY_CAPTURE])
           SkipAttackProfiles[pt].push_back(profile_index(term));
-      if (!SkipAttackProfiles[pt].empty()) SkipRayBase[pt].reset(new SkipRayBaseAttacks{});
+      for (const auto& term : pi->counted[false][MODALITY_CAPTURE])
+          CountedAttackProfiles[pt].push_back(counted_index(term));
+      if (!SkipAttackProfiles[pt].empty() || !CountedAttackProfiles[pt].empty()) SkipRayBase[pt].reset(new SkipRayBaseAttacks{});
 
       // Detect rider types
       for (auto modality : {MODALITY_QUIET, MODALITY_CAPTURE})
@@ -468,6 +591,8 @@ void Bitboards::init_pieces() {
               }
               if (!(modality == MODALITY_CAPTURE ? SkipAttackProfiles[pt] : SkipMoveProfiles[initial][pt]).empty())
                   riderTypes |= RIDER_SKIP;
+              if (!(modality == MODALITY_CAPTURE ? CountedAttackProfiles[pt] : CountedMoveProfiles[initial][pt]).empty())
+                  riderTypes |= RIDER_COUNTED;
           }
       }
 
@@ -499,8 +624,12 @@ void Bitboards::init_pieces() {
                       pseudo |= sliding_attack<HOPPER_RANGE>(pi->hopper[initial][modality], s, 0, c);
                       if (modality == MODALITY_CAPTURE && SkipRayBase[pt])
                           SkipRayBase[pt]->squares[c][s] = pseudo;
+                      if (modality == MODALITY_QUIET && CountedMoveBase[initial][pt])
+                          CountedMoveBase[initial][pt]->squares[c][s] = pseudo;
                       const auto& profiles = modality == MODALITY_CAPTURE ? SkipAttackProfiles[pt] : SkipMoveProfiles[initial][pt];
                       for (unsigned index : profiles) pseudo |= SkipRayProfiles[index].destinations[c][s];
+                      const auto& counted = modality == MODALITY_CAPTURE ? CountedAttackProfiles[pt] : CountedMoveProfiles[initial][pt];
+                      for (unsigned index : counted) pseudo |= CountedHopperProfiles[index].destinations[c][s];
                   }
               }
           }
