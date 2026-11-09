@@ -64,6 +64,15 @@ static void exercise(const std::string& name, const std::string& fen, bool handF
     MoveList<LEGAL> moves(*p);
     for (Move move : moves)
     {
+        std::string sweepNotation;
+        if (is_free_eagle_move(move))
+        {
+            sweepNotation = UCI::move(*p, move);
+            TTEntry entry{};
+            entry.save(p->key(), VALUE_ZERO, true, BOUND_EXACT, 4, move, VALUE_ZERO);
+            assert(entry.move() == move);
+            assert(UCI::to_move(*p, sweepNotation) == move);
+        }
         if ((!notation && p->capture(move)) || type_of(move) == MISSILE)
         {
             for (Protocol protocol : {UCI_GENERAL, USI})
@@ -106,6 +115,7 @@ static void exercise(const std::string& name, const std::string& fen, bool handF
             }
         bool check = p->gives_check(move);
         p->do_move(move, *next);
+        if (is_free_eagle_move(move)) assert(UCI::move(*p, move) == sweepNotation);
         assert(check == bool(p->checkers()));
         assert(expected.occupied == p->pieces());
         for (Color c : {WHITE, BLACK}) assert(expectedFrozen[c] == p->frozen_pieces(c));
@@ -154,6 +164,47 @@ static void verify_cycle(const std::string& name, bool expected) {
     std::string reverse = "a4a1";
     assert((UCI::to_move(*p, reverse) != MOVE_NONE) == expected);
     std::cout << name << ": reversible-move cycle prediction " << expected << std::endl;
+}
+
+static void verify_coordinate_atoms() {
+    Value knightValues[2] = {};
+    for (const char* name : {"coordinate-native", "coordinate-knight", "coordinate-overlap"})
+    {
+        const Variant* v = variants.at(name);
+        UCI::init_variant(v); PSQT::init(v);
+        if (name == std::string("coordinate-native"))
+        {
+            knightValues[MG] = PieceValue[MG][CUSTOM_PIECES];
+            knightValues[EG] = PieceValue[EG][CUSTOM_PIECES];
+        }
+        else
+        {
+            assert(PieceValue[MG][CUSTOM_PIECES] == knightValues[MG]);
+            assert(PieceValue[EG][CUSTOM_PIECES] == knightValues[EG]);
+        }
+    }
+    for (auto spec : {std::make_pair("coordinate-knight", std::make_pair(2, 1)),
+                      std::make_pair("coordinate-large", std::make_pair(17, 1))})
+    {
+        const Variant* v = variants.at(spec.first);
+        UCI::init_variant(v); PSQT::init(v);
+        for (Color c : {WHITE, BLACK})
+            for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+            {
+                Bitboard expected = 0;
+                int m = spec.second.first, n = spec.second.second;
+                for (auto offset : {std::make_pair(m,n),std::make_pair(n,m)})
+                    for (int sf : {-1,1}) for (int sr : {-1,1})
+                    {
+                        int f = file_of(from) + sf * offset.first, r = rank_of(from) + sr * offset.second;
+                        if (f >= 0 && f <= FILE_MAX && r >= 0 && r <= RANK_MAX)
+                            expected |= make_square(File(f), Rank(r));
+                    }
+                assert(PseudoAttacks[c][CUSTOM_PIECES][from] == expected);
+                assert(PseudoMoves[0][c][CUSTOM_PIECES][from] == expected);
+            }
+    }
+    std::cout << "Coordinate atoms match independent offsets on every compiled-board square" << std::endl;
 }
 
 static void verify_missile_notation() {
@@ -441,10 +492,60 @@ transformOnCapturePieces = {p:g}
 [clear-pawn:chess]
 rangeJumpPieces = p:R:{}
 rangeJumpCapturePolicy = p:enemy
+[eagle-state]
+commoner = k
+piece = fe:QDAHGf(4,4)j[1..2]Qfj[3]B +fe:Q
+piece = p:W +p:F
+piece = sh:W
+piece = fd:K
+castling = false
+taikyokuFreeEagleMultiCapturePieces = {fe}
+pieceDrops = true
+capturesToHand = true
+extinctionValue = loss
+extinctionPseudoRoyal = false
+extinctionPieceTypes = k
+promotionRegionOptionalWhite = *
+promotionRegionOptionalBlack = *
+promotionPolicy = optional:{iic} mandatory:{}
+[eagle-native:eagle-state]
+commoner = -
+king = k
+extinctionValue = none
+[eagle-loop:eagle-state]
+dropLoop = true
+[eagle-demotion:eagle-state]
+pieceDemotion = true
+taikyokuFreeEagleMultiCapturePieces = {+fe}
+[eagle-burn:eagle-state]
+burnPassivePieceTypes = {fd}
+burnActivePieceTypes = {fe}
+[eagle-freeze:eagle-state]
+freezeEffectPieces = {fd}
+[eagle-transform:eagle-state]
+piece = tk:W
+piece = bs:K
+transformOnCapturePieces = {tk,bs}
+transformOnCapturePolicy = choose
+[eagle-counter:eagle-state]
+tradingRuleCounterstrike = {sh}
+[eagle-pawn:chess]
+taikyokuFreeEagleMultiCapturePieces = {p}
+capturesToHand = true
+pieceDrops = true
+[coordinate-knight]
+customPiece1 = x:(2,1)
+[coordinate-native]
+customPiece1 = x:N
+[coordinate-overlap]
+customPiece1 = x:N(2,1)
+[coordinate-large]
+customPiece1 = x:(17,1)
 
 
 )ini");
     variants.parse_istream<false>(configuration);
+    verify_coordinate_atoms();
 #if BOARD_FILES >= 19 && BOARD_RANKS >= 19
     std::istringstream longRay("[clear-long:clear-state]\nmaxFile = 19\nmaxRank = 19\nrangeJumpPieces = r:Q:{}\n");
     variants.parse_istream<false>(longRay);
@@ -495,6 +596,17 @@ rangeJumpCapturePolicy = p:enemy
     exercise("clear-missile", "7,k/3,p,P,3/3,p,4/3,P,4/3,R,4/8/8/7,K w - - 0 1");
     exercise("clear-freeze", "7,k/8/4,i,3/3,p,4/3,R,4/8/8/7,K w - - 0 1");
     exercise("clear-pawn", "7k/3p4/3p4/3p4/3P4/8/8/7K w - - 0 1");
+    for (std::string variant : {"eagle-state", "eagle-loop", "eagle-counter"})
+    {
+        exercise(variant, "7,k/6,p,1/8/4,p,3/3,+p,4/2,p,5/1,p,6/FE,6,K w - - 0 1", true);
+        exercise(variant, "fe,6,k/1,P,6/2,+P,5/3,P,4/4,P,3/8/6,P,1/7,K b - - 0 1", true);
+    }
+    exercise("eagle-native", "7,k/8/8/8/8/K,7/P,7/fe,7 w - - 0 1");
+    exercise("eagle-burn", "7,k/8/8/1,fd,6/p,7/fd,7/p,7/FE,6,K w - - 0 1");
+    exercise("eagle-freeze", "7,k/8/8/8/8/8/1,fd,6/FE,6,K w - - 0 1");
+    exercise("eagle-transform", "7,k/8/6,tk,1/4,bs,3/3,p,4/2,tk,5/1,bs,6/FE,6,K w - - 0 1");
+    exercise("eagle-demotion", "7,k/6,p,1/8/4,p,3/3,+p,4/2,p,5/1,p,6/+FE,6,K w - - 0 1", true);
+    exercise("eagle-pawn", "6pk/8/4p3/3p4/2p5/1p6/P7/7K w - - 0 1", true);
     exercise("state-missile-quiet", "4k3/8/3,b,4/8/1,M,P,5/8/8/R,3,K,2,R w KQ - 0 1");
     exercise("state-quiet-pawn", "7k/8/8/8/2p5/3P4/3P4/7K w - - 0 1");
     exercise("skip-state", "7k/3x4/3X4/3x4/3S4/8/8/7K[S] w - - 0 1");
