@@ -23,6 +23,7 @@
 #include <cstring> // For std::memset, std::memcmp
 #include <iomanip>
 #include <sstream>
+#include <type_traits>
 #include <vector>
 
 #include "bitboard.h"
@@ -37,6 +38,11 @@
 using std::string;
 
 namespace Stockfish {
+
+// Guard the byte-wise resets and prefix copies below as these types evolve.
+static_assert(std::is_trivially_copyable_v<Position>);
+static_assert(std::is_trivially_copyable_v<StateInfo>);
+static_assert(std::is_standard_layout_v<StateInfo>);
 
 namespace {
 template<typename T>
@@ -471,8 +477,8 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   size_t idx;
   std::istringstream ss(fenStr);
 
-  std::memset(this, 0, sizeof(Position));
-  std::memset(si, 0, sizeof(StateInfo));
+  std::memset(static_cast<void*>(this), 0, sizeof(Position));
+  std::memset(static_cast<void*>(si), 0, sizeof(StateInfo));
   st = si;
 
   var = v;
@@ -4150,7 +4156,7 @@ void Position::do_null_move(StateInfo& newSt) {
   assert(!checkers());
   assert(&newSt != st);
 
-  std::memcpy(&newSt, st, offsetof(StateInfo, accumulator));
+  std::memcpy(static_cast<void*>(&newSt), st, offsetof(StateInfo, accumulator));
 
   newSt.previous = st;
   st = &newSt;
