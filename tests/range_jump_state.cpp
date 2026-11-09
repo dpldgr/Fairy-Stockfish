@@ -19,10 +19,10 @@
 
 using namespace Stockfish;
 
-static void verify_fresh(const Position& p) {
+static void verify_fresh(const Position& p, bool sfen = false) {
     auto fresh = std::make_unique<Position>();
     auto state = std::make_unique<StateInfo>();
-    fresh->set(p.variant(), p.fen(false, true), p.is_chess960(), state.get(), Threads.main());
+    fresh->set(p.variant(), p.fen(sfen, true), p.is_chess960(), state.get(), Threads.main(), sfen);
     // Existing Seirawan gating has a FEN-reload key mismatch even without
     // range jumping. Keep geometry, material and exact undo checks for it.
     if (!p.seirawan_gating()) assert(p.key() == fresh->key());
@@ -50,12 +50,13 @@ static void verify_fresh(const Position& p) {
     }
 }
 
-static void exercise(const std::string& name, const std::string& fen) {
+static void exercise(const std::string& name, const std::string& fen, bool handFormats = false) {
     const Variant* v = variants.at(name);
     UCI::init_variant(v); PSQT::init(v);
     auto p = std::make_unique<Position>();
     auto root = std::make_unique<StateInfo>(), next = std::make_unique<StateInfo>();
     p->set(v, fen, false, root.get(), Threads.main());
+    if (handFormats) { verify_fresh(*p); verify_fresh(*p, true); }
     const std::string before = p->fen(false, true);
     Key key = p->key();
     bool notation = false;
@@ -122,9 +123,11 @@ static void exercise(const std::string& name, const std::string& fen) {
                 assert(expectedAttacks[c][s] == p->attackers_to(s, c));
             }
         verify_fresh(*p);
+        if (handFormats) verify_fresh(*p, true);
         p->undo_move(move);
         assert(p->key() == key && p->fen(false, true) == before);
         verify_fresh(*p);
+        if (handFormats) verify_fresh(*p, true);
     }
     std::cout << name << ": " << moves.size() << " moves, " << captures << " captures, " << promotions
               << " promotions, " << castles << " castles, " << drops << " drops" << std::endl;
@@ -231,6 +234,14 @@ extinctionPieceTypes = k
 promotionRegionOptionalWhite = *
 promotionRegionOptionalBlack = *
 promotionPolicy = optional:{iic} mandatory:{}
+[state-hands:state]
+piece = rr:W +rr:Q
+piece = rh:N
+piece = rrh:F
+[state-hands-loop:state-hands]
+piece = rr:W +rr:<qq>
+piece = qq:Q
+dropLoop = true
 [state-royal:state]
 commoner = -
 king = k
@@ -456,6 +467,9 @@ rangeJumpPieces = r:cR:{s=enemy}
     exercise("promotion-burn-royal", "7k/8/4K3/8/3+v4/8/8/8 w - - 0 1");
     exercise("promotion-burn-pawn", "1r5k/P7/8/8/8/8/8/7K w - - 0 1");
     verify_skipped_ray_pins();
+    exercise("state-hands", "7,k/8/3,rh,4/8/3,R,4/8/8/7,K[RR,R,RH,rrh,r,rh] w - - 0 1", true);
+    exercise("state-hands", "7,k/8/3,+rr,4/8/3,R,4/8/8/7,K[RR,R,RH,rrh,r,rh] b - - 0 1", true);
+    exercise("state-hands-loop", "7,k/8/3,+rr,4/8/3,R,4/8/8/7,K[QQ,RR,R,rh] w - - 0 1", true);
     verify_missile_notation();
     verify_screen_dependent_pins();
     verify_cycle("freeze-cycle", false);

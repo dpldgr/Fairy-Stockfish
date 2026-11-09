@@ -126,6 +126,46 @@ namespace {
       return best;
   }
 
+  // Multi-character variants use complete comma-separated hand entries, just
+  // like their board fields. Never split RR heuristically into R + R.
+  template<typename Add>
+  void read_hand(std::istream& is, const Variant* v, bool sfen, Add add) {
+      std::string field;
+      unsigned char token;
+      while ((is >> token) && !isspace(token))
+          if (token != ']') field += char(token);
+      if (field.empty() || field == "-") return;
+
+      const bool separated = uses_multi_character_piece_symbols(v) || field.find(',') != std::string::npos;
+      for (size_t i = 0; i < field.size();)
+      {
+          unsigned count = 1;
+          bool valid = true;
+          if (sfen && isdigit(static_cast<unsigned char>(field[i])))
+          {
+              count = 0;
+              do {
+                  unsigned digit = field[i++] - '0';
+                  if (count > (unsigned(SQUARE_NB - 1) - digit) / 10) valid = false;
+                  else if (valid) count = 10 * count + digit;
+              } while (i < field.size() && isdigit(static_cast<unsigned char>(field[i])));
+          }
+          if (i == field.size()) break;
+          size_t begin = i;
+          if (separated)
+          {
+              i = field.find(',', begin);
+              if (i == std::string::npos) i = field.size();
+          }
+          else ++i;
+          std::string symbol = field.substr(begin, i - begin);
+          if (separated && i < field.size()) ++i;
+          if (symbol.empty() || symbol == "-") continue;
+          size_t pc = separated ? find_piece_symbol(v, symbol) : v->pieceToChar.find(symbol[0]);
+          if (valid && count && pc != std::string::npos) add(Piece(pc), count);
+      }
+  }
+
 }
 
 
@@ -484,6 +524,11 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   var = v;
 
   ss >> std::noskipws;
+  auto addHand = [&](Piece pc, unsigned count) {
+      // Hand counts index fixed-size Zobrist tables, including on FEN reload.
+      if (count <= unsigned(SQUARE_NB - 1 - count_in_hand(color_of(pc), type_of(pc))))
+          while (count--) add_to_hand(pc);
+  };
 
   Rank r = max_rank();
   Square sq = SQ(FILE_A, RANK_1) + r * NORTH;
@@ -564,13 +609,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   }
   // Pieces in hand
   if (!isspace(token))
-      while ((ss >> token) && !isspace(token))
-      {
-          if (token == ']')
-              continue;
-          else if ((idx = piece_to_char().find(token)) != string::npos)
-              add_to_hand(Piece(idx));
-      }
+      read_hand(ss, var, false, addHand);
 
   // 2. Active color
   ss >> token;
@@ -717,24 +756,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   if (sfen)
   {
       // Pieces in hand for SFEN
-      int handCount = 1;
-      while ((ss >> token) && !isspace(token))
-      {
-          if (token == '-')
-              continue;
-          else if (isdigit(token))
-          {
-              handCount = token - '0';
-              while (isdigit(ss.peek()) && ss >> token)
-                  handCount = 10 * handCount + (token - '0');
-          }
-          else if ((idx = piece_to_char().find(token)) != string::npos)
-          {
-              for (int i = 0; i < handCount; i++)
-                  add_to_hand(Piece(idx));
-              handCount = 1;
-          }
-      }
+      read_hand(ss, var, true, addHand);
       // Move count is in ply for SFEN
       ss >> std::skipws >> gamePly;
       gamePly = std::max(gamePly - 1, 0);
@@ -1141,13 +1163,16 @@ string Position::fen(bool sfen, bool showPromoted, int countStarted, std::string
   if (sfen)
   {
       ss << (sideToMove == WHITE ? " b " : " w ");
+      bool handWritten = false;
       for (Color c : {WHITE, BLACK})
           for (PieceType pt = KING; pt >= PAWN; --pt)
               if (pieceCountInHand[c][pt] > 0)
               {
+                  if (commaSeparated && handWritten) ss << ',';
                   if (pieceCountInHand[c][pt] > 1)
                       ss << pieceCountInHand[c][pt];
                   ss << piece_symbol(make_piece(c, pt));
+                  handWritten = true;
               }
       if (count_in_hand(ALL_PIECES) == 0)
           ss << '-';
@@ -1162,13 +1187,20 @@ string Position::fen(bool sfen, bool showPromoted, int countStarted, std::string
       if (holdings != "-")
           ss << holdings;
       else
+      {
+          bool handWritten = false;
           for (Color c : {WHITE, BLACK})
               for (PieceType pt = KING; pt >= PAWN; --pt)
               {
                   assert(pieceCountInHand[c][pt] >= 0);
                   for (int i = 0; i < pieceCountInHand[c][pt]; ++i)
+                  {
+                      if (commaSeparated && handWritten) ss << ',';
                       ss << piece_symbol(make_piece(c, pt));
+                      handWritten = true;
+                  }
               }
+      }
       ss << ']';
   }
 
