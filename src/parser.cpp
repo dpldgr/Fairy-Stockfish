@@ -1321,6 +1321,64 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         }
     }
 
+    for (bool landing : {false, true})
+    {
+        const std::string key = landing ? "rangeJumpProhibitedCaptures" : "rangeJumpCapturePolicy";
+        const auto option = config.find(key);
+        if (option == config.end()) continue;
+        if (v->rangeJumpCaptureRules.empty()) v->rangeJumpCaptureRules.resize(PIECE_TYPE_NB);
+        std::string value = trim(option->second);
+        if (value == "-")
+        {
+            for (auto& rule : v->rangeJumpCaptureRules)
+                if (landing) rule.prohibitedLanding = NO_PIECE_SET;
+                else rule.policy = RANGE_CAPTURE_NONE;
+            continue;
+        }
+        PieceSet specified = NO_PIECE_SET;
+        size_t cursor = 0;
+        bool valid = !value.empty();
+        while (valid && cursor < value.size())
+        {
+            size_t colon = value.find(':', cursor);
+            if (colon == std::string::npos) { valid = false; break; }
+            PieceType pt = piece_type_by_symbol(v, trim(value.substr(cursor, colon - cursor)));
+            size_t begin = value.find_first_not_of(" \t", colon + 1), end;
+            if (begin == std::string::npos) { valid = false; break; }
+            if (landing)
+            {
+                end = value.find('}', begin);
+                if (value[begin] != '{' || end == std::string::npos) { valid = false; break; }
+                ++end;
+            }
+            else
+            {
+                end = value.find_first_of(" \t", begin);
+                if (end == std::string::npos) end = value.size();
+            }
+            valid = pt != NO_PIECE_TYPE && !(specified & pt)
+                 && (end == value.size() || std::isspace(static_cast<unsigned char>(value[end])));
+            if (!valid) break;
+            std::string contents = value.substr(begin, end - begin);
+            auto& rule = v->rangeJumpCaptureRules[pt];
+            if (landing) valid = parse_extinction_piece_set(v, contents, rule.prohibitedLanding);
+            else if (contents == "none") rule.policy = RANGE_CAPTURE_NONE;
+            else if (contents == "enemy") rule.policy = RANGE_CAPTURE_ENEMY;
+            else if (contents == "friend") rule.policy = RANGE_CAPTURE_FRIEND;
+            else if (contents == "all") rule.policy = RANGE_CAPTURE_ALL;
+            else valid = false;
+            specified |= pt;
+            cursor = value.find_first_not_of(" \t", end);
+            if (cursor == std::string::npos) break;
+        }
+        if (!valid)
+        {
+            v->rangeJumpConfigurationValid = false;
+            std::cerr << key << " - Expected unique piece:"
+                      << (landing ? "{target-types}" : "none|enemy|friend|all") << " entries: " << value << std::endl;
+        }
+    }
+
     const auto transformations = config.find("transformOnCapturePieces");
     if (transformations != config.end())
     {

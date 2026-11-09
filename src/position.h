@@ -327,6 +327,9 @@ public:
   bool promotion_burn_possible(Color c, PieceType pt, Square from, Square to, Bitboard captures, const AttackView* view) const;
   Bitboard burn_squares(Move m) const;
   Bitboard removal_squares(Move m) const;
+  Bitboard range_jump_removals(Move m) const;
+  Bitboard range_jump_immune(Color c, PieceType pt, const AttackView& view) const;
+  bool range_jump_effect_attacks(Color c, PieceType pt, Square from, Square target, const RangeJumpContext& range) const;
   bool missile_attacks_square(Color c, PieceType pt, Square from, Square target, const RangeJumpContext& range) const;
   bool capture_or_burn(Move m) const;
   Value capture_value(Move m) const;
@@ -492,6 +495,8 @@ struct RangeJumpContext {
   explicit RangeJumpContext(const AttackView& board);
   Bitboard blockers(size_t group, Color c) const;
   Bitboard attacks(Color c, PieceType pt, Square from, bool reverse = false) const;
+  bool prohibited_landing(PieceType pt, Square target) const;
+  Bitboard prohibited_landings(PieceType pt) const;
 };
 
 std::string shuffle_position(const Variant* v, uint64_t seed, Thread* th);
@@ -1631,7 +1636,8 @@ inline bool Position::is_chess960() const {
 
 inline bool Position::capture_or_promotion(Move m) const {
   assert(is_ok(m));
-  return type_of(m) == MISSILE || (var->hasBurn && burn_squares(m)) || type_of(m) == PROMOTION || is_path_promotion(m) || type_of(m) == EN_PASSANT || capture(m);
+  return type_of(m) == MISSILE || (var->hasBurn && burn_squares(m)) || type_of(m) == PROMOTION || is_path_promotion(m) || type_of(m) == EN_PASSANT || capture(m)
+      || (var->hasRangeJumpCaptures && range_jump_removals(m));
 }
 
 inline bool Position::capture(Move m) const {
@@ -1642,7 +1648,8 @@ inline bool Position::capture(Move m) const {
 }
 
 inline bool Position::capture_or_burn(Move m) const {
-  return capture(m) || type_of(m) == MISSILE || (var->hasBurn && bool(burn_squares(m)));
+  return capture(m) || type_of(m) == MISSILE || (var->hasBurn && bool(burn_squares(m)))
+      || (var->hasRangeJumpCaptures && bool(range_jump_removals(m)));
 }
 
 inline bool Position::prohibited_capture(Move m) const {

@@ -82,3 +82,16 @@ flags. For the 19×19 portable build, also use `PIECE_TYPE_CAPACITY=512` and
 Jump rows now require an actual intervening piece. Use `cR/cB/cQ` for
 Tenjiku captures only; `R/B/Q` includes quiet jumps, while `mR/mB/mQ`
 permits quiet jumps only. Base piece movement remains independent.
+
+`range_jump_capture_policy.py` checks opt-in intermediate clearing with a
+square-walking victim oracle for all four policies, both colours, orthogonal,
+diagonal and directional rays. It covers intermediate immunity versus actual
+blockers, landing-only bans, inheritance/reset, ordinary move independence,
+overlapping base leaps, quiet clearing threats to native royals, self-removal,
+burn coexistence, walls, mobility, direct-capture promotion/transformation and
+hands. Run with `STOCKFISH=/path/to/stockfish python3
+tests/range_jump_capture_policy.py -v`; set `BOARD_SIZE=19 PIECE_SLOTS=512` for
+the long-ray/high-slot case. The state harness also checks every legal move of
+clearing positions, including friendly/promoted victims, drops, pawn promotion,
+freezing, missiles and passive burn, using hypothetical overlays, fresh FENs,
+material/PSQT/hash comparisons and exact undo.

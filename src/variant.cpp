@@ -2700,11 +2700,34 @@ void Variant::resolve_range_jumps() {
         spec.group = uint16_t(g + 1);
     }
     hasRangeJump = bool(rangeJumpTypes);
+    rangeJumpCaptureTypes = NO_PIECE_SET;
+    hasRangeJumpProhibitions = false;
+    if (!rangeJumpCaptureRules.empty())
+        for (PieceSet ps = pieceTypes; ps;)
+        {
+            PieceType pt = pop_lsb(ps);
+            const auto& rule = rangeJumpCaptureRules[pt];
+            if (rule.policy == RANGE_CAPTURE_NONE && !rule.prohibitedLanding) continue;
+            if (!rangeJump[pt].geometry)
+            {
+                rangeJumpConfigurationValid = false;
+                std::cerr << "Range-jump capture rules - Piece requires rangeJumpPieces: "
+                          << pieceToSymbol[make_piece(WHITE, pt)] << std::endl;
+            }
+            if (rule.policy != RANGE_CAPTURE_NONE) rangeJumpCaptureTypes |= pt;
+            hasRangeJumpProhibitions |= bool(rule.prohibitedLanding);
+        }
+    hasRangeJumpCaptures = bool(rangeJumpCaptureTypes);
 }
 
 Bitboard Variant::range_jump_potential(Color c, PieceType pt, Square from, Bitboard walls) const {
     const auto& spec = rangeJump[pt];
     if (!spec.geometry) return 0;
+    if (hasRangeJumpProhibitions && !spec.quiet)
+    {
+        PieceSet forbidden = rangeJumpCaptureRules[pt].prohibitedLanding;
+        if ((forbidden & ALL_PIECES) || !(pieceTypes & ~forbidden)) return 0;
+    }
     const auto& group = rangeJumpGroups[spec.group - 1];
     if (!(pieceTypes & ~(group.friendBlockers & group.enemyBlockers))) return 0;
     const auto& geometry = rangeJumpGeometries[spec.geometry - 1];
@@ -3155,7 +3178,7 @@ Variant* Variant::conclude() {
     }
     hasBurn = bool(burnActivePieceTypes || burnPassivePieceTypes || burnOnPromotePieces);
     hasMissile = bool(missileEffectPieces & pieceTypes);
-    hasArrivalEffects = hasBurn || hasMissile;
+    hasArrivalEffects = hasBurn || hasMissile || hasRangeJumpCaptures;
     for (PieceSet ps = missileEffectPieces & pieceTypes; ps;)
     {
         PieceType pt = pop_lsb(ps);
@@ -3463,7 +3486,7 @@ void VariantMap::add(std::string s, Variant* v, bool configured) {
       if ((v->hasArrivalEffects || v->tenjikuTripleStepPieceTypes)
           && (v->gating || v->seirawanGating || v->wallingRule || v->blastOnCapture || v->petrifyOnCaptureTypes || v->flipEnclosedPieces))
       {
-          std::cerr << "Burn/missile/area moves - Unsupported combination with gating, walling, blast, petrification or enclosure rules: " << s << std::endl;
+          std::cerr << "Burn/missile/ray-clearing/area moves - Unsupported combination with gating, walling, blast, petrification or enclosure rules: " << s << std::endl;
           delete v;
           return;
       }

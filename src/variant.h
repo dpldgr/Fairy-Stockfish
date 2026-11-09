@@ -108,6 +108,11 @@ struct RangeJumpSpec {
   uint16_t geometry = 0; // Resolved indices plus one, zero disables jumping.
   uint16_t group = 0;
 };
+enum RangeJumpCapturePolicy : uint8_t { RANGE_CAPTURE_NONE, RANGE_CAPTURE_ENEMY, RANGE_CAPTURE_FRIEND, RANGE_CAPTURE_ALL };
+struct RangeJumpCaptureRule {
+  RangeJumpCapturePolicy policy = RANGE_CAPTURE_NONE;
+  PieceSet prohibitedLanding = NO_PIECE_SET;
+};
 struct RangeJumpGeometry {
   uint8_t directions = 0;
   RiderType riders = NO_RIDER;
@@ -526,6 +531,11 @@ struct Variant {
   void init_promotion_masks() const;
   Bitboard promotion_immobility_mask(Color c, PieceType pt, Bitboard walls) const;
   Bitboard range_jump_potential(Color c, PieceType pt, Square from, Bitboard walls) const;
+  // Optional, cold rules: keep the ordinary RangeJumpSpec and its stride intact.
+  std::vector<RangeJumpCaptureRule> rangeJumpCaptureRules;
+  PieceSet rangeJumpCaptureTypes = NO_PIECE_SET;
+  bool hasRangeJumpCaptures = false;
+  bool hasRangeJumpProhibitions = false;
   void set_optional_promotion_region(Color c, Bitboard region, PieceType pt = NO_PIECE_TYPE) {
       optionalPromotionRegions[c][pt] = {region, true, true};
       if (pt == NO_PIECE_TYPE)
