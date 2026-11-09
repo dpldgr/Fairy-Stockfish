@@ -65,7 +65,8 @@ namespace {
       bool initial = false;
       int distance = 0;
       bool skipped = false;
-      unsigned skip = 0;
+      uint64_t skipCounts = 0, hopperCounts = uint64_t(1) << 1;
+      bool countedSyntax = false;
       auto number = [&](std::string::size_type& pos, unsigned fallback) {
           if (pos + 1 == betza.size() || !isdigit(betza[pos + 1])) return fallback;
           unsigned value = 0;
@@ -77,6 +78,41 @@ namespace {
               else value = value * 10 + digit;
           }
           return value;
+      };
+      // Counts are normalized once; impossible counts never allocate profiles.
+      auto selector = [&](std::string::size_type& pos) {
+          uint64_t counts = 0;
+          auto add = [&](unsigned lo, unsigned hi) {
+              if (hi < lo) { p->error = "Reversed count interval"; return; }
+              for (unsigned n = lo; n <= std::min(hi, 63u); ++n)
+                  counts |= uint64_t(1) << n;
+          };
+          if (pos + 1 == betza.size() || betza[pos + 1] != '[')
+          {
+              unsigned n = number(pos, 1);
+              add(n, n);
+              return counts;
+          }
+          ++pos;
+          while (true)
+          {
+              if (pos + 1 == betza.size() || !isdigit(betza[pos + 1]))
+              { p->error = "Expected a count in selector"; break; }
+              unsigned lo = number(pos, 0), hi = lo;
+              if (betza.compare(pos + 1, 2, "..") == 0)
+              {
+                  pos += 2;
+                  if (pos + 1 == betza.size() || !isdigit(betza[pos + 1]))
+                  { p->error = "Expected upper count bound"; break; }
+                  hi = number(pos, 0);
+              }
+              add(lo, hi);
+              if (pos + 1 < betza.size() && betza[pos + 1] == ']') { ++pos; break; }
+              if (pos + 1 < betza.size() && betza[pos + 1] == ',') { ++pos; continue; }
+              p->error = "Expected comma or closing bracket in count selector";
+              break;
+          }
+          return counts;
       };
       std::vector<std::string> prelimDirections = {};
       for (std::string::size_type i = 0; i < betza.size(); i++)
@@ -90,12 +126,15 @@ namespace {
           {
               if (skipped) p->error = "Repeated j modifier";
               skipped = true;
-              skip = number(i, 1);
+              skipCounts = selector(i);
           }
           // Hopper
           else if (c == 'p' || c == 'g')
           {
               hopper = true;
+              countedSyntax = c == 'p' && i + 1 < betza.size()
+                           && (isdigit(betza[i + 1]) || betza[i + 1] == '[' || betza[i + 1] == '-' || betza[i + 1] == '{');
+              hopperCounts = c == 'p' ? selector(i) : uint64_t(1) << 1;
               // Grasshopper
               if (c == 'g')
                   distance = 1;
@@ -129,6 +168,8 @@ namespace {
           {
               if (skipped && (riderAtoms.find(c) == riderAtoms.end() || hopper || lame))
                   p->error = "j requires an R, B or Q ray without p, g or n";
+              if (countedSyntax && std::string("RBQ").find(c) == std::string::npos)
+                  p->error = "Counted p requires an R, B or Q ray";
               const auto& atoms = riderAtoms.find(c) != riderAtoms.end() ? riderAtoms.find(c)->second
                                                                          : leaperAtoms.find(c)->second;
               // Check for rider
@@ -140,7 +181,7 @@ namespace {
                   // limited distance riders
                   if (isdigit(betza[i+1]))
                   {
-                      if (skipped) distance = int(number(i, 0));
+                      if (skipped || countedSyntax) distance = int(number(i, 0));
                       else { distance = betza[i+1] - '0'; i++; }
                   }
                   else i++;
@@ -174,7 +215,8 @@ namespace {
                   for (auto modality : moveModalities)
                   {
                       std::map<Direction, int> skipDirections;
-                      auto& v = skipped && skip ? skipDirections
+                      bool counted = hopper && (countedSyntax || hopperCounts != (uint64_t(1) << 1));
+                      auto& v = skipped || counted ? skipDirections
                                : hopper ? p->hopper[initial][modality]
                                : rider ? p->slider[initial][modality]
                                        : p->steps[initial][modality];
@@ -197,19 +239,38 @@ namespace {
                           v[Direction(-atom.first * FILE_NB + atom.second)] = distance;
                       if (directions.size() == 0 || has_dir("ff") || has_dir("vv") || has_dir("lf") || has_dir("lv") || has_dir("fh") || has_dir("lh") || has_dir("hl"))
                           v[Direction(atom.first * FILE_NB - atom.second)] = distance;
-                      if (skipped && skip && p->error.empty())
+                      if ((skipped || counted) && p->error.empty())
                       {
                           uint8_t mask = 0;
                           constexpr Direction compass[] = {NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST};
                           for (const auto& entry : skipDirections)
                               for (int d = 0; d < 8; ++d)
                                   if (entry.first == compass[d]) mask |= uint8_t(1 << d);
-                          auto& terms = p->skipped[initial][modality];
-                          auto term = std::find_if(terms.begin(), terms.end(), [&](const SkipRay& t) {
-                              return t.skip == skip && t.range == unsigned(distance);
-                          });
-                          if (term == terms.end()) terms.push_back({skip, unsigned(distance), mask});
-                          else term->directions |= mask;
+                          uint64_t counts = skipped ? skipCounts : hopperCounts;
+                          if (counts & 1)
+                              for (const auto& entry : skipDirections)
+                                  p->slider[initial][modality][entry.first] = entry.second;
+                          counts &= ~uint64_t(1);
+                          if (skipped)
+                              while (counts)
+                              {
+                                  unsigned skip = __builtin_ctzll(counts); counts &= counts - 1;
+                                  auto& terms = p->skipped[initial][modality];
+                                  auto term = std::find_if(terms.begin(), terms.end(), [&](const SkipRay& t) {
+                                      return t.skip == skip && t.range == unsigned(distance);
+                                  });
+                                  if (term == terms.end()) terms.push_back({skip, unsigned(distance), mask});
+                                  else term->directions |= mask;
+                              }
+                          else if (counts)
+                          {
+                              auto& terms = p->counted[initial][modality];
+                              auto term = std::find_if(terms.begin(), terms.end(), [&](const CountedHopper& t) {
+                                  return t.counts == counts && t.range == unsigned(distance);
+                              });
+                              if (term == terms.end()) terms.push_back({counts, unsigned(distance), mask});
+                              else term->directions |= mask;
+                          }
                       }
                   }
               }
@@ -222,12 +283,15 @@ namespace {
               initial = false;
               distance = 0;
               skipped = false;
-              skip = 0;
+              skipCounts = 0;
+              hopperCounts = uint64_t(1) << 1;
+              countedSyntax = false;
           }
-          else if (skipped && !isspace(c))
+          else if ((skipped || countedSyntax) && !isspace(c))
               p->error = "Invalid modifier in skipped ray";
       }
       if (skipped) p->error = "j requires a following R, B or Q atom";
+      if (hopper && countedSyntax) p->error = "Counted p requires a following R, B or Q atom";
       return p;
   }
   // Special multi-leg betza description for Janggi elephant
@@ -262,6 +326,18 @@ bool range_jump_directions(const std::string& betza, uint8_t& directions) {
           if (entry.first == compass[d]) directions |= uint8_t(1 << d);
   delete p;
   return directions != 0;
+}
+
+bool counted_hopper_syntax(const std::string& betza, std::string& error) {
+  if (betza.find('p') == std::string::npos) return false;
+  const PieceInfo* p = from_betza(betza, "countedHopper");
+  error = p->error;
+  bool found = false;
+  for (bool initial : {false, true})
+      for (auto mode : {MODALITY_QUIET, MODALITY_CAPTURE})
+          found |= !p->counted[initial][mode].empty();
+  delete p;
+  return found;
 }
 
 void PieceMap::init(const Variant* v) {

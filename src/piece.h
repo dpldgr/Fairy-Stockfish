@@ -32,6 +32,12 @@ struct SkipRay {
   uint8_t directions = 0;
 };
 
+struct CountedHopper {
+  uint64_t counts = 0;
+  unsigned range = 0;
+  uint8_t directions = 0;
+};
+
 /// PieceInfo struct stores information about the piece movements.
 
 struct PieceInfo {
@@ -42,6 +48,7 @@ struct PieceInfo {
   std::map<Direction, int> slider[2][MOVE_MODALITY_NB] = {};
   std::map<Direction, int> hopper[2][MOVE_MODALITY_NB] = {};
   std::vector<SkipRay> skipped[2][MOVE_MODALITY_NB];
+  std::vector<CountedHopper> counted[2][MOVE_MODALITY_NB];
   std::string error;
 };
 
@@ -56,6 +63,7 @@ extern PieceMap pieceMap;
 // Validate the ray-only subset accepted by rangeJumpPieces.
 bool range_jump_directions(const std::string& betza, uint8_t& directions);
 bool skip_ray_syntax(const std::string& betza, std::string& error);
+bool counted_hopper_syntax(const std::string& betza, std::string& error);
 
 inline std::string piece_name(PieceType pt) {
   return is_custom(pt) ? "customPiece" + std::to_string(pt - CUSTOM_PIECES + 1)

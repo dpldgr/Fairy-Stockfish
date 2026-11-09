@@ -168,6 +168,22 @@ struct SkipRayProfile {
 extern std::vector<SkipRayProfile> SkipRayProfiles;
 extern std::vector<unsigned> SkipAttackProfiles[PIECE_TYPE_NB];
 extern std::vector<unsigned> SkipMoveProfiles[2][PIECE_TYPE_NB];
+struct CountedHopperProfile {
+  uint64_t counts;
+  unsigned range;
+  uint8_t directions;
+  RiderType riders = NO_RIDER;
+  Bitboard destinations[COLOR_NB][SQUARE_NB];
+};
+extern std::vector<CountedHopperProfile> CountedHopperProfiles;
+extern std::vector<unsigned> CountedAttackProfiles[PIECE_TYPE_NB];
+extern std::vector<unsigned> CountedMoveProfiles[2][PIECE_TYPE_NB];
+Bitboard counted_hopper_attacks(Color c, PieceType pt, Square from, Bitboard occupied,
+                               Bitboard walls, bool quiet = false, bool initial = false);
+Bitboard counted_hopper_potential(Color c, PieceType pt, Square from, Bitboard walls,
+                                 bool initial = false);
+Bitboard counted_piece_attacks(Color c, PieceType pt, Square from, Bitboard occupied,
+                               Bitboard walls, bool quiet = false, bool initial = false);
 Bitboard skip_ray_attacks(Color c, PieceType pt, Square from, Bitboard occupied,
                          Bitboard walls, bool quiet = false, bool initial = false);
 Bitboard regular_pseudo_attacks(Color c, PieceType pt, Square from);
@@ -633,10 +649,11 @@ inline RiderType pop_rider(RiderType* r) {
 inline Bitboard attacks_bb(Color c, PieceType pt, Square s, Bitboard occupied, Bitboard walls = 0) {
   Bitboard b = LeaperAttacks[c][pt][s];
   RiderType r = AttackRiderTypes[pt];
-  if (r & RIDER_SKIP)
+  if (r & SPECIAL_RIDERS)
   {
-      b |= skip_ray_attacks(c, pt, s, occupied, walls);
-      r &= ~RIDER_SKIP;
+      if (r & RIDER_COUNTED) return counted_piece_attacks(c, pt, s, occupied, walls);
+      if (r & RIDER_SKIP) b |= skip_ray_attacks(c, pt, s, occupied, walls);
+      r &= ~SPECIAL_RIDERS;
   }
   while (r)
       b |= rider_attacks_bb(pop_rider(&r), s, occupied);
@@ -648,10 +665,11 @@ template <bool Initial=false>
 inline Bitboard moves_bb(Color c, PieceType pt, Square s, Bitboard occupied, Bitboard walls = 0) {
   Bitboard b = LeaperMoves[Initial][c][pt][s];
   RiderType r = MoveRiderTypes[Initial][pt];
-  if (r & RIDER_SKIP)
+  if (r & SPECIAL_RIDERS)
   {
-      b |= skip_ray_attacks(c, pt, s, occupied, walls, true, Initial);
-      r &= ~RIDER_SKIP;
+      if (r & RIDER_COUNTED) return counted_piece_attacks(c, pt, s, occupied, walls, true, Initial);
+      if (r & RIDER_SKIP) b |= skip_ray_attacks(c, pt, s, occupied, walls, true, Initial);
+      r &= ~SPECIAL_RIDERS;
   }
   while (r)
       b |= rider_attacks_bb(pop_rider(&r), s, occupied);

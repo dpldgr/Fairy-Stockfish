@@ -285,6 +285,8 @@ struct Variant {
   bool rangeJumpConfigurationValid = true;
   bool hasRangeJump = false;
   bool hasSkippedRays = false;
+  bool hasCountedHoppers = false;
+  PieceSet countedHopperTypes = NO_PIECE_SET;
   bool skipRayConfigurationValid = true;
   bool hasTypedAttacks = false;
   PieceSet skippedRayTypes = NO_PIECE_SET;

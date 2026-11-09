@@ -342,6 +342,17 @@ burnImmunePieces = {i}
 piece = s:jR
 [skip-hybrid:skip-state]
 piece = s:cpBj2R +s:jB
+[count-state:skip-state]
+piece = s:p[1,3..4]R +s:j[1,3]B
+[count-capture:count-state]
+piece = s:cp[1..3]R +s:j[1,3]B
+[count-royal:count-state]
+commoner = -
+king = k
+extinctionValue = none
+piece = s:p2R
+[count-castle:chess]
+piece = s:cp[1,3]R
 [skip-range:skip-state]
 rangeJumpPieces = s:cB:{k,x}
 [skip-igui:skip-state]
@@ -424,6 +435,13 @@ rangeJumpPieces = r:cR:{s=enemy}
     exercise("skip-castle", "k7/8/8/8/5s2/8/5P2/4K2R w K - 0 1");
     exercise("skip-castle", "7k/8/8/s,p,P,4,K/8/8/8/8 w - b6 0 1");
     exercise("skip-hybrid", "7k/3x4/3X4/2x5/3S4/4x3/5x2/7K w - - 0 1");
+    exercise("count-state", "7k/3x4/3X4/3x4/3S4/8/8/7K[S] w - - 0 1");
+    exercise("count-state", "7k/3x4/3X4/3x4/3S4/8/8/7K b - - 0 1");
+    exercise("count-state", "7k/3x4/3X4/3x4/3+S4/8/8/7K w - - 0 1");
+    exercise("count-capture", "7k/3x4/3X4/3x4/3S4/8/8/7K w - - 0 1");
+    exercise("count-royal", "s6k/8/8/X7/8/X7/8/K7 w - - 0 1");
+    exercise("count-castle", "k4s2/8/5P2/8/5P2/8/5P2/4K2R w K - 0 1");
+    exercise("count-castle", "7k/8/8/s,p,P,4,K/8/8/8/8 w - b6 0 1");
     exercise("skip-range", "7k/3x4/3X4/2x5/3S4/4x3/5x2/7K w - - 0 1");
     exercise("skip-igui", "7k/8/8/3x4/3S4/8/8/7K w - - 0 1");
     exercise("mode-state", "7k/8/3x4/2x1x3/3L4/8/8/7K w - - 0 1");

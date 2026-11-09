@@ -810,7 +810,7 @@ void Position::set_check_info(StateInfo* si) const {
       PieceType pt = pop_lsb(ps);
       PieceType movePt = pt == KING ? king_type() : pt;
       si->checkSquares[pt] = ksq == SQ_NONE ? Bitboard(0)
-                           : AttackRiderTypes[movePt] & RIDER_SKIP
+                           : AttackRiderTypes[movePt] & SPECIAL_RIDERS
                            ? skip_checking_squares(sideToMove, movePt, ksq, pieces(), si->wallSquares)
                            : attacks_bb(~sideToMove, movePt, ksq, pieces());
       // Collect special piece types that require slower check and evasion detection
@@ -1279,6 +1279,28 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
           }
       }
 
+  if (var->hasCountedHoppers)
+      for (PieceSet types = var->countedHopperTypes; types;)
+      {
+          PieceType pt = pop_lsb(types), movement = pt == KING ? king_type() : pt;
+          if (!(board_bb(c, pt) & s) || (prohibited_capture_types(c, pt) & type_of(piece_on(s)))) continue;
+          for (Bitboard sources = sliders & pieces(c, pt); sources;)
+          {
+              Square from = pop_lsb(sources);
+              if (counted_hopper_attacks(c, movement, from, pieces(), st->wallSquares) & s) continue;
+              Bitboard candidates = between_bb(from, s) & pieces() & ~st->wallSquares & ~square_bb(s);
+              while (candidates)
+              {
+                  Square removed = pop_lsb(candidates);
+                  if (counted_hopper_attacks(c, movement, from, pieces() & ~square_bb(removed), st->wallSquares) & s)
+                  {
+                      jumpBlockers |= removed;
+                      if (pieces(color_of(piece_on(s))) & removed) jumpPinners |= from;
+                  }
+              }
+          }
+      }
+
   if (var->hasRangeJump || var->hasFreeze)
   {
       AttackView view(*this);
@@ -1328,13 +1350,13 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
       for (PieceSet ps = piece_types(); ps;)
       {
           PieceType pt = pop_lsb(ps);
-          bool skipped = AttackRiderTypes[pt] & RIDER_SKIP;
+          bool skipped = AttackRiderTypes[pt] & SPECIAL_RIDERS;
           Bitboard pseudo = skipped ? regular_pseudo_attacks(~c, pt, s) : PseudoAttacks[~c][pt][s];
           Bitboard b = sliders & (pseudo ^ LeaperAttacks[~c][pt][s]) & pieces(c, pt);
           if (b)
           {
               // Consider asymmetrical moves (e.g., horse)
-              if ((AttackRiderTypes[pt] & ~RIDER_SKIP) & ASYMMETRICAL_RIDERS)
+              if ((AttackRiderTypes[pt] & ~SPECIAL_RIDERS) & ASYMMETRICAL_RIDERS)
               {
                   Bitboard asymmetricals = pseudo & pieces(c, pt);
                   while (asymmetricals)
@@ -1346,7 +1368,7 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
               }
               else
                   snipers |= b & ~(skipped ? regular_attacks_bb(~c, pt, s, pieces()) : attacks_bb(~c, pt, s, pieces()));
-              if ((AttackRiderTypes[pt] & ~RIDER_SKIP) & ~HOPPING_RIDERS)
+              if ((AttackRiderTypes[pt] & ~SPECIAL_RIDERS) & ~HOPPING_RIDERS)
                   slidingSnipers |= snipers & pieces(pt);
           }
       }
