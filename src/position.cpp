@@ -1293,6 +1293,25 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
 
   if (var->hasFreeze) sliders &= ~frozen_pieces(c);
   Bitboard jumpBlockers = 0, jumpPinners = 0;
+  if (var->hasRangeJumpCaptures)
+  {
+      // Clearing can expose a royal even when the removed blocker lies beyond
+      // it (opening a landing square). This rare rule needs the full overlay.
+      AttackView view(*this);
+      Bitboard before = attackers_to_view(s, c, view);
+      for (Bitboard candidates = pieces() & ~square_bb(s); candidates;)
+      {
+          Square removed = pop_lsb(candidates);
+          AttackView after(view);
+          after.erase(removed);
+          Bitboard exposed = attackers_to_view(s, c, after) & sliders & ~before;
+          if (exposed)
+          {
+              jumpBlockers |= removed;
+              if (pieces(color_of(piece_on(s))) & removed) jumpPinners |= exposed;
+          }
+      }
+  }
   if (var->hasSkippedRays)
       for (PieceSet types = var->skippedRayTypes; types;)
       {
@@ -1363,6 +1382,7 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
                   Bitboard occupied = pieces() & ~hard;
                   Bitboard jumps = geometry.attacks(c, source, range.blockers(spec.group - 1, c) & ~hard)
                                  & ~geometry.attacks(c, source, occupied);
+                  if (var->hasRangeJumpProhibitions && range.prohibited_landing(pt, s)) jumps = 0;
                   PieceType moveType = pt == KING ? king_type() : pt;
                   // Removing the only intervening piece can also remove the
                   // screen required by a jump. Base sliding may still attack.
@@ -1530,8 +1550,26 @@ Bitboard RangeJumpContext::attacks(Color c, PieceType pt, Square from, bool reve
     Color direction = reverse ? ~c : c;
     // Only destinations beyond the first occupied square are jumps. The
     // ordinary ray includes that square, so subtract it along with its prefix.
-    return geometry.attacks(direction, from, blockers(spec.group - 1, c))
-         & ~geometry.attacks(direction, from, view.occupied);
+    Bitboard result = geometry.attacks(direction, from, blockers(spec.group - 1, c))
+                    & ~geometry.attacks(direction, from, view.occupied);
+    if (v->hasRangeJumpProhibitions)
+    {
+        if (reverse) { if (prohibited_landing(pt, from)) return 0; }
+        else result &= ~prohibited_landings(pt);
+    }
+    return result;
+}
+bool RangeJumpContext::prohibited_landing(PieceType pt, Square target) const {
+    const auto& forbidden = view.pos.variant()->rangeJumpCaptureRules[pt].prohibitedLanding;
+    Piece victim = view.piece_on(target);
+    return victim && ((forbidden & ALL_PIECES) || (forbidden & type_of(victim)));
+}
+Bitboard RangeJumpContext::prohibited_landings(PieceType pt) const {
+    PieceSet forbidden = view.pos.variant()->rangeJumpCaptureRules[pt].prohibitedLanding;
+    Bitboard result = 0;
+    if (forbidden & ALL_PIECES) return view.pieces(WHITE) | view.pieces(BLACK);
+    while (forbidden) result |= view.pieces(pop_lsb(forbidden));
+    return result;
 }
 Bitboard Position::range_jump_attacks(Color c, PieceType pt, Square from, const RangeJumpContext* range) const {
     return var->rangeJump[pt].capture ? range_jump_targets(c, pt, from, range) : Bitboard(0);
@@ -1541,6 +1579,11 @@ Bitboard Position::range_jump_targets(Color c, PieceType pt, Square from, const 
     if (var->hasFreeze && ((range ? range->view.frozen_pieces(c) : frozen_pieces(c)) & from)) return 0;
     if (range) return range->attacks(c, pt, from) & range->view.board_bb(c, pt);
     AttackView view(*this);
+    if (var->hasRangeJumpProhibitions)
+    {
+        RangeJumpContext context(view);
+        return context.attacks(c, pt, from) & view.board_bb(c, pt);
+    }
     // A standalone query needs only this type's blocker set.
     Bitboard blockers = view.walls;
     const auto& group = var->rangeJumpGroups[var->rangeJump[pt].group - 1];
@@ -1549,6 +1592,48 @@ Bitboard Position::range_jump_targets(Color c, PieceType pt, Square from, const 
     for (PieceType type : group.enemyBlockerTypes) blockers |= pieces(~c, type);
     const auto& geometry = var->rangeJumpGeometries[var->rangeJump[pt].geometry - 1];
     return geometry.attacks(c, from, blockers) & ~geometry.attacks(c, from, view.occupied) & board_bb(c, pt);
+}
+
+Bitboard Position::range_jump_immune(Color c, PieceType pt, const AttackView& view) const {
+    PieceSet types = prohibited_capture_types(c, pt);
+    Bitboard immune = 0;
+    if (types & ALL_PIECES) return view.pieces(WHITE) | view.pieces(BLACK);
+    while (types) immune |= view.pieces(pop_lsb(types));
+    if (mutually_immune_types() & pt) immune |= view.pieces(pt);
+    return immune;
+}
+
+Bitboard Position::range_jump_removals(Move m) const {
+    if (type_of(m) != NORMAL && type_of(m) != PROMOTION && type_of(m) != PIECE_PROMOTION
+        && type_of(m) != PIECE_DEMOTION && type_of(m) != MISSILE) return 0;
+    PieceType pt = type_of(moved_piece(m));
+    if (!(var->rangeJumpCaptureTypes & pt)) return 0;
+    Color us = sideToMove;
+    Square from = from_sq(m), to = to_sq(m);
+    const auto& spec = var->rangeJump[pt];
+    if (!(empty(to) ? spec.quiet : spec.capture) || !(range_jump_targets(us, pt, from) & to)) return 0;
+    auto policy = var->rangeJumpCaptureRules[pt].policy;
+    Bitboard victims = (policy != RANGE_CAPTURE_FRIEND ? pieces(~us) : Bitboard(0))
+                     | (policy != RANGE_CAPTURE_ENEMY ? pieces(us) : Bitboard(0));
+    AttackView view(*this);
+    return between_bb(from, to) & ~square_bb(to) & victims & ~range_jump_immune(us, pt, view);
+}
+
+bool Position::range_jump_effect_attacks(Color c, PieceType pt, Square from, Square target,
+                                        const RangeJumpContext& range) const {
+    auto policy = var->rangeJumpCaptureRules[pt].policy;
+    if (policy != RANGE_CAPTURE_ENEMY && policy != RANGE_CAPTURE_ALL) return false;
+    const AttackView& view = range.view;
+    if (!view.piece_on(target) || (range_jump_immune(c, pt, view) & target)
+        || (var->hasFreeze && (view.frozen_pieces(c) & from))) return false;
+    const auto& spec = var->rangeJump[pt];
+    const auto& geometry = var->rangeJumpGeometries[spec.geometry - 1];
+    Bitboard prohibited = range_jump_immune(c, pt, view);
+    Bitboard destinations = range.attacks(c, pt, from) & view.board_bb(c, pt)
+                         & ((spec.capture ? view.pieces(~c) & ~prohibited : Bitboard(0))
+                            | (spec.quiet ? ~view.occupied : Bitboard(0)));
+    // A landing strictly beyond the victim removes it as an intermediate effect.
+    return bool(destinations & ~geometry.attacks(c, from, square_bb(target)));
 }
 
 PieceSet Position::contagious_capture_types(Color c, PieceType pt, const Square* route, int n,
@@ -1698,6 +1783,12 @@ Bitboard Position::attackers_to_view(Square target, Color c, const AttackView& v
         result |= ordinary;
         if (directAllowed && var->hasRangeJump && var->rangeJump[pt].geometry && var->rangeJump[pt].capture)
             result |= range.attacks(c, pt, target, true) & sources;
+        if (var->hasRangeJumpCaptures && (var->rangeJumpCaptureTypes & pt))
+            for (Bitboard b = sources; b;)
+            {
+                Square from = pop_lsb(b);
+                if (range_jump_effect_attacks(c, pt, from, target, range)) result |= from;
+            }
         if (directAllowed && (diagonal_lines() & target))
         {
             PieceType diagonal = moveType == WAZIR ? FERS : moveType == SOLDIER ? PAWN : moveType == ROOK ? BISHOP : NO_PIECE_TYPE;
@@ -1836,9 +1927,33 @@ Bitboard Position::burn_squares(Move m) const {
          ? neighbours & enemies & ~immune : Bitboard(0);
 }
 
-// A jump detonates after landing (and any direct capture), before passive burning. There
-// is no cascade, pawn exemption, allegiance exemption or elemental immunity.
+// Clearing and missile effects precede passive burning. Their victims use the
+// same make/undo bookkeeping as burn bycatch, without becoming direct captures.
 Bitboard Position::removal_squares(Move m) const {
+    if (var->hasRangeJumpCaptures)
+    {
+        Bitboard cleared = range_jump_removals(m);
+        if (type_of(m) == MISSILE)
+            return cleared | ((((attacks_bb<KING>(to_sq(m)) | to_sq(m)) & (pieces(WHITE) | pieces(BLACK)))
+                            & ~square_bb(from_sq(m))) | to_sq(m));
+        if (cleared && var->hasBurn)
+        {
+            // Crossed pieces disappear before arrival; a removed passive burner
+            // cannot retaliate. Keep the ordinary burn function's fast path intact.
+            Color us = sideToMove;
+            Square to = to_sq(m);
+            Bitboard enemies = pieces(~us) & ~square_bb(to) & ~cleared;
+            Bitboard neighbours = attacks_bb<KING>(to);
+            if (!(var->burnImmunePieces & type_of(moved_piece(m))))
+                for (PieceSet ps = var->burnPassivePieceTypes; ps;)
+                    if (neighbours & enemies & pieces(pop_lsb(ps))) return cleared | to;
+            Bitboard immune = 0;
+            for (PieceSet ps = var->burnImmunePieces; ps;) immune |= pieces(pop_lsb(ps));
+            return cleared | (((var->burnActivePieceTypes & type_of(moved_piece(m))) || promotion_burn_type(m))
+                              ? neighbours & enemies & ~immune : Bitboard(0));
+        }
+        return cleared | (var->hasBurn ? burn_squares(m) : Bitboard(0));
+    }
     if (type_of(m) == MISSILE)
         return (((attacks_bb<KING>(to_sq(m)) | to_sq(m)) & (pieces(WHITE) | pieces(BLACK)))
                 & ~square_bb(from_sq(m))) | to_sq(m);
@@ -1890,9 +2005,9 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
         for (PieceSet ps = var->burnPassivePieceTypes; ps;) passive |= ofType(pop_lsb(ps)) & enemies;
     Bitboard prohibited = 0;
     for (PieceSet ps = prohibited_capture_types(c, pt); ps;) prohibited |= ofType(pop_lsb(ps)) & ofColor(~c);
-    auto landing = [&](Square to, Bitboard captures, Square first = SQ_NONE, Square second = SQ_NONE) {
+    auto landing = [&](Square to, Bitboard captures, Square first = SQ_NONE, Square second = SQ_NONE, Bitboard cleared = 0) {
         captures &= enemies;
-        if (!(attacks_bb<KING>(target) & to) || (attacks_bb<KING>(to) & passive & ~captures)) return;
+        if (!(attacks_bb<KING>(target) & to) || (attacks_bb<KING>(to) & passive & ~captures & ~cleared)) return;
         if (var->burnActivePieceTypes & pt) { result = true; return; }
         if (var->hasContagiousCaptures)
         {
@@ -1945,9 +2060,25 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
         RangeJumpContext range(view ? *view : actual);
         const auto& spec = var->rangeJump[pt];
         if (!(var->missileEffectPieces & pt))
-            ordinary |= range.attacks(c, pt, from) & geometry_board(pt)
-                      & ((spec.capture ? enemies & ~prohibited : Bitboard(0))
-                         | (spec.quiet ? ~occupied : Bitboard(0)));
+        {
+            Bitboard jumps = range.attacks(c, pt, from) & geometry_board(pt)
+                           & ((spec.capture ? enemies & ~prohibited : Bitboard(0))
+                              | (spec.quiet ? ~occupied : Bitboard(0)));
+            if (var->hasRangeJumpCaptures && (var->rangeJumpCaptureTypes & pt))
+            {
+                auto policy = var->rangeJumpCaptureRules[pt].policy;
+                Bitboard victims = ((policy != RANGE_CAPTURE_FRIEND ? enemies : Bitboard(0))
+                                  | (policy != RANGE_CAPTURE_ENEMY ? ofColor(c) : Bitboard(0)))
+                                 & ~range_jump_immune(c, pt, range.view);
+                ordinary &= ~jumps;
+                while (jumps)
+                {
+                    Square to = pop_lsb(jumps);
+                    landing(to, square_bb(to), SQ_NONE, SQ_NONE, between_bb(from, to) & ~square_bb(to) & victims);
+                }
+            }
+            else ordinary |= jumps;
+        }
     }
     while (ordinary) { Square to = pop_lsb(ordinary); landing(to, square_bb(to)); }
     auto path = [&](Move m) {

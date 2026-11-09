@@ -109,7 +109,7 @@ void MovePicker::score() {
 
   for (auto& m : *this)
       if constexpr (Type == CAPTURES)
-          m.value =  int((pos.variant()->hasBurn || pos.variant()->hasMissile) ? pos.capture_value(m) : PieceValue[MG][pos.piece_on(to_sq(m))]) * 6
+          m.value =  int(pos.variant()->hasArrivalEffects ? pos.capture_value(m) : PieceValue[MG][pos.piece_on(to_sq(m))]) * 6
                    + (*gateHistory)[pos.side_to_move()][gating_square(m)]
 #if BOARD_SQUARES > 384
                    + captureHistory->value(pos.moved_piece(m), to_sq(m), type_of(pos.piece_on(to_sq(m))));
@@ -131,7 +131,7 @@ void MovePicker::score() {
       else // Type == EVASIONS
       {
           if (pos.capture_or_burn(m))
-              m.value =  ((pos.variant()->hasBurn || pos.variant()->hasMissile) ? pos.capture_value(m) : PieceValue[MG][pos.piece_on(to_sq(m))])
+              m.value =  (pos.variant()->hasArrivalEffects ? pos.capture_value(m) : PieceValue[MG][pos.piece_on(to_sq(m))])
                        - Value(type_of(pos.moved_piece(m)));
           else
               m.value =      (*mainHistory)[pos.side_to_move()][from_to(m)]

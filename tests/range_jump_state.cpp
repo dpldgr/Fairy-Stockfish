@@ -88,6 +88,11 @@ static void exercise(const std::string& name, const std::string& fen, bool handF
         promotions += type_of(move) == PIECE_PROMOTION || type_of(move) == PROMOTION;
         castles += type_of(move) == CASTLING;
         drops += type_of(move) == DROP;
+        if (v->hasRangeJumpCaptures && p->range_jump_removals(move))
+        {
+            assert(p->capture_or_promotion(move) && p->capture_or_burn(move));
+            assert(MoveList<CAPTURES>(*p).contains(move));
+        }
         assert(p->pseudo_legal(move));
         AttackView expected = p->move_attack_view(move);
         Bitboard expectedAttacks[COLOR_NB][SQUARE_NB];
@@ -402,10 +407,50 @@ burnActivePieceTypes = {q}
 burnOnPromotePieces = {p}
 [state-relative-royal:state-royal]
 rangeJumpPieces = r:cR:{s=enemy}
+[clear-state:state]
+rangeJumpPieces = r:Q:{s=enemy}
+rangeJumpCapturePolicy = r:all
+rangeJumpProhibitedCaptures = r:{g}
+[clear-enemy:clear-state]
+rangeJumpCapturePolicy = r:enemy
+[clear-friend:clear-state]
+rangeJumpCapturePolicy = r:friend
+[clear-native:clear-state]
+commoner = -
+king = k
+extinctionValue = none
+[clear-burn:clear-state]
+piece = f:K
+burnPassivePieceTypes = {f}
+[clear-burn-active:clear-burn]
+commoner = -
+king = k
+extinctionValue = none
+burnActivePieceTypes = {r}
+[clear-castle:chess]
+piece = m:K
+rangeJumpPieces = m:Q:{}
+rangeJumpCapturePolicy = m:all
+[clear-missile:clear-state]
+missileEffectPieces = {r}
+[clear-freeze:clear-state]
+piece = i:K
+freezeEffectPieces = {i}
+[clear-transform:clear-state]
+transformOnCapturePieces = {p:g}
+[clear-pawn:chess]
+rangeJumpPieces = p:R:{}
+rangeJumpCapturePolicy = p:enemy
 
 
 )ini");
     variants.parse_istream<false>(configuration);
+#if BOARD_FILES >= 19 && BOARD_RANKS >= 19
+    std::istringstream longRay("[clear-long:clear-state]\nmaxFile = 19\nmaxRank = 19\nrangeJumpPieces = r:Q:{}\n");
+    variants.parse_istream<false>(longRay);
+    std::string longFen = "18,k/18,p/18,+b/18,P/18,p/18,P/18,p/18,P/18,p/18,P/18,p/18,P/18,p/18,P/18,p/18,P/18,p/18,P/K,17,R w - - 0 1";
+    exercise("clear-long", longFen);
+#endif
 #if ENABLE_GATING
     std::istringstream gated("[state-gate:seirawan]\nrangeJumpPieces = r:cR:{k,r}\n");
     variants.parse_istream<false>(gated);
@@ -436,6 +481,20 @@ rangeJumpPieces = r:cR:{s=enemy}
     exercise("state-missile-native", "4k3/8/8/8/1,M,6/1,P,6/8/R,n,2,K,2,R w KQ - 0 1");
     exercise("state-missile-pawn", "2,p,b,3,k/3,P,P,3/3,P,4/8/8/8/8/7,K w - - 0 1");
     exercise("state-relative-royal", "7,k/8/8/8/8/8/3,S,4/K,2,v,2,r,1 w - - 0 1");
+    for (std::string variant : {"clear-state", "clear-enemy", "clear-friend", "clear-transform"})
+    {
+        exercise(variant, "7,k/3,p,4/3,P,4/3,p,4/3,R,2,b,1/8/8/7,K w - - 0 1");
+        exercise(variant, "7,k/3,+b,4/3,+R,4/4,+b,3/3,R,2,p,1/8/8/7,K w - - 0 1");
+        exercise(variant, "7,k/8/3,r,2,P,1/3,s,4/3,P,4/3,+b,4/3,G,4/7,K b - - 0 1");
+    }
+    exercise("clear-native", "7k/8/3K4/8/3r4/8/8/8 w - - 0 1");
+    exercise("clear-native", "7k/8/3K4/8/3R4/8/8/8 w - - 0 1");
+    exercise("clear-burn", "7,k/8/3,f,4/8/3,R,4/8/8/7,K w - - 0 1");
+    exercise("clear-burn-active", "7,k/4,K,3/3,F,4/8/3,r,4/8/8/8 w - - 0 1");
+    exercise("clear-castle", "4k3/8/8/8/8/8/8/M,R,2,K,2,R w KQ - 0 1");
+    exercise("clear-missile", "7,k/3,p,P,3/3,p,4/3,P,4/3,R,4/8/8/7,K w - - 0 1");
+    exercise("clear-freeze", "7,k/8/4,i,3/3,p,4/3,R,4/8/8/7,K w - - 0 1");
+    exercise("clear-pawn", "7k/3p4/3p4/3p4/3P4/8/8/7K w - - 0 1");
     exercise("state-missile-quiet", "4k3/8/3,b,4/8/1,M,P,5/8/8/R,3,K,2,R w KQ - 0 1");
     exercise("state-quiet-pawn", "7k/8/8/8/2p5/3P4/3P4/7K w - - 0 1");
     exercise("skip-state", "7k/3x4/3X4/3x4/3S4/8/8/7K[S] w - - 0 1");
