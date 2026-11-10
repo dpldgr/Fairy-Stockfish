@@ -89,6 +89,8 @@ struct MainThread : public Thread {
 
   void search() override;
   void check_time();
+  void report_pv(const Position&, Depth, Value alpha, Value beta);
+  void report_currmove(const Position&, Move, Depth, size_t moveNumber);
 
   double previousTimeReduction;
   Value bestPreviousScore;
@@ -97,6 +99,10 @@ struct MainThread : public Thread {
   bool stopOnPonderhit;
   std::atomic_bool ponder;
   Thread* bestThread; // to fetch best move when in XBoard mode
+
+  // Reporting state belongs to the main thread and is reset for each search.
+  int uciVerbosity = 3;
+  TimePoint lastSearchInfoTime = 0;
 };
 
 
