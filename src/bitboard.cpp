@@ -496,10 +496,11 @@ void Bitboards::init_pieces() {
       return unsigned(CountedHopperProfiles.size() - 1);
   };
   SkipRayProfiles.clear();
-  auto profile_index = [](const SkipRay& term) {
+  std::vector<RayPrefixPolicy> prefixPolicies;
+  auto profile_index = [&](const SkipRay& term) {
       for (unsigned i = 0; i < SkipRayProfiles.size(); ++i)
           if (SkipRayProfiles[i].skip == term.skip && SkipRayProfiles[i].range == term.range
-              && SkipRayProfiles[i].directions == term.directions) return i;
+              && SkipRayProfiles[i].directions == term.directions && prefixPolicies[i] == term.policy) return i;
       SkipRayProfile profile{};
       profile.skip = term.skip; profile.range = term.range; profile.directions = term.directions;
       if (term.directions & 0xAA) profile.riders |= RIDER_BISHOP;
@@ -518,12 +519,20 @@ void Bitboards::init_pieces() {
                            f += df[actual], r += dr[actual], ++distance)
                       {
                           Square to = make_square(File(f), Rank(r));
-                          if (distance <= term.skip) profile.ignored[c][from] |= to;
+                          if (distance <= term.skip)
+                          {
+                              if (term.policy == RayPrefixPolicy::Ignore) profile.ignored[c][from] |= to;
+                          }
                           else if (!term.range || distance <= term.range) profile.destinations[c][from] |= to;
                       }
                   }
       SkipRayProfiles.push_back(std::move(profile));
+      prefixPolicies.push_back(term.policy);
       return unsigned(SkipRayProfiles.size() - 1);
+  };
+  auto separate_intervals = [](const PieceInfo* pi, bool initial, MoveModality mode) {
+      return std::any_of(pi->skipped[initial][mode].begin(), pi->skipped[initial][mode].end(),
+                         [](const SkipRay& term) { return term.policy == RayPrefixPolicy::Block; });
   };
   for (PieceType pt = PAWN; pt <= KING; ++pt)
   {
@@ -537,7 +546,8 @@ void Bitboards::init_pieces() {
           CountedMoveProfiles[initial][pt].clear();
           for (const auto& term : pi->counted[initial][MODALITY_QUIET])
               CountedMoveProfiles[initial][pt].push_back(counted_index(term));
-          if (!CountedMoveProfiles[initial][pt].empty()) CountedMoveBase[initial][pt].reset(new SkipRayBaseAttacks{});
+          if (!CountedMoveProfiles[initial][pt].empty() || separate_intervals(pi, initial, MODALITY_QUIET))
+              CountedMoveBase[initial][pt].reset(new SkipRayBaseAttacks{});
           SkipMoveProfiles[initial][pt].clear();
           for (const auto& term : pi->skipped[initial][MODALITY_QUIET])
               SkipMoveProfiles[initial][pt].push_back(profile_index(term));
@@ -580,6 +590,13 @@ void Bitboards::init_pieces() {
                   if (HorseDirections.find(d) != HorseDirections.end())
                       riderTypes |= RIDER_NIGHTRIDER;
               }
+              if (!separate_intervals(pi, initial, modality))
+                  for (const auto& term : pi->intervals[initial][modality])
+                  {
+                      if (term.directions & 0xAA) riderTypes |= RIDER_BISHOP;
+                      if (term.directions & 0x11) riderTypes |= RIDER_ROOK_V;
+                      if (term.directions & 0x44) riderTypes |= RIDER_ROOK_H;
+                  }
               for (auto const& [d, limit] : pi->hopper[initial][modality])
               {
                   if (RookDirectionsH.find(d) != RookDirectionsH.end())
@@ -591,7 +608,10 @@ void Bitboards::init_pieces() {
               }
               if (!(modality == MODALITY_CAPTURE ? SkipAttackProfiles[pt] : SkipMoveProfiles[initial][pt]).empty())
                   riderTypes |= RIDER_SKIP;
-              if (!(modality == MODALITY_CAPTURE ? CountedAttackProfiles[pt] : CountedMoveProfiles[initial][pt]).empty())
+              // The existing counted dispatcher also keeps ordinary masks
+              // separate from interval profiles in compound definitions.
+              if (!(modality == MODALITY_CAPTURE ? CountedAttackProfiles[pt] : CountedMoveProfiles[initial][pt]).empty()
+                  || separate_intervals(pi, initial, modality))
                   riderTypes |= RIDER_COUNTED;
           }
       }
@@ -630,6 +650,21 @@ void Bitboards::init_pieces() {
                       }
                       pseudo |= sliding_attack<RIDER>(pi->slider[initial][modality], s, 0, c);
                       pseudo |= sliding_attack<HOPPER_RANGE>(pi->hopper[initial][modality], s, 0, c);
+                      if (!separate_intervals(pi, initial, modality))
+                          for (const auto& term : pi->intervals[initial][modality])
+                          {
+                              constexpr int df[] = {0,1,1,1,0,-1,-1,-1}, dr[] = {1,1,0,-1,-1,-1,0,1};
+                              for (int d = 0; d < 8; ++d)
+                                  if (term.directions & (1 << d))
+                                  {
+                                      int direction = (d + (c == BLACK ? 4 : 0)) % 8;
+                                      unsigned distance = 1;
+                                      for (int f = file_of(s) + df[direction], r = rank_of(s) + dr[direction];
+                                           f >= 0 && f < FILE_NB && r >= 0 && r < RANK_NB && distance <= term.maximum;
+                                           f += df[direction], r += dr[direction], ++distance)
+                                          if (distance >= term.minimum) pseudo |= make_square(File(f), Rank(r));
+                                  }
+                          }
                       if (modality == MODALITY_CAPTURE && SkipRayBase[pt])
                           SkipRayBase[pt]->squares[c][s] = pseudo;
                       if (modality == MODALITY_QUIET && CountedMoveBase[initial][pt])

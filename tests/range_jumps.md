@@ -98,3 +98,6 @@ material/PSQT/hash comparisons and exact undo.
 
 The same harness now covers Taikyoku Free Eagle sweeps and symmetric coordinate
 atoms; see `taikyoku_free_eagle.md` for their integration tests and route limits.
+
+Block-policy slider intervals are covered by [slider_intervals.md](slider_intervals.md),
+including the existing-dispatch and state/undo checks in this C++ harness.

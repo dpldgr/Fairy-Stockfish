@@ -166,6 +166,56 @@ static void verify_cycle(const std::string& name, bool expected) {
     std::cout << name << ": reversible-move cycle prediction " << expected << std::endl;
 }
 
+static void verify_slider_intervals() {
+    Value limitedValues[2] = {};
+    for (const char* name : {"interval-legacy", "interval-from-one", "interval-overlap"})
+    {
+        UCI::init_variant(variants.at(name)); PSQT::init(variants.at(name));
+        assert(!(AttackRiderTypes[CUSTOM_PIECES] & SPECIAL_RIDERS));
+        assert(!(MoveRiderTypes[0][CUSTOM_PIECES] & SPECIAL_RIDERS));
+        if (name == std::string("interval-legacy"))
+        {
+            limitedValues[MG] = PieceValue[MG][CUSTOM_PIECES];
+            limitedValues[EG] = PieceValue[EG][CUSTOM_PIECES];
+        }
+        else
+        {
+            assert(PieceValue[MG][CUSTOM_PIECES] == limitedValues[MG]);
+            assert(PieceValue[EG][CUSTOM_PIECES] == limitedValues[EG]);
+        }
+    }
+    for (const char* name : {"interval-exact", "interval-pair"})
+    {
+        UCI::init_variant(variants.at(name));
+        assert(!(AttackRiderTypes[CUSTOM_PIECES] & SPECIAL_RIDERS));
+        for (Color c : {WHITE, BLACK})
+            for (Square from = SQ_MIN; from <= SQ_MAX; ++from)
+            {
+                Bitboard expected = 0;
+                for (int df : {-1,0,1}) for (int dr : {-1,0,1})
+                    if (df || dr)
+                    {
+                        int f = file_of(from) + 3 * df, r = rank_of(from) + 3 * dr;
+                        if (f >= 0 && f <= FILE_MAX && r >= 0 && r <= RANK_MAX)
+                            expected |= make_square(File(f), Rank(r));
+                    }
+                assert(PseudoAttacks[c][CUSTOM_PIECES][from] == expected);
+                assert(PseudoMoves[0][c][CUSTOM_PIECES][from] == expected);
+                assert(!LeaperAttacks[c][CUSTOM_PIECES][from]);
+                for (Square blocker = SQ_MIN; blocker <= SQ_MAX; ++blocker)
+                {
+                    Bitboard occupied = square_bb(blocker);
+                    Bitboard reference = attacks_bb<QUEEN>(from, occupied) & expected;
+                    assert(attacks_bb(c, CUSTOM_PIECES, from, occupied) == reference);
+                    assert(moves_bb(c, CUSTOM_PIECES, from, occupied) == reference);
+                }
+            }
+    }
+    UCI::init_variant(variants.at("interval-mixed"));
+    assert(AttackRiderTypes[CUSTOM_PIECES] & SPECIAL_RIDERS);
+    std::cout << "Slider intervals preserve ordinary dispatch, estimates and every-square blocking" << std::endl;
+}
+
 static void verify_coordinate_atoms() {
     Value knightValues[2] = {};
     for (const char* name : {"coordinate-native", "coordinate-knight", "coordinate-overlap"})
@@ -533,6 +583,27 @@ tradingRuleCounterstrike = {sh}
 taikyokuFreeEagleMultiCapturePieces = {p}
 capturesToHand = true
 pieceDrops = true
+[interval-legacy]
+customPiece1 = x:Q3
+[interval-from-one]
+customPiece1 = x:Q[1..3]
+[interval-overlap]
+customPiece1 = x:Q[1..2]Q[2..3]
+[interval-exact]
+customPiece1 = x:Q[3]
+[interval-pair]
+customPiece1 = x:Q[3..3]
+[interval-state:chess]
+customPiece1 = x:Q[3..5] +x:B[3]
+capturesToHand = true
+pieceDrops = true
+promotionRegionOptionalWhite = *
+promotionRegionOptionalBlack = *
+promotionPolicy = optional:{ii} mandatory:{}
+[interval-mixed:interval-state]
+customPiece1 = x:R[3..4]cpR
+[interval-king:chess]
+king = k:Q[3]
 [coordinate-knight]
 customPiece1 = x:(2,1)
 [coordinate-native]
@@ -546,6 +617,7 @@ customPiece1 = x:(17,1)
 )ini");
     variants.parse_istream<false>(configuration);
     verify_coordinate_atoms();
+    verify_slider_intervals();
 #if BOARD_FILES >= 19 && BOARD_RANKS >= 19
     std::istringstream longRay("[clear-long:clear-state]\nmaxFile = 19\nmaxRank = 19\nrangeJumpPieces = r:Q:{}\n");
     variants.parse_istream<false>(longRay);
@@ -637,6 +709,12 @@ customPiece1 = x:(17,1)
     exercise("promotion-burn-limit", "f6k/8/4K3/8/3w4/8/8/8 w - - 0 1");
     exercise("promotion-burn-royal", "7k/8/4K3/8/3+v4/8/8/8 w - - 0 1");
     exercise("promotion-burn-pawn", "1r5k/P7/8/8/8/8/8/7K w - - 0 1");
+    exercise("interval-state", "7k/3p4/3P4/3p4/3X4/8/8/7K[X] w - - 0 1");
+    exercise("interval-state", "7k/3p4/8/3p4/3+X4/8/8/7K w - - 0 1");
+    exercise("interval-state", "7k/8/3X4/3P4/3p4/3P4/3x4/7K b - - 0 1");
+    exercise("interval-mixed", "7k/3p4/3P4/3p4/3X4/8/8/7K[X] w - - 0 1");
+    exercise("interval-state", "7k/8/8/x7/8/P7/P7/K7 w - - 0 1");
+    exercise("interval-king", "7k/8/8/8/8/8/8/K7 w - - 0 1");
     verify_skipped_ray_pins();
     exercise("state-hands", "7,k/8/3,rh,4/8/3,R,4/8/8/7,K[RR,R,RH,rrh,r,rh] w - - 0 1", true);
     exercise("state-hands", "7,k/8/3,+rr,4/8/3,R,4/8/8/7,K[RR,R,RH,rrh,r,rh] b - - 0 1", true);
