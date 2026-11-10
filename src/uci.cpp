@@ -25,6 +25,7 @@
 #include <string>
 
 #include "evaluate.h"
+#include "mate_table.h"
 #include "movegen.h"
 #include "position.h"
 #include "search.h"
@@ -394,6 +395,7 @@ namespace {
 void UCI::loop(int argc, char* argv[]) {
 
   Position pos;
+  MateTable mateTable;
   string token, cmd;
   StateListPtr states(new std::deque<StateInfo>(1));
 
@@ -429,6 +431,11 @@ void UCI::loop(int argc, char* argv[]) {
 
       token.clear(); // Avoid a stale if getline() returns empty or blank line
       is >> skipws >> token;
+
+      // Analysis reads the selected variant's shared movement tables. Finish
+      // it before any command that could change those tables or start search.
+      if (token != "mate-table" && token != "api" && token != "isready")
+          mateTable.stop();
 
       if (    token == "quit"
           ||  token == "stop")
@@ -482,10 +489,22 @@ void UCI::loop(int argc, char* argv[]) {
               banmoves.push_back(UCI::to_move(pos, token));
       else if (token == "go")         go(pos, is, states, banmoves);
       else if (token == "position")   position(pos, is, states), banmoves.clear();
+      else if (token == "mate-table")
+      {
+          mateTable.command(is, pos);
+          if (argc > 1) mateTable.wait();
+      }
       else if (token == "api")
       {
           string apiCommand;
           is >> apiCommand;
+          if (apiCommand == "mate-table")
+          {
+              mateTable.command(is, pos);
+              if (argc > 1) mateTable.wait();
+              continue;
+          }
+          mateTable.stop();
           if (apiCommand != "shuffle-position")
           {
               sync_cout << "info string api " << apiCommand << " status unsupported" << sync_endl;
