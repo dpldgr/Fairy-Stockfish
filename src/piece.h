@@ -27,9 +27,18 @@
 
 namespace Stockfish {
 
+// Parsing/initialization metadata only; policies compile into occupancy masks.
+enum class RayPrefixPolicy { Ignore, Block };
+
 struct SkipRay {
   unsigned skip = 0, range = 0;
   uint8_t directions = 0;
+  RayPrefixPolicy policy = RayPrefixPolicy::Ignore;
+};
+
+struct SliderInterval {
+  unsigned minimum, maximum;
+  uint8_t directions;
 };
 
 struct CountedHopper {
@@ -54,6 +63,7 @@ struct PieceInfo {
   std::vector<SkipRay> skipped[2][MOVE_MODALITY_NB];
   std::vector<CountedHopper> counted[2][MOVE_MODALITY_NB];
   std::vector<CoordinateStep> coordinate[2][MOVE_MODALITY_NB];
+  std::vector<SliderInterval> intervals[2][MOVE_MODALITY_NB];
   std::string error;
 };
 

@@ -195,7 +195,31 @@ namespace {
               // Check for rider
               if (riderAtoms.find(c) != riderAtoms.end())
                   rider = true;
-              if (i + 1 < betza.size() && (isdigit(betza[i+1]) || betza[i+1] == c))
+              bool interval = i + 1 < betza.size() && betza[i + 1] == '[';
+              unsigned minimum = 0, maximum = 0;
+              if (interval)
+              {
+                  if (riderAtoms.find(c) == riderAtoms.end() || hopper || lame || skipped)
+                  { p->error = "Slider intervals require an R, B or Q atom without j, p, g or n"; break; }
+                  ++i;
+                  if (i + 1 >= betza.size() || !isdigit(betza[i + 1]))
+                  { p->error = "Expected a positive slider distance"; break; }
+                  minimum = maximum = number(i, 0);
+                  if (betza.compare(i + 1, 2, "..") == 0)
+                  {
+                      i += 2;
+                      if (i + 1 >= betza.size() || !isdigit(betza[i + 1]))
+                      { p->error = "Expected upper slider distance"; break; }
+                      maximum = number(i, 0);
+                  }
+                  if (!p->error.empty() || !minimum || maximum < minimum
+                      || i + 1 >= betza.size() || betza[i + 1] != ']')
+                  { p->error = "Expected [n] or [minimum..maximum] with positive, ordered integer distances"; break; }
+                  ++i;
+                  if (i + 1 < betza.size() && (isdigit(betza[i + 1]) || betza[i + 1] == '['))
+                  { p->error = "Unexpected suffix after slider interval"; break; }
+              }
+              else if (i + 1 < betza.size() && (isdigit(betza[i+1]) || betza[i+1] == c))
               {
                   rider = true;
                   // limited distance riders
@@ -236,7 +260,7 @@ namespace {
                   {
                       std::map<Direction, int> skipDirections;
                       bool counted = hopper && (countedSyntax || hopperCounts != (uint64_t(1) << 1));
-                      auto& v = skipped || counted ? skipDirections
+                      auto& v = skipped || counted || interval ? skipDirections
                                : hopper ? p->hopper[initial][modality]
                                : rider ? p->slider[initial][modality]
                                        : p->steps[initial][modality];
@@ -263,13 +287,18 @@ namespace {
                           add_direction(-atom.first, atom.second);
                       if (directions.size() == 0 || has_dir("ff") || has_dir("vv") || has_dir("lf") || has_dir("lv") || has_dir("fh") || has_dir("lh") || has_dir("hl"))
                           add_direction(atom.first, -atom.second);
-                      if ((skipped || counted) && p->error.empty())
+                      if ((skipped || counted || interval) && p->error.empty())
                       {
                           uint8_t mask = 0;
                           constexpr Direction compass[] = {NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST};
                           for (const auto& entry : skipDirections)
                               for (int d = 0; d < 8; ++d)
                                   if (entry.first == compass[d]) mask |= uint8_t(1 << d);
+                          if (interval)
+                          {
+                              p->intervals[initial][modality].push_back({minimum, maximum, mask});
+                              continue;
+                          }
                           uint64_t counts = skipped ? skipCounts : hopperCounts;
                           if (counts & 1)
                               for (const auto& entry : skipDirections)
@@ -313,11 +342,38 @@ namespace {
           }
           else if (c == ')' || c == ',')
               p->error = "Unexpected coordinate atom delimiter";
+          else if (c == '[' || c == ']')
+              p->error = "Unexpected slider interval delimiter";
           else if ((skipped || countedSyntax) && !isspace(c))
               p->error = "Invalid modifier in skipped ray";
       }
       if (skipped) p->error = "j requires a following R, B or Q atom";
       if (hopper && countedSyntax) p->error = "Counted p requires a following R, B or Q atom";
+      // Plain block intervals share ordinary slider occupancy and can use the
+      // existing pseudo-destination mask. Mixed occupancy-dependent terms need
+      // separate masks, reached through the already existing special dispatch.
+      for (bool first : {false, true})
+          for (auto mode : {MODALITY_QUIET, MODALITY_CAPTURE})
+          {
+              bool separate = !p->skipped[first][mode].empty() || !p->counted[first][mode].empty()
+                           || !p->hopper[first][mode].empty()
+                           || std::any_of(p->steps[first][mode].begin(), p->steps[first][mode].end(),
+                                          [](const auto& step) { return step.second != 0; });
+              if (separate && !p->intervals[first][mode].empty())
+              {
+                  // A legacy hopper's broad pseudo-ray must not widen a
+                  // bounded ordinary slider in the same compound definition.
+                  constexpr Direction compass[] = {NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST};
+                  for (const auto& entry : p->hopper[first][mode])
+                      for (int d = 0; d < 8; ++d)
+                          if (entry.first == compass[d])
+                              p->counted[first][mode].push_back({uint64_t(1) << 1, unsigned(entry.second), uint8_t(1 << d)});
+                  p->hopper[first][mode].clear();
+                  for (const auto& term : p->intervals[first][mode])
+                      p->skipped[first][mode].push_back({term.minimum - 1, term.maximum,
+                                                       term.directions, RayPrefixPolicy::Block});
+              }
+          }
       return p;
   }
   // Special multi-leg betza description for Janggi elephant
@@ -329,7 +385,7 @@ namespace {
 }
 
 bool skip_ray_syntax(const std::string& betza, std::string& error) {
-  if (betza.find('j') == std::string::npos) return false;
+  if (betza.find_first_of("j[]") == std::string::npos) return false;
   const PieceInfo* p = from_betza(betza, "skipRay");
   error = p->error;
   bool found = false;
@@ -362,7 +418,7 @@ bool range_jump_directions(const std::string& betza, uint8_t& directions) {
 }
 
 bool counted_hopper_syntax(const std::string& betza, std::string& error) {
-  if (betza.find('p') == std::string::npos) return false;
+  if (betza.find_first_of("p[]") == std::string::npos) return false;
   const PieceInfo* p = from_betza(betza, "countedHopper");
   error = p->error;
   bool found = false;
