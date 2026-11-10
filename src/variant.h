@@ -536,6 +536,10 @@ struct Variant {
   PieceSet rangeJumpCaptureTypes = NO_PIECE_SET;
   bool hasRangeJumpCaptures = false;
   bool hasRangeJumpProhibitions = false;
+  PieceSet taikyokuFreeEagleMultiCapturePieces = NO_PIECE_SET;
+  bool hasFreeEagle = false;
+  bool freeEagleConfigurationValid = true;
+  Bitboard free_eagle_potential(Color c, PieceType pt, Square from, Bitboard walls) const;
   void set_optional_promotion_region(Color c, Bitboard region, PieceType pt = NO_PIECE_TYPE) {
       optionalPromotionRegions[c][pt] = {region, true, true};
       if (pt == NO_PIECE_TYPE)

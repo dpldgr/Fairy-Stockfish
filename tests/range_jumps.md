@@ -95,3 +95,6 @@ the long-ray/high-slot case. The state harness also checks every legal move of
 clearing positions, including friendly/promoted victims, drops, pawn promotion,
 freezing, missiles and passive burn, using hypothetical overlays, fresh FENs,
 material/PSQT/hash comparisons and exact undo.
+
+The same harness now covers Taikyoku Free Eagle sweeps and symmetric coordinate
+atoms; see `taikyoku_free_eagle.md` for their integration tests and route limits.

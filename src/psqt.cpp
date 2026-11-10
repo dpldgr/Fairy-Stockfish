@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <set>
 #include <math.h>
 
 #include "bitboard.h"
@@ -156,11 +157,24 @@ int counted_directions(const PieceInfo* pi, MoveModality modality) {
 }
 
 // Estimate piece value
+size_t step_count(const PieceInfo* pi, MoveModality mode) {
+    if (pi->coordinate[0][mode].empty()) return pi->steps[0][mode].size();
+    std::set<std::pair<int, int>> steps;
+    for (const auto& entry : pi->steps[0][mode])
+    {
+        int d = entry.first;
+        int rank = d >= 0 ? (d + FILE_NB / 2) / FILE_NB : -((-d + FILE_NB / 2) / FILE_NB);
+        steps.emplace(rank, d - rank * FILE_NB);
+    }
+    for (const auto& step : pi->coordinate[0][mode]) steps.emplace(step.rank, step.file);
+    return steps.size();
+}
+
 Value piece_value(Phase phase, PieceType pt)
 {
     const PieceInfo* pi = pieceMap.find(pt)->second;
-    int v0 =  (phase == MG ?  60 :  60) * pi->steps[0][MODALITY_CAPTURE].size()
-            + (phase == MG ?  30 :  40) * pi->steps[0][MODALITY_QUIET].size()
+    int v0 =  (phase == MG ?  60 :  60) * step_count(pi, MODALITY_CAPTURE)
+            + (phase == MG ?  30 :  40) * step_count(pi, MODALITY_QUIET)
             // A queen-like starting estimate, independently for each modality.
             // Explicit variant piece values can tune universal pieces further.
             + 8 * 185 * pi->universal[0][MODALITY_CAPTURE]
@@ -224,8 +238,10 @@ void init(const Variant* v) {
       const PieceInfo* pi = pieceMap.find(pt)->second;
       bool isUniversal = pi->universal[0][MODALITY_QUIET] || pi->universal[0][MODALITY_CAPTURE];
       bool isSlider = pi->slider[0][MODALITY_QUIET].size() || pi->slider[0][MODALITY_CAPTURE].size() || (pi->hopper[0][MODALITY_QUIET].size() + counted_directions(pi, MODALITY_QUIET)) || (pi->hopper[0][MODALITY_CAPTURE].size() + counted_directions(pi, MODALITY_CAPTURE));
-      bool isPawn = !isUniversal && !isSlider && pi->steps[0][MODALITY_QUIET].size() && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return d.first < SOUTH / 2; });
-      bool isSlowLeaper = !isUniversal && !isSlider && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return dist(d.first) > 1; });
+      bool isPawn = !isUniversal && !isSlider && step_count(pi, MODALITY_QUIET) && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return d.first < SOUTH / 2; })
+                 && !std::any_of(pi->coordinate[0][MODALITY_QUIET].begin(), pi->coordinate[0][MODALITY_QUIET].end(), [](const CoordinateStep& step) { return step.rank < 0; });
+      bool isSlowLeaper = !isUniversal && !isSlider && !std::any_of(pi->steps[0][MODALITY_QUIET].begin(), pi->steps[0][MODALITY_QUIET].end(), [](const std::pair<const Direction, int>& d) { return dist(d.first) > 1; })
+                       && !std::any_of(pi->coordinate[0][MODALITY_QUIET].begin(), pi->coordinate[0][MODALITY_QUIET].end(), [](const CoordinateStep& step) { return std::max(std::abs(step.rank), std::abs(step.file)) > 1; });
 
       // Scale slider piece values with board size
       if (isSlider)
@@ -234,7 +250,7 @@ void init(const Variant* v) {
           constexpr int rm = 5;
           constexpr int r0 = rm + RANK_8;
           int r1 = rm + (v->maxRank + v->maxFile - 2 * v->capturesToHand) / 2;
-          int leaper = pi->steps[0][MODALITY_QUIET].size() + pi->steps[0][MODALITY_CAPTURE].size();
+          int leaper = step_count(pi, MODALITY_QUIET) + step_count(pi, MODALITY_CAPTURE);
           int slider = pi->slider[0][MODALITY_QUIET].size() + pi->slider[0][MODALITY_CAPTURE].size() + (pi->hopper[0][MODALITY_QUIET].size() + counted_directions(pi, MODALITY_QUIET)) + (pi->hopper[0][MODALITY_CAPTURE].size() + counted_directions(pi, MODALITY_CAPTURE));
           score = make_score(mg_value(score) * (lc * leaper + r1 * slider) / (lc * leaper + r0 * slider),
                              eg_value(score) * (lc * leaper + r1 * slider) / (lc * leaper + r0 * slider));
@@ -258,7 +274,8 @@ void init(const Variant* v) {
       // Increase leapers' value in makpong
       else if (v->makpongRule)
       {
-          if (std::any_of(pi->steps[0][MODALITY_CAPTURE].begin(), pi->steps[0][MODALITY_CAPTURE].end(), [](const std::pair<const Direction, int>& d) { return dist(d.first) > 1 && !d.second; }))
+          if (std::any_of(pi->steps[0][MODALITY_CAPTURE].begin(), pi->steps[0][MODALITY_CAPTURE].end(), [](const std::pair<const Direction, int>& d) { return dist(d.first) > 1 && !d.second; })
+              || std::any_of(pi->coordinate[0][MODALITY_CAPTURE].begin(), pi->coordinate[0][MODALITY_CAPTURE].end(), [](const CoordinateStep& step) { return std::max(std::abs(step.rank), std::abs(step.file)) > 1; }))
               score = make_score(mg_value(score) * 4200 / (3500 + mg_value(score)),
                                  eg_value(score) * 4700 / (3500 + mg_value(score)));
       }

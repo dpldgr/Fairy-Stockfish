@@ -1437,6 +1437,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         {"burnImmunePieces", &v->burnImmunePieces},
         {"burnOnPromotePieces", &v->burnOnPromotePieces},
         {"missileEffectPieces", &v->missileEffectPieces},
+        {"taikyokuFreeEagleMultiCapturePieces", &v->taikyokuFreeEagleMultiCapturePieces},
         {"tenjikuTripleStepPieceTypes", &v->tenjikuTripleStepPieceTypes}
     };
     for (const auto& setting : arrivalOptions)
@@ -1451,6 +1452,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             {
                 if (std::string(setting.first) == "transformOnCaptureImmunePieces") v->contagiousConfigurationValid = false;
                 if (std::string(setting.first) == "missileEffectPieces") v->rangeJumpConfigurationValid = false;
+                if (std::string(setting.first) == "taikyokuFreeEagleMultiCapturePieces") v->freeEagleConfigurationValid = false;
                 std::cerr << setting.first << " - Invalid piece set: " << option->second << std::endl;
             }
         }

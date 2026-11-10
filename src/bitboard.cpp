@@ -620,6 +620,14 @@ void Bitboards::init_pieces() {
                           if (!limit)
                               leaper |= safe_destination(s, c == WHITE ? d : -d);
                       }
+                      for (const auto& step : pi->coordinate[initial][modality])
+                      {
+                          if (std::abs(step.file) > FILE_MAX || std::abs(step.rank) > RANK_MAX) continue;
+                          int f = file_of(s) + (c == WHITE ? step.file : -step.file);
+                          int r = rank_of(s) + (c == WHITE ? step.rank : -step.rank);
+                          if (f >= 0 && f <= FILE_MAX && r >= 0 && r <= RANK_MAX)
+                              pseudo |= leaper |= make_square(File(f), Rank(r));
+                      }
                       pseudo |= sliding_attack<RIDER>(pi->slider[initial][modality], s, 0, c);
                       pseudo |= sliding_attack<HOPPER_RANGE>(pi->hopper[initial][modality], s, 0, c);
                       if (modality == MODALITY_CAPTURE && SkipRayBase[pt])

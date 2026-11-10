@@ -334,10 +334,13 @@ public:
   bool capture_or_burn(Move m) const;
   Value capture_value(Move m) const;
   size_t area_move_capacity() const;
+  size_t free_eagle_move_capacity() const;
   size_t move_capacity() const {
     size_t capacity = var->tenjikuTripleStepPieceTypes ? MAX_MOVES + area_move_capacity() : MAX_MOVES;
-    return var->hasContagiousCaptures ? 3 * capacity : capacity;
+    if (var->hasFreeEagle) capacity += free_eagle_move_capacity();
+    return var->hasContagiousCaptures ? (var->hasFreeEagle ? 5 : 3) * capacity : capacity;
   }
+  Bitboard free_eagle_destinations(Color c, PieceType pt, Square from, const AttackView& view, Square defended = SQ_NONE, Bitboard* swept = nullptr) const;
   Bitboard area_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE, const AttackView* view = nullptr) const;
   Bitboard burn_attackers_to(Square s, Bitboard occupied, Color c) const;
   bool burn_attacks_square(Color c, PieceType pt, Square from, Square target, Bitboard occupied, const AttackView* view = nullptr) const;
@@ -351,7 +354,11 @@ public:
   bool has_lion_move(Color c, PieceType pt) const;
   uint32_t lion_dog_mask(Color c, PieceType pt, Square from) const;
   Bitboard multi_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended = SQ_NONE, const AttackView* view = nullptr) const;
-  int move_path(Move m, Square (&squares)[3]) const;
+  int move_path(Move m, Square* squares) const;
+#if defined(__GNUC__) || defined(__clang__)
+  __attribute__((noinline))
+#endif
+  int free_eagle_path(Move m, Square* squares) const;
   Bitboard path_capture_squares(Move m) const;
   const std::vector<HookMoveSpec>& hook_move_specs(PieceType pt) const;
   bool has_hook_move(PieceType pt) const;
@@ -1717,7 +1724,7 @@ inline uint32_t Position::lion_dog_mask(Color c, PieceType pt, Square from) cons
   return var->lionDogPathMask[c][pt] & LionDogValidPathMask[from];
 }
 
-inline int Position::move_path(Move m, Square (&squares)[3]) const {
+inline int Position::move_path(Move m, Square* squares) const {
   if (type_of(m) == LION_DOG)
   {
       int path = lion_dog_path_index(m), count = lion_dog_legs(path);
@@ -1731,13 +1738,20 @@ inline int Position::move_path(Move m, Square (&squares)[3]) const {
       squares[2] = to_sq(m);
       return 3;
   }
-  squares[0] = type_of(m) == LION ? LionVia[from_sq(m)][lion_path_index(m)]
-             : is_hook(m) ? hook_sq(m) : double_move_sq(m);
+  if (type_of(m) == LION) squares[0] = LionVia[from_sq(m)][lion_path_index(m)];
+  else if (is_hook(m)) squares[0] = hook_sq(m);
+  else
+  {
+      squares[0] = double_move_sq(m);
+      if (squares[0] == from_sq(m)) return free_eagle_path(m, squares);
+  }
   squares[1] = to_sq(m);
   return 2;
 }
 
 inline Bitboard Position::path_capture_squares(Move m) const {
+  // A legal sweep has no occupied tail square before its final landing.
+  if (is_free_eagle_move(m)) return between_bb(from_sq(m), to_sq(m)) & pieces(~sideToMove);
   Square squares[3];
   int n = move_path(m, squares);
   Bitboard result = 0;

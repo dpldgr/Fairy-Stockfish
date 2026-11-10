@@ -38,6 +38,10 @@ struct CountedHopper {
   uint8_t directions = 0;
 };
 
+struct CoordinateStep {
+  int rank, file;
+};
+
 /// PieceInfo struct stores information about the piece movements.
 
 struct PieceInfo {
@@ -49,6 +53,7 @@ struct PieceInfo {
   std::map<Direction, int> hopper[2][MOVE_MODALITY_NB] = {};
   std::vector<SkipRay> skipped[2][MOVE_MODALITY_NB];
   std::vector<CountedHopper> counted[2][MOVE_MODALITY_NB];
+  std::vector<CoordinateStep> coordinate[2][MOVE_MODALITY_NB];
   std::string error;
 };
 
@@ -64,6 +69,7 @@ extern PieceMap pieceMap;
 bool range_jump_directions(const std::string& betza, uint8_t& directions);
 bool skip_ray_syntax(const std::string& betza, std::string& error);
 bool counted_hopper_syntax(const std::string& betza, std::string& error);
+void coordinate_atom_syntax(const std::string& betza, std::string& error);
 
 inline std::string piece_name(PieceType pt) {
   return is_custom(pt) ? "customPiece" + std::to_string(pt - CUSTOM_PIECES + 1)

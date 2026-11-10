@@ -563,6 +563,62 @@ namespace {
     return list;
   }
 
+  // Free Eagle sweeps are separate from base moves and retain their full path.
+  template<Color Us>
+#if defined(__GNUC__) || defined(__clang__)
+  __attribute__((noinline))
+#endif
+  ExtMove* generate_free_eagle_moves(const Position& pos, ExtMove* list, ExtMove* ordinaryBegin, ExtMove* ordinaryEnd) {
+    AttackView view(pos);
+    for (PieceSet types = pos.variant()->taikyokuFreeEagleMultiCapturePieces; types;)
+    {
+        PieceType pt = pop_lsb(types);
+        auto promotion = [&](Move m) {
+            if (is_path_promotion(m)) return std::make_pair(path_promotion_type(m), path_mapped_flag(m) ? 1 : 2);
+            if (type_of(m) == PIECE_PROMOTION) return std::make_pair(pos.promoted_piece_type(pt), 1);
+            if (type_of(m) == PROMOTION) return std::make_pair(promotion_type(m), 2);
+            return std::make_pair(NO_PIECE_TYPE, type_of(m) == PIECE_DEMOTION || is_path_demotion(m) ? 3 : 0);
+        };
+        for (Bitboard sources = pos.pieces(Us, pt); sources;)
+        {
+            Square from = pop_lsb(sources);
+            Bitboard destinations = pos.free_eagle_destinations(Us, pt, from, view);
+            while (destinations)
+            {
+                Square to = pop_lsb(destinations);
+                Move sweep = make_free_eagle(from, to);
+                ExtMove alternatives[PIECE_TYPE_CAPACITY + 2];
+                ExtMove* end = append_path_promotion(pos, alternatives, sweep, pt);
+                Bitboard victims = pos.path_capture_squares(sweep);
+                for (ExtMove* a = alternatives; a != end; ++a)
+                {
+                    bool duplicate = false;
+                    for (ExtMove* other = ordinaryBegin; other != ordinaryEnd; ++other)
+                    {
+                        Move m = *other;
+                        if (type_of(m) == DROP || type_of(m) == CASTLING || type_of(m) == MISSILE
+                            || type_of(m) == EN_PASSANT || is_gating(m) || from_sq(m) != from || to_sq(m) != to
+                            || promotion(m) != promotion(*a)) continue;
+                        Bitboard captures = is_multi_move(m) ? pos.path_capture_squares(m)
+                                          : pos.capture(m) ? square_bb(to) : Bitboard(0);
+                        if (captures != victims) continue;
+                        if (!is_multi_move(m)) duplicate = true;
+                        else
+                        {
+                            Square first[MAX_PATH_SQUARES], second[MAX_PATH_SQUARES];
+                            int n = pos.move_path(m, first), count = pos.move_path(sweep, second);
+                            duplicate = n == count && std::equal(first, first + n, second);
+                        }
+                        if (duplicate) break;
+                    }
+                    if (!duplicate) *list++ = Move(*a);
+                }
+            }
+        }
+    }
+    return list;
+  }
+
   // Area routes end at the first capture. Vacated squares (including the
   // origin) may be revisited; the full route, rather than its endpoint, is kept.
   template<Color Us>
@@ -848,6 +904,10 @@ namespace {
         if (pos.variant()->tenjikuTripleStepPieceTypes)
             moveList = generate_area_moves<Us>(pos, moveList, ordinaryBegin, moveList);
 
+    if constexpr (Type == NON_EVASIONS)
+        if (pos.variant()->hasFreeEagle)
+            moveList = generate_free_eagle_moves<Us>(pos, moveList, ordinaryBegin, moveList);
+
     return moveList;
   }
 
@@ -861,7 +921,7 @@ namespace {
   ExtMove* apply_capture_transformations(const Position& pos, ExtMove* begin, ExtMove* end) {
     ExtMove* out = begin;
     ExtMove* extra = end;
-    // Current explicit routes directly capture at most three distinct victims.
+    // Explicit routes directly capture at most five distinct victims.
     // Compact originals while appending extra choices beyond the original list.
     for (ExtMove* cur = begin; cur != end; ++cur)
     {

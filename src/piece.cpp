@@ -164,13 +164,33 @@ namespace {
               prelimDirections.push_back(std::string(2, c));
           }
           // Move atom
-          else if (leaperAtoms.find(c) != leaperAtoms.end() || riderAtoms.find(c) != riderAtoms.end())
+          else if (c == '(' || leaperAtoms.find(c) != leaperAtoms.end() || riderAtoms.find(c) != riderAtoms.end())
           {
+              bool coordinate = c == '(';
+              std::vector<std::pair<int, int>> coordinateAtoms;
+              if (coordinate)
+              {
+                  unsigned major = 0, minor = 0;
+                  bool valid = i + 1 < betza.size() && isdigit(betza[i + 1]);
+                  if (valid) major = number(i, 0);
+                  valid = valid && i + 1 < betza.size() && betza[i + 1] == ',';
+                  if (valid) ++i;
+                  valid = valid && i + 1 < betza.size() && isdigit(betza[i + 1]);
+                  if (valid) minor = number(i, 0);
+                  valid = valid && i + 1 < betza.size() && betza[i + 1] == ')' && (major || minor);
+                  if (!valid || !p->error.empty())
+                  { p->error = "Expected a nonzero coordinate atom (m,n) with unsigned integer components"; break; }
+                  ++i;
+                  if (hopper || lame || skipped || (i + 1 < betza.size() && isdigit(betza[i + 1])))
+                  { p->error = "Coordinate atoms currently support leaping, directional and modality modifiers only"; break; }
+                  coordinateAtoms.emplace_back(std::max(major, minor), std::min(major, minor));
+              }
               if (skipped && (riderAtoms.find(c) == riderAtoms.end() || hopper || lame))
                   p->error = "j requires an R, B or Q ray without p, g or n";
               if (countedSyntax && std::string("RBQ").find(c) == std::string::npos)
                   p->error = "Counted p requires an R, B or Q ray";
-              const auto& atoms = riderAtoms.find(c) != riderAtoms.end() ? riderAtoms.find(c)->second
+              const auto& atoms = coordinate ? coordinateAtoms
+                               : riderAtoms.find(c) != riderAtoms.end() ? riderAtoms.find(c)->second
                                                                          : leaperAtoms.find(c)->second;
               // Check for rider
               if (riderAtoms.find(c) != riderAtoms.end())
@@ -223,22 +243,26 @@ namespace {
                       auto has_dir = [&](std::string s) {
                         return std::find(directions.begin(), directions.end(), s) != directions.end();
                       };
+                      auto add_direction = [&](int rank, int file) {
+                          if (coordinate) p->coordinate[initial][modality].push_back({rank, file});
+                          else v[Direction(rank * FILE_NB + file)] = distance;
+                      };
                       if (directions.size() == 0 || has_dir("ff") || has_dir("vv") || has_dir("rf") || has_dir("rv") || has_dir("fh") || has_dir("rh") || has_dir("hr"))
-                          v[Direction(atom.first * FILE_NB + atom.second)] = distance;
+                          add_direction(atom.first, atom.second);
                       if (directions.size() == 0 || has_dir("bb") || has_dir("vv") || has_dir("lb") || has_dir("lv") || has_dir("bh") || has_dir("lh") || has_dir("hr"))
-                          v[Direction(-atom.first * FILE_NB - atom.second)] = distance;
+                          add_direction(-atom.first, -atom.second);
                       if (directions.size() == 0 || has_dir("rr") || has_dir("ss") || has_dir("br") || has_dir("bs") || has_dir("bh") || has_dir("rh") || has_dir("hr"))
-                          v[Direction(-atom.second * FILE_NB + atom.first)] = distance;
+                          add_direction(-atom.second, atom.first);
                       if (directions.size() == 0 || has_dir("ll") || has_dir("ss") || has_dir("fl") || has_dir("fs") || has_dir("fh") || has_dir("lh") || has_dir("hr"))
-                          v[Direction(atom.second * FILE_NB - atom.first)] = distance;
+                          add_direction(atom.second, -atom.first);
                       if (directions.size() == 0 || has_dir("rr") || has_dir("ss") || has_dir("fr") || has_dir("fs") || has_dir("fh") || has_dir("rh") || has_dir("hl"))
-                          v[Direction(atom.second * FILE_NB + atom.first)] = distance;
+                          add_direction(atom.second, atom.first);
                       if (directions.size() == 0 || has_dir("ll") || has_dir("ss") || has_dir("bl") || has_dir("bs") || has_dir("bh") || has_dir("lh") || has_dir("hl"))
-                          v[Direction(-atom.second * FILE_NB - atom.first)] = distance;
+                          add_direction(-atom.second, -atom.first);
                       if (directions.size() == 0 || has_dir("bb") || has_dir("vv") || has_dir("rb") || has_dir("rv") || has_dir("bh") || has_dir("rh") || has_dir("hl"))
-                          v[Direction(-atom.first * FILE_NB + atom.second)] = distance;
+                          add_direction(-atom.first, atom.second);
                       if (directions.size() == 0 || has_dir("ff") || has_dir("vv") || has_dir("lf") || has_dir("lv") || has_dir("fh") || has_dir("lh") || has_dir("hl"))
-                          v[Direction(atom.first * FILE_NB - atom.second)] = distance;
+                          add_direction(atom.first, -atom.second);
                       if ((skipped || counted) && p->error.empty())
                       {
                           uint8_t mask = 0;
@@ -287,6 +311,8 @@ namespace {
               hopperCounts = uint64_t(1) << 1;
               countedSyntax = false;
           }
+          else if (c == ')' || c == ',')
+              p->error = "Unexpected coordinate atom delimiter";
           else if ((skipped || countedSyntax) && !isspace(c))
               p->error = "Invalid modifier in skipped ray";
       }
@@ -312,6 +338,13 @@ bool skip_ray_syntax(const std::string& betza, std::string& error) {
           found |= !p->skipped[initial][mode].empty();
   delete p;
   return found;
+}
+
+void coordinate_atom_syntax(const std::string& betza, std::string& error) {
+  if (betza.find_first_of("(),") == std::string::npos) return;
+  const PieceInfo* p = from_betza(betza, "coordinateAtom");
+  error = p->error;
+  delete p;
 }
 
 bool range_jump_directions(const std::string& betza, uint8_t& directions) {

@@ -1366,6 +1366,14 @@ constexpr Move make_double_move(Square from, Square intermediate, Square to) {
   return Move((MoveStorage(intermediate) << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + MoveStorage(DOUBLE_MOVE) + (MoveStorage(from) << SQUARE_BITS) + MoveStorage(to));
 }
 
+// A normal double move never has its first landing on its origin. Reserve that
+// payload for the deterministic Free Eagle sweep; the ray comes from from/to.
+inline bool is_free_eagle_move(Move m) {
+  return is_double_move(m) && double_move_sq(m) == from_sq(m) && from_sq(m) != to_sq(m);
+}
+constexpr Move make_free_eagle(Square from, Square to) { return make_double_move(from, from, to); }
+constexpr int MAX_PATH_SQUARES = 5; // Four prefix squares and an optional tail.
+
 // Four explicit squares; promotion data follows the two intermediate squares.
 // These routes require a wide-move build. Ordinary 8x8 builds keep 32-bit moves.
 constexpr Move make_triple_move(Square from, Square first, Square second, Square to) {

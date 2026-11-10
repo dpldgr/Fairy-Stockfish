@@ -2761,6 +2761,7 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
         PieceType movePt = pt == KING ? kingType : pt;
         Bitboard targets = potential(movePt, from);
         if (tenjikuTripleStepPieceTypes & pt) targets |= PseudoAttacks[c][KING][from];
+        if (taikyokuFreeEagleMultiCapturePieces & pt) targets |= free_eagle_potential(c, pt, from, walls);
         if (rangeJump[pt].geometry) targets |= range_jump_potential(c, pt, from, walls);
         if (doubleStepRegion[c] & from)
         {
@@ -2849,6 +2850,25 @@ Bitboard Variant::promotion_immobility_mask(Color c, PieceType pt, Bitboard wall
             immobile |= from;
     }
     return immobile;
+}
+
+Bitboard Variant::free_eagle_potential(Color c, PieceType pt, Square from, Bitboard walls) const {
+    constexpr int df[] = {0,1,1,1,0,-1,-1,-1}, dr[] = {1,1,0,-1,-1,-1,0,1};
+    Bitboard area = board_size_bb(maxFile, maxRank) & ~walls;
+    if (mobilityRegion[c][pt]) area &= mobilityRegion[c][pt];
+    Bitboard result = 0;
+    for (int d = 0; d < 8; ++d)
+    {
+        int prefix = df[d] && dr[d] == (c == WHITE ? 1 : -1) ? 4 : 3;
+        int f = file_of(from), r = rank_of(from), i = 0;
+        for (; i < prefix; ++i)
+        {
+            f += df[d]; r += dr[d];
+            if (f < 0 || f > maxFile || r < 0 || r > maxRank || !(area & make_square(File(f), Rank(r)))) break;
+        }
+        if (i == prefix) result |= make_square(File(f), Rank(r));
+    }
+    return result;
 }
 
 void Variant::resolve_promotion_rules() {
@@ -3104,6 +3124,9 @@ Variant* Variant::conclude() {
         if (counted_hopper_syntax(customPiece[movement - CUSTOM_PIECES], countedError))
         { hasCountedHoppers = true; countedHopperTypes |= pt; }
         if (!countedError.empty()) error = countedError;
+        std::string coordinateError;
+        coordinate_atom_syntax(customPiece[movement - CUSTOM_PIECES], coordinateError);
+        if (!coordinateError.empty()) error = coordinateError;
         if (!error.empty())
         {
             skipRayConfigurationValid = false;
@@ -3178,7 +3201,9 @@ Variant* Variant::conclude() {
     }
     hasBurn = bool(burnActivePieceTypes || burnPassivePieceTypes || burnOnPromotePieces);
     hasMissile = bool(missileEffectPieces & pieceTypes);
-    hasArrivalEffects = hasBurn || hasMissile || hasRangeJumpCaptures;
+    taikyokuFreeEagleMultiCapturePieces &= pieceTypes;
+    hasFreeEagle = bool(taikyokuFreeEagleMultiCapturePieces);
+    hasArrivalEffects = hasBurn || hasMissile || hasRangeJumpCaptures || hasFreeEagle;
     for (PieceSet ps = missileEffectPieces & pieceTypes; ps;)
     {
         PieceType pt = pop_lsb(ps);
@@ -3190,7 +3215,7 @@ Variant* Variant::conclude() {
         }
     }
     hasFreeze = bool(freezeEffectPieces & pieceTypes);
-    hasTypedAttacks = hasRangeJump || hasFreeze || hasSkippedRays || hasCountedHoppers || hasLionMoves || bool(burnOnPromotePieces) || hasContagiousCaptures;
+    hasTypedAttacks = hasRangeJump || hasFreeze || hasSkippedRays || hasCountedHoppers || hasLionMoves || bool(burnOnPromotePieces) || hasContagiousCaptures || hasFreeEagle;
     freezeEmitterTypes.clear(); freezeImmuneTypes.clear();
     for (PieceSet ps = freezeEffectPieces & pieceTypes; ps;) freezeEmitterTypes.push_back(pop_lsb(ps));
     for (PieceSet ps = freezeImmunePieces & pieceTypes; ps;) freezeImmuneTypes.push_back(pop_lsb(ps));
@@ -3474,6 +3499,11 @@ void VariantMap::add(std::string s, Variant* v, bool configured) {
       if (v->hasContagiousCaptures && (v->gating || v->seirawanGating || v->wallingRule || v->flipEnclosedPieces))
       {
           std::cerr << "transformOnCapturePieces - Unsupported combination with gating, wall placement or enclosure rules: " << s << std::endl;
+          delete v;
+          return;
+      }
+      if (!v->freeEagleConfigurationValid)
+      {
           delete v;
           return;
       }

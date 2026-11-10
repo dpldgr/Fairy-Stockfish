@@ -1293,7 +1293,7 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
 
   if (var->hasFreeze) sliders &= ~frozen_pieces(c);
   Bitboard jumpBlockers = 0, jumpPinners = 0;
-  if (var->hasRangeJumpCaptures)
+  if (var->hasRangeJumpCaptures || var->hasFreeEagle)
   {
       // Clearing can expose a royal even when the removed blocker lies beyond
       // it (opening a landing square). This rare rule needs the full overlay.
@@ -1660,7 +1660,7 @@ PieceSet Position::contagious_capture_types(Color c, PieceType pt, const Square*
 PieceSet Position::contagious_capture_types(Move m) const {
     if (!var->hasContagiousCaptures || type_of(m) == DROP || type_of(m) == CASTLING || type_of(m) == MISSILE)
         return NO_PIECE_SET;
-    Square route[3];
+    Square route[MAX_PATH_SQUARES];
     int n;
     if (is_multi_move(m)) n = move_path(m, route);
     else { route[0] = type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m); n = 1; }
@@ -1752,6 +1752,25 @@ AttackView Position::move_attack_view(Move m) const {
     return view;
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+static Bitboard free_eagle_attackers_to(const Position& pos, Square target, Color c, const AttackView& view) {
+    Bitboard result = 0;
+    for (PieceSet types = pos.variant()->taikyokuFreeEagleMultiCapturePieces; types;)
+    {
+        PieceType pt = pop_lsb(types);
+        for (Bitboard sources = view.pieces(c, pt) & ~view.frozen_pieces(c); sources;)
+        {
+            Square from = pop_lsb(sources);
+            Bitboard swept = 0;
+            Bitboard destinations = pos.free_eagle_destinations(c, pt, from, view, target, &swept);
+            if ((destinations | swept) & target) result |= from;
+        }
+    }
+    return result;
+}
+
 Bitboard Position::attackers_to_view(Square target, Color c, const AttackView& view) const {
     RangeJumpContext range(view);
     Bitboard result = 0, cannons = view.pieces(JANGGI_CANNON);
@@ -1813,6 +1832,7 @@ Bitboard Position::attackers_to_view(Square target, Color c, const AttackView& v
                 if (burn_attacks_square(c, pt, from, target, view.occupied, &view)) result |= from;
             }
     }
+    if (var->hasFreeEagle) result |= free_eagle_attackers_to(*this, target, c, view);
     if (var->flyingGeneral && victim && type_of(victim) == KING)
         result |= attacks_bb<ROOK>(target, view.occupied) & (view.pieces(c, KING) & ~view.frozen_pieces(c));
     return result;
@@ -1850,6 +1870,73 @@ size_t Position::area_move_capacity() const {
         extra += size_t(count(sideToMove, pt)) * 584 * (choices + 2);
     }
     return extra;
+}
+
+int Position::free_eagle_path(Move m, Square* squares) const {
+    Square from = from_sq(m), to = to_sq(m);
+    int df = (file_of(to) > file_of(from)) - (file_of(to) < file_of(from));
+    int dr = (rank_of(to) > rank_of(from)) - (rank_of(to) < rank_of(from));
+    Color mover = empty(from) && st->move == m ? ~sideToMove : sideToMove;
+    int prefix = df && dr == (mover == WHITE ? 1 : -1) ? 4 : 3;
+    for (int i = 1; i <= prefix; ++i)
+        squares[i - 1] = make_square(File(file_of(from) + df * i), Rank(rank_of(from) + dr * i));
+    if (squares[prefix - 1] == to) return prefix;
+    squares[prefix] = to;
+    return prefix + 1;
+}
+
+size_t Position::free_eagle_move_capacity() const {
+    size_t extra = 0;
+    for (PieceSet types = var->taikyokuFreeEagleMultiCapturePieces; types;)
+    {
+        PieceType pt = pop_lsb(types);
+        int choices = (promotion_pawn_types(sideToMove) & pt) ? popcount(promotion_piece_types(sideToMove)) : 0;
+        extra += size_t(count(sideToMove, pt)) * 8 * std::max(int(FILE_NB), int(RANK_NB)) * (choices + 2);
+    }
+    return extra;
+}
+
+// Geometry of the dedicated Taikyoku sweep. Prefix steps are compulsory, and
+// their victims are genuine captures; the tail is an ordinary slide.
+Bitboard Position::free_eagle_destinations(Color c, PieceType pt, Square from, const AttackView& view,
+                                          Square defended, Bitboard* swept) const {
+    if (var->hasFreeze && (view.frozen_pieces(c) & from)) return 0;
+    constexpr int df[] = {0,1,1,1,0,-1,-1,-1}, dr[] = {1,1,0,-1,-1,-1,0,1};
+    Bitboard region = view.board_bb(c, pt);
+    Bitboard friends = view.pieces(c) & ~square_bb(from);
+    if (defended != SQ_NONE) friends &= ~square_bb(defended);
+    Bitboard prohibited = range_jump_immune(c, pt, view);
+    Bitboard result = 0;
+    for (int d = 0; d < 8; ++d)
+    {
+        int prefix = df[d] && dr[d] == (c == WHITE ? 1 : -1) ? 4 : 3;
+        Bitboard crossed = 0;
+        int f = file_of(from), r = rank_of(from);
+        bool valid = true;
+        for (int i = 0; i < prefix; ++i)
+        {
+            f += df[d]; r += dr[d];
+            if (f < 0 || f > max_file() || r < 0 || r > max_rank()) { valid = false; break; }
+            Square s = make_square(File(f), Rank(r));
+            if (!(region & s) || ((friends | prohibited | view.walls) & s)) { valid = false; break; }
+            crossed |= s;
+        }
+        if (!valid) continue;
+        if (swept) *swept |= crossed;
+        result |= make_square(File(f), Rank(r));
+        // Occupancy in the prefix was consumed, including its final square.
+        // Only the first occupant beyond it can be a terminal capture.
+        while (true)
+        {
+            f += df[d]; r += dr[d];
+            if (f < 0 || f > max_file() || r < 0 || r > max_rank()) break;
+            Square s = make_square(File(f), Rank(r));
+            if ((friends | view.walls) & s) break;
+            if ((region & s) && !(prohibited & s)) result |= s;
+            if (view.occupied & s) break;
+        }
+    }
+    return result;
 }
 
 Bitboard Position::area_attack_targets(Color c, PieceType pt, Square from, Bitboard occupied, Square defended, const AttackView* view) const {
@@ -1989,6 +2076,62 @@ Value Position::capture_value(Move m) const {
 
 // Burning threatens a square only through a complete movement ending beside
 // it. Passive burners can prevent that movement from producing an active burn.
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+static bool free_eagle_burn_attack(const Position& pos, Color c, PieceType pt, Square from, Square target,
+                                   Bitboard occupied, const AttackView* view) {
+    const Variant* v = pos.variant();
+    AttackView actual(pos);
+    if (!view)
+        for (Bitboard removed = actual.pieces(WHITE) | actual.pieces(BLACK); removed;)
+        {
+            Square s = pop_lsb(removed);
+            if (!(occupied & s)) actual.erase(s);
+        }
+    const AttackView& geometry = view ? *view : actual;
+    Bitboard passive = 0;
+    if (!(v->burnImmunePieces & pt))
+        for (PieceSet types = v->burnPassivePieceTypes; types;)
+            passive |= geometry.pieces(~c, pop_lsb(types));
+    Bitboard targets = pos.free_eagle_destinations(c, pt, from, geometry, target) & attacks_bb<KING>(target);
+    while (targets)
+    {
+        Square to = pop_lsb(targets), route[MAX_PATH_SQUARES];
+        int df = (file_of(to) > file_of(from)) - (file_of(to) < file_of(from));
+        int dr = (rank_of(to) > rank_of(from)) - (rank_of(to) < rank_of(from));
+        int prefix = df && dr == (c == WHITE ? 1 : -1) ? 4 : 3;
+        Bitboard captures = 0;
+        for (int i = 1; i <= prefix; ++i)
+        {
+            route[i - 1] = make_square(File(file_of(from) + i * df), Rank(rank_of(from) + i * dr));
+            captures |= route[i - 1];
+        }
+        int n = prefix;
+        if (route[n - 1] != to) { route[n++] = to; captures |= to; }
+        captures &= geometry.pieces(~c);
+        if (attacks_bb<KING>(to) & passive & ~captures) continue;
+        if (v->burnActivePieceTypes & pt) return true;
+        if (v->hasContagiousCaptures)
+        {
+            PieceSet replacements = pos.contagious_capture_types(c, pt, route, n, &geometry);
+            if (replacements)
+            {
+                while (replacements)
+                {
+                    PieceType type = pop_lsb(replacements);
+                    if ((v->burnOnPromotePieces & pt) && (v->burnActivePieceTypes & type)
+                        && (!pos.promotion_limit(type) || pt == type
+                            || popcount(geometry.pieces(c, type)) < pos.promotion_limit(type))) return true;
+                }
+                continue;
+            }
+        }
+        if (pos.promotion_burn_possible(c, pt, from, to, captures, &geometry)) return true;
+    }
+    return false;
+}
+
 bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square target, Bitboard occupied, const AttackView* view) const {
     if (!((var->burnActivePieceTypes | var->burnOnPromotePieces) & pt)) return false;
     Piece victim = view ? view->piece_on(target) : piece_on(target);
@@ -2081,6 +2224,8 @@ bool Position::burn_attacks_square(Color c, PieceType pt, Square from, Square ta
         }
     }
     while (ordinary) { Square to = pop_lsb(ordinary); landing(to, square_bb(to)); }
+    if (var->hasFreeEagle && (var->taikyokuFreeEagleMultiCapturePieces & pt))
+        result |= free_eagle_burn_attack(*this, c, pt, from, target, occupied, view);
     auto path = [&](Move m) {
         Square route[3]; int n = move_path(m, route);
         Bitboard visited = 0;
@@ -2417,6 +2562,8 @@ bool Position::legal(Move m) const {
       && !((var->hasRangeJump && var->rangeJump[type_of(moved_piece(m))].geometry)
             && (var->range_jump_potential(us, type_of(moved_piece(m)), to, st->wallSquares)
                 & board_bb(us, type_of(moved_piece(m)))))
+      && !((var->taikyokuFreeEagleMultiCapturePieces & type_of(moved_piece(m)))
+            && var->free_eagle_potential(us, type_of(moved_piece(m)), to, st->wallSquares))
       && !(var->hasBurn && (burn_squares(m) & to)))
       return false;
 
@@ -2827,6 +2974,8 @@ bool Position::trading_rule_legal(Move m) const {
       Square secondCaptureSquare = SQ_NONE;
       PieceType thirdCapture = NO_PIECE_TYPE;
       Square thirdCaptureSquare = SQ_NONE;
+      PieceType fourthCapture = NO_PIECE_TYPE, fifthCapture = NO_PIECE_TYPE;
+      Square fourthCaptureSquare = SQ_NONE, fifthCaptureSquare = SQ_NONE;
       bool doubleMove = false;
       bool finalAdjacent = false;
 
@@ -2837,6 +2986,8 @@ bool Position::trading_rule_legal(Move m) const {
           if (secondCapture != NO_PIECE_TYPE)
               captured |= secondCapture;
           if (thirdCapture != NO_PIECE_TYPE) captured |= thirdCapture;
+          if (fourthCapture != NO_PIECE_TYPE) captured |= fourthCapture;
+          if (fifthCapture != NO_PIECE_TYPE) captured |= fifthCapture;
           return captured;
       }
 
@@ -2851,6 +3002,12 @@ bool Position::trading_rule_legal(Move m) const {
           if (thirdCapture != NO_PIECE_TYPE && (targets & thirdCapture)
               && !((allowCheckers & thirdCapture) && (checkingPieces & thirdCaptureSquare)))
               squares |= thirdCaptureSquare;
+          if (fourthCapture != NO_PIECE_TYPE && (targets & fourthCapture)
+              && !((allowCheckers & fourthCapture) && (checkingPieces & fourthCaptureSquare)))
+              squares |= fourthCaptureSquare;
+          if (fifthCapture != NO_PIECE_TYPE && (targets & fifthCapture)
+              && !((allowCheckers & fifthCapture) && (checkingPieces & fifthCaptureSquare)))
+              squares |= fifthCaptureSquare;
           return squares;
       }
   };
@@ -2859,9 +3016,9 @@ bool Position::trading_rule_legal(Move m) const {
   facts.doubleMove = is_multi_move(m);
   facts.finalAdjacent = bool(attacks_bb<KING>(from) & to);
 
-  if (type_of(m) == LION_DOG || is_triple_move(m))
+  if (type_of(m) == LION_DOG || is_triple_move(m) || is_free_eagle_move(m))
   {
-      Square path[3];
+      Square path[MAX_PATH_SQUARES];
       int n = move_path(m, path), capture = 0;
       Bitboard seen = 0;
       for (int i = 0; i < n; ++i)
@@ -2871,7 +3028,9 @@ bool Position::trading_rule_legal(Move m) const {
               PieceType pt = type_of(piece_on(path[i]));
               if (capture == 0) { facts.firstCapture = pt; facts.firstCaptureSquare = path[i]; }
               else if (capture == 1) { facts.secondCapture = pt; facts.secondCaptureSquare = path[i]; }
-              else { facts.thirdCapture = pt; facts.thirdCaptureSquare = path[i]; }
+              else if (capture == 2) { facts.thirdCapture = pt; facts.thirdCaptureSquare = path[i]; }
+              else if (capture == 3) { facts.fourthCapture = pt; facts.fourthCaptureSquare = path[i]; }
+              else { facts.fifthCapture = pt; facts.fifthCaptureSquare = path[i]; }
               ++capture;
           }
   }
@@ -2905,11 +3064,11 @@ bool Position::trading_rule_legal(Move m) const {
 
   Bitboard checkingPieces = checkers();
   auto category_for = [&](PieceSet targets) {
-      if (type_of(m) == LION_DOG || is_triple_move(m))
+      if (type_of(m) == LION_DOG || is_triple_move(m) || is_free_eagle_move(m))
       {
-          PieceType types[] = {facts.firstCapture, facts.secondCapture, facts.thirdCapture};
-          Square squares[] = {facts.firstCaptureSquare, facts.secondCaptureSquare, facts.thirdCaptureSquare};
-          for (int i = 2; i >= 0; --i)
+          PieceType types[] = {facts.firstCapture, facts.secondCapture, facts.thirdCapture, facts.fourthCapture, facts.fifthCapture};
+          Square squares[] = {facts.firstCaptureSquare, facts.secondCaptureSquare, facts.thirdCaptureSquare, facts.fourthCaptureSquare, facts.fifthCaptureSquare};
+          for (int i = 4; i >= 0; --i)
               if (types[i] && (targets & types[i])
                   && !((var->tradingRuleAllowCheckers & types[i]) && (checkingPieces & squares[i])))
               {
@@ -3384,7 +3543,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   }
   Square lionCapsq = SQ_NONE, secondLionCapsq = SQ_NONE;
   Piece lionCaptured = NO_PIECE, secondLionCaptured = NO_PIECE;
-  if (is_multi_move(m))
+  if (is_multi_move(m) && !is_free_eagle_move(m))
   {
       Square path[3];
       int n = move_path(m, path);
@@ -3398,8 +3557,19 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       if (to == lionCapsq || to == secondLionCapsq) captured = NO_PIECE;
   }
   Bitboard burned = var->hasArrivalEffects ? removal_squares(m) : Bitboard(0);
-  st->burnedPieces = burned;
-  if (burned) st->promotedBycatch = st->demotedBycatch = 0;
+  Bitboard sweepCaptures = is_free_eagle_move(m) ? allPathCaptures & ~square_bb(to) : Bitboard(0);
+  Bitboard sweepCounterstrike = 0;
+  if (sweepCaptures && var->hasTradingCounterstrike)
+      for (Bitboard b = sweepCaptures; b;)
+      {
+          Square s = pop_lsb(b);
+          PieceType pt = type_of(piece_on(s));
+          if ((var->tradingCounterstrikeTargets & pt)
+              && !((var->tradingRuleAllowCheckers & pt) && (st->previous->checkersBB & s)))
+              sweepCounterstrike |= s;
+      }
+  st->burnedPieces = burned | sweepCaptures;
+  if (st->burnedPieces) st->promotedBycatch = st->demotedBycatch = 0;
   bool moverBurned = bool(burned & (type_of(m) == CASTLING
                            ? make_square(to > from ? castling_kingside_file() : castling_queenside_file(), castling_rank(us)) : to));
   st->lionSecondCaptureSquare = secondLionCapsq;
@@ -3704,12 +3874,13 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   // burn for selected promotion moves. A dead mover cannot
   // burn back or promote. Burn victims never enter a hand and never trigger
   // capture-based promotion; those policies were decided from direct captures.
-  for (Bitboard b = burned; b;)
+  for (Bitboard b = burned | sweepCaptures; b;)
   {
       Square sq = pop_lsb(b);
       Piece victim = piece_on(sq);
       assert(victim);
       Piece unpromoted = unpromoted_piece_on(sq);
+      bool promoted = is_promoted(sq);
       st->unpromotedBycatch[sq] = unpromoted ? unpromoted : victim;
       if (unpromoted) st->demotedBycatch |= sq;
       else if (is_promoted(sq)) st->promotedBycatch |= sq;
@@ -3719,6 +3890,15 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       st->materialKey ^= Zobrist::psq[victim][pieceCount[victim]];
       if (type_of(victim) == PAWN) st->pawnKey ^= Zobrist::psq[victim][sq];
       else st->nonPawnMaterial[color_of(victim)] -= PieceValue[MG][victim];
+      if ((sweepCaptures & sq) && captures_to_hand())
+      {
+          Piece pieceToHand = !promoted || drop_loop() ? ~victim
+                             : unpromoted ? ~unpromoted
+                                          : make_piece(us, main_promotion_pawn_type(them));
+          add_to_hand(pieceToHand);
+          k ^= Zobrist::inHand[pieceToHand][count_in_hand(us, type_of(pieceToHand)) - 1]
+             ^ Zobrist::inHand[pieceToHand][count_in_hand(us, type_of(pieceToHand))];
+      }
       st->rule50 = 0;
       if (st->castlingRights & castlingRightsMask[sq])
       {
@@ -3885,6 +4065,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   st->tradingCounterstrikeSquares = 0;
   if (var->hasTradingCounterstrike)
   {
+      st->tradingCounterstrikeSquares |= sweepCounterstrike;
       Bitboard previousCheckers = st->previous->checkersBB;
       Square capturedSquare = type_of(m) == EN_PASSANT ? st->captureSquare : to;
       if (captured && (var->tradingCounterstrikeTargets & type_of(captured))
@@ -4160,6 +4341,14 @@ void Position::undo_move(Move m) {
       bool mapped = bool(st->demotedBycatch & sq);
       Piece victim = mapped ? make_piece(color_of(unpromoted), promoted_piece_type(type_of(unpromoted))) : unpromoted;
       put_piece(victim, sq, bool((st->promotedBycatch | st->demotedBycatch) & sq), mapped ? unpromoted : NO_PIECE);
+      if (is_free_eagle_move(m) && (between_bb(from, to) & ~square_bb(to) & sq) && captures_to_hand())
+      {
+          bool promoted = bool((st->promotedBycatch | st->demotedBycatch) & sq);
+          Piece pieceInHand = !promoted || drop_loop() ? ~victim
+                             : mapped ? ~unpromoted
+                                      : make_piece(us, main_promotion_pawn_type(color_of(victim)));
+          remove_from_hand(pieceInHand);
+      }
   }
   bool moverBurned = bool(st->burnedPieces & to);
   pc = piece_on(to);
