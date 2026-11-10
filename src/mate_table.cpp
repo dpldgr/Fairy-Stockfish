@@ -13,6 +13,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <iomanip>
 #include <map>
 #include <new>
 #include <sstream>
@@ -160,6 +161,10 @@ struct Table {
     return 2 * ((wk * n + x) * n + bk) + turn;
   }
 
+  uint64_t distinct_states() const {
+    return 2 * uint64_t(n) * (n - 1) * (n - 2);
+  }
+
   Bitboard quiet(int wk, int x, int bk) const {
     Bitboard occupied = square_bb(squares[wk]) | squares[x] | squares[bk];
     return moves_bb(strong, piece, squares[x], occupied) & pieceRegion & ~occupied;
@@ -299,12 +304,71 @@ struct Table {
     return true;
   }
 
-  void stats() const {
+  void formatted_stats() const {
+    // The applet groups both turns by the number of attacking moves: a win
+    // from the strong side's turn uses ceil(DTM/2), a weak-side loss floor(DTM/2).
+    std::map<uint32_t, std::array<uint64_t, 2>> rows;
+    rows[0] = {};
+    for (const auto& item : histogram)
+    {
+        if (item.second[0]) rows[(item.first + 1) / 2][0] += item.second[0];
+        if (item.second[3]) rows[item.first / 2][1] += item.second[3];
+    }
+
+    // Match the applet's denominator: all distinct placements, including
+    // adjacent kings and other immediate king captures. Raw legal WDL summaries
+    // deliberately exclude those placements.
+    const uint64_t placements = distinct_states() / 2;
+    const uint64_t kingCaptures = placements - legal[STRONG];
+    auto percent = [&](uint64_t numerator) {
+        uint64_t tenths = (1000 * numerator + placements / 2) / placements;
+        return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10) + "%";
+    };
+    const std::string matePercent = percent(wins[STRONG] + kingCaptures);
+    const std::string matedPercent = percent(losses[WEAK]);
+    size_t first = std::max(size_t(6), std::to_string(kingCaptures).size()), second = 6, third = 3;
+    for (const auto& row : rows)
+    {
+        first = std::max(first, std::to_string(row.second[0]).size());
+        second = std::max(second, std::to_string(row.second[1]).size());
+        third = std::max(third, std::to_string(row.first).size());
+    }
+    auto line = [&](const std::string& a, const std::string& b, const std::string& c) {
+        std::ostringstream out;
+        out << "| " << std::setw(int(first)) << a << " | " << std::setw(int(second)) << b
+            << " | " << std::setw(int(third)) << c << " |";
+        message(out.str());
+    };
+    const std::string border = "+" + std::string(first + 2, '-') + "+" + std::string(second + 2, '-')
+                             + "+" + std::string(third + 2, '-') + "+";
+    message("Statistics");
+    message(border);
+    line("mate", "mated", "in");
+    message(border);
+    for (const auto& row : rows)
+        line(row.first == 0 && row.second[0] == 0 ? "" : std::to_string(row.second[0]),
+             std::to_string(row.second[1]), std::to_string(row.first));
+    message(border);
+    std::ostringstream captures;
+    captures << "| " << std::setw(int(first)) << kingCaptures << " | "
+             << std::setw(int(second + third + 3)) << "King capt" << " |";
+    message(captures.str());
+    line(matePercent, matedPercent, "tot");
+    message(border);
+    message("Done in " + std::to_string(elapsed) + " ms");
+  }
+
+  void stats(bool raw = false) const {
     message("variant " + variantName + " piece " + symbol + " color " + color_name(strong)
           + " goal checkmate files " + std::to_string(int(variant->maxFile) + 1)
           + " ranks " + std::to_string(int(variant->maxRank) + 1)
           + " stalemate " + (variant->stalemateValue == VALUE_DRAW ? "draw" : variant->stalemateValue < VALUE_DRAW ? "loss" : "win")
           + " nmove ignored castling-rights none");
+    if (!raw)
+    {
+        formatted_stats();
+        return;
+    }
     for (int turn : {STRONG, WEAK})
         message("summary stm " + std::string(color_name(turn == STRONG ? strong : ~strong))
               + " legal " + std::to_string(legal[turn]) + " wins " + std::to_string(wins[turn])
@@ -314,6 +378,12 @@ struct Table {
         message("dtm plies " + std::to_string(row.first)
               + " strong_wins " + std::to_string(row.second[0]) + " strong_losses " + std::to_string(row.second[1])
               + " weak_wins " + std::to_string(row.second[2]) + " weak_losses " + std::to_string(row.second[3]));
+    message("diagnostics time " + std::to_string(elapsed)
+          + " index_slots " + std::to_string(count)
+          + " distinct_states " + std::to_string(distinct_states())
+          + " legal_states " + std::to_string(legal[STRONG] + legal[WEAK])
+          + " table_bytes " + std::to_string(uint64_t(count) * sizeof(Node))
+          + " signature " + std::to_string(signature));
   }
 
   void probe(const Position& pos) const {
@@ -386,9 +456,12 @@ void MateTable::command(std::istream& input, const Position& pos) {
   if (verb == "clear") { stop(); impl->table.reset(); message("status empty"); return; }
   if (verb == "stats" || verb == "probe")
   {
+      std::string format, extra;
+      if (verb == "stats" && (input >> format) && (format != "raw" || (input >> extra)))
+      { message("error usage: mate-table stats [raw]"); return; }
       if (impl->building.load(std::memory_order_acquire)) { message("status building"); return; }
       if (!impl->table || impl->table->variant != v) { message("error no table for selected variant"); return; }
-      if (verb == "stats") impl->table->stats(); else impl->table->probe(pos);
+      if (verb == "stats") impl->table->stats(format == "raw"); else impl->table->probe(pos);
       return;
   }
   std::string symbol, option;
@@ -439,10 +512,7 @@ void MateTable::command(std::istream& input, const Position& pos) {
       impl->table = std::move(table);
       impl->building.store(false, std::memory_order_release);
       impl->table->stats();
-      message("complete time " + std::to_string(impl->table->elapsed)
-            + " states " + std::to_string(impl->table->count)
-            + " table_bytes " + std::to_string(uint64_t(impl->table->count) * sizeof(Node))
-            + " signature " + std::to_string(impl->table->signature));
+      message("complete time " + std::to_string(impl->table->elapsed));
   });
 }
 

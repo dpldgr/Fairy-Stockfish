@@ -26,17 +26,55 @@ The default supporting army is White. To use Black's movement orientation:
 mate-table piece b color black
 ```
 
-Output includes legal positions, wins/draws/losses for each side to move,
-initial checkmates, maximum distance to termination, a DTM histogram, build
-time, table bytes and a deterministic WDL/DTM signature. **Distances are plies**;
-for example, a forced mate requiring 23 plies from the attacking side's turn
-needs 12 attacking moves. Counts exclude overlapping pieces, adjacent kings
-and positions where the nonmoving king is already in check. The applet's
-display also counts immediate king-capture placements, so its raw percentage
-denominator differs; its legal WDL/DTM results agree.
+Builds and `mate-table stats` print an aligned table and elapsed time, with
+every line prefixed by `info string mate-table`:
+
+```text
+Statistics
++--------+--------+-----+
+|   mate |  mated |  in |
++--------+--------+-----+
+|        |     14 |   0 |
+|     76 |     18 |   1 |
+...
+|     76 |    218 |  35 |
++--------+--------+-----+
+|  59844 |    King capt |
+| 100.0% |  80.7% | tot |
++--------+--------+-----+
+Done in 34 ms
+```
+
+This example is Metal Chess's Silver Bishop. `mate` counts strong-to-move
+winning positions; `mated` counts weak-to-move losing positions. `in` is the
+number of **attacking moves**, rather than plies. Initial checkmates appear
+in row zero. Row widths grow with the counts. The footer records the original
+build time, including when displaying a cached table.
+
+To match the applet exactly, `King capt` counts distinct three-piece placements
+with an immediately capturable nonmoving king, including adjacent kings. These
+are not legal engine positions. The `tot` row uses all `N*(N-1)*(N-2)` distinct
+placements: `(mate + King capt)/placements` and `mated/placements`. Therefore
+these percentages differ from percentages among legal positions. The detailed
+legal WDL summaries in `mate-table stats raw` exclude those positions.
+
+`mate-table stats raw` retains the legal WDL summaries and complete per-ply
+histogram, including strong-side losses and weak-side wins under nonstandard
+stalemate outcomes. **Probe DTM, raw summary maxima and raw histogram distances
+remain plies**; for example, 23 plies from the attacking side's turn needs
+12 attacking moves.
+
+Allocation counts, memory use and the deterministic WDL/DTM signature appear
+only in the raw diagnostics. These distinguish `index_slots` (the allocated
+`2*N^3` dense slots), `distinct_states` (`2*N*(N-1)*(N-2)`, without overlapping
+pieces), and `legal_states` (both legal side-to-move summaries combined). An
+8x8 Silver Bishop table has 524,288 slots, 499,968 distinct-square states and
+414,084 legal states. None of these implementation counts appear in the normal
+statistics table or completion line.
 
 ```text
 mate-table stats
+mate-table stats raw
 position fen 7k/8/8/8/8/8/8/KR6 w - - 0 1
 mate-table probe
 mate-table clear

@@ -92,21 +92,56 @@ piece = x:K
         self.assertTrue(lines[-1].startswith(PREFIX + 'complete'), '\n'.join(lines))
         return lines
 
-    def compare(self, lines, reference, color='white', signature=True):
-        if signature:
-            self.assertEqual(re.search(r' signature (\d+)', lines[-1])[1], reference['signature'])
-        summaries = [s for s in lines if s.startswith(PREFIX + 'summary')]
-        self.assertEqual(len(summaries), 2)
-        for turn, line in enumerate(summaries):
-            stm = color if turn == 0 else ('black' if color == 'white' else 'white')
-            self.assertIn('stm ' + stm, line)
-            self.assertEqual(fields('legal ' + line.split(' legal ', 1)[1]), reference['summary'][turn])
-        histogram = {}
-        for line in lines:
-            if line.startswith(PREFIX + 'dtm '):
-                row = fields(line[len(PREFIX + 'dtm '):])
-                histogram[str(row['plies'])] = [row[k] for k in ('strong_wins', 'strong_losses', 'weak_wins', 'weak_losses')]
-        self.assertEqual(histogram, reference['histogram'])
+    def compare(self, lines, reference, color='white', signature=True, raw=False):
+        if raw:
+            diagnostics = [s for s in lines if s.startswith(PREFIX + 'diagnostics ')]
+            self.assertEqual(len(diagnostics), 1)
+            details = fields(diagnostics[0][len(PREFIX + 'diagnostics '):])
+            if signature:
+                self.assertEqual(str(details['signature']), reference['signature'])
+            self.assertEqual(details['index_slots'], 2 * 64**3)
+            self.assertEqual(details['distinct_states'], 2 * 64 * 63 * 62)
+            self.assertEqual(details['legal_states'], sum(row['legal'] for row in reference['summary']))
+            self.assertEqual(details['table_bytes'], 8 * details['index_slots'])
+            summaries = [s for s in lines if s.startswith(PREFIX + 'summary')]
+            self.assertEqual(len(summaries), 2)
+            for turn, line in enumerate(summaries):
+                stm = color if turn == 0 else ('black' if color == 'white' else 'white')
+                self.assertIn('stm ' + stm, line)
+                self.assertEqual(fields('legal ' + line.split(' legal ', 1)[1]), reference['summary'][turn])
+            histogram = {}
+            for line in lines:
+                if line.startswith(PREFIX + 'dtm '):
+                    row = fields(line[len(PREFIX + 'dtm '):])
+                    histogram[str(row['plies'])] = [row[k] for k in ('strong_wins', 'strong_losses', 'weak_wins', 'weak_losses')]
+            self.assertEqual(histogram, reference['histogram'])
+        else:
+            table = {'rows': []}
+            widths = set()
+            for line in lines:
+                if not line.startswith(PREFIX + '|'):
+                    continue
+                row = line[len(PREFIX):]
+                widths.add(len(row))
+                cells = [cell.strip() for cell in row.strip('|').split('|')]
+                if cells == ['mate', 'mated', 'in']:
+                    continue
+                if len(cells) == 2 and cells[1] == 'King capt':
+                    table['king_captures'] = int(cells[0])
+                elif cells[-1] == 'tot':
+                    table['percentages'] = cells[:2]
+                else:
+                    table['rows'].append([int(cells[0]) if cells[0] else None, int(cells[1]), int(cells[2])])
+            self.assertEqual(table, reference['applet_table'])
+            self.assertEqual(len(widths), 1, 'Table rows must align, including the spanning King-capture row')
+            self.assertTrue(any(s.startswith(PREFIX + 'Done in ') for s in lines))
+            self.assertFalse(any(s.startswith(PREFIX + 'dtm ') for s in lines))
+            self.assertFalse(any(s.startswith(PREFIX + 'summary ') for s in lines))
+            for detail in ('index_slots', 'distinct_states', 'legal_states', 'table_bytes', 'signature'):
+                self.assertFalse(any(detail in s for s in lines), 'Default display must not expose allocation diagnostics')
+
+    def raw_statistics(self, engine):
+        return [s for _, s in engine.ready('mate-table stats raw')]
 
     def probe(self, engine, position, moves=''):
         engine.send(f'position fen {position}' + (' moves ' + moves if moves else '') + '\nmate-table probe')
@@ -120,6 +155,7 @@ piece = x:K
                 with self.subTest(piece=piece):
                     reference = REFERENCE[piece]
                     self.compare(self.build(engine, piece), reference)
+                    self.compare(self.raw_statistics(engine), reference, raw=True)
                     for sample in reference['samples']:
                         position = fen(sample, piece)
                         line = self.probe(engine, position)
@@ -152,11 +188,24 @@ piece = x:K
             for piece, name in [('r', 'orthodoxR'), ('b', 'orthodoxB'), ('n', 'orthodoxN')]:
                 with self.subTest(piece=piece):
                     self.compare(self.build(engine, piece, api=True), REFERENCE[name])
+                    self.compare(self.raw_statistics(engine), REFERENCE[name], raw=True)
+
+    def test_formatted_and_raw_statistics(self):
+        with self.engine('metal-chess') as engine:
+            self.build(engine, 'b')
+            pretty = [s for _, s in engine.ready('mate-table stats')]
+            self.compare(pretty, REFERENCE['b'], signature=False)
+            raw = self.raw_statistics(engine)
+            self.compare(raw, REFERENCE['b'], raw=True)
+            self.assertFalse(any(s.startswith(PREFIX + 'Statistics') for s in raw))
+            engine.send('mate-table stats invalid')
+            engine.until(lambda s: s == PREFIX + 'error usage: mate-table stats [raw]')
 
     def test_black_orientation_and_multichar_symbols(self):
         with self.engine('metal-chess') as engine:
             for piece in ('r', 'b', 'n'):
                 self.compare(self.build(engine, piece, 'color black'), REFERENCE[piece], 'black', False)
+                self.compare(self.raw_statistics(engine), REFERENCE[piece], 'black', False, raw=True)
                 for sample in REFERENCE[piece]['samples'][::5]:
                     line = self.probe(engine, fen(sample, piece, 'black'))
                     self.assertIn('result ' + {2: 'draw', 3: 'win', 4: 'loss'}[sample['result']], line)
@@ -164,14 +213,16 @@ piece = x:K
                         self.assertIn('dtm_plies ' + str(sample['dtm']) + ' ', line)
         with self.engine('metal-alias') as engine:
             self.compare(self.build(engine, 'gr'), REFERENCE['r'])
+            self.compare(self.raw_statistics(engine), REFERENCE['r'], raw=True)
 
     def test_modality_and_stalemate(self):
         with self.engine('mate-quiet') as engine:
-            lines = self.build(engine, 'x')
-            for line in lines:
-                if 'summary' in line:
-                    self.assertIn(' wins 0 ', line)
-                    self.assertIn(' losses 0 ', line)
+            self.build(engine, 'x')
+            summaries = [s for s in self.raw_statistics(engine) if s.startswith(PREFIX + 'summary ')]
+            self.assertEqual(len(summaries), 2)
+            for line in summaries:
+                self.assertIn(' wins 0 ', line)
+                self.assertIn(' losses 0 ', line)
         with self.engine('mate-capture') as engine:
             self.build(engine, 'x')
             self.assertIn('result loss dtm_plies 0 bestmove 0000',
@@ -225,7 +276,7 @@ piece = x:K
                                     capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn(PREFIX + 'complete ', result.stdout)
-            self.assertIn('signature ' + REFERENCE['orthodoxR']['signature'], result.stdout)
+            self.compare(result.stdout.splitlines(), REFERENCE['orthodoxR'])
 
     @unittest.skipUnless(int(os.environ.get('BOARD_SIZE', '8')) >= 14, 'requires a 14x14-capable build')
     def test_larger_board_and_long_distance(self):
@@ -237,10 +288,13 @@ piece = x:K
             rest = [] if any(s.startswith(PREFIX + 'complete') for s in first) else [
                 s for _, s in engine.until(lambda s: s.startswith(PREFIX + 'complete'), timeout=120)]
             lines = first + rest
-            summaries = [fields('legal ' + s.split(' legal ', 1)[1]) for s in lines if ' summary ' in s]
+            self.assertFalse(any('index_slots' in s for s in lines))
+            raw = self.raw_statistics(engine)
+            summaries = [fields('legal ' + s.split(' legal ', 1)[1]) for s in raw if ' summary ' in s]
             self.assertEqual(summaries[0]['wins'], summaries[0]['legal'])
             self.assertEqual([s['max_dtm_plies'] for s in summaries], [123, 124])
-            self.assertIn('states 15059072 table_bytes 120472576', lines[-1])
+            diagnostics = next(s for s in raw if s.startswith(PREFIX + 'diagnostics '))
+            self.assertIn('index_slots 15059072 distinct_states 14829360 legal_states 14021280 table_bytes 120472576', diagnostics)
 
 
 if __name__ == '__main__':
