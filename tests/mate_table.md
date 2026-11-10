@@ -27,7 +27,7 @@ mate-table piece b color black
 ```
 
 Builds and `mate-table stats` print an aligned table and elapsed time, with
-every line prefixed by `info string mate-table`:
+every line prefixed by `info string mate-table` by default (`format info-table`):
 
 ```text
 Statistics
@@ -44,6 +44,35 @@ Statistics
 +--------+--------+-----+
 Done in 34 ms
 ```
+
+Select an output format for a build or a cached statistics display:
+
+```text
+mate-table piece b format info-table
+mate-table piece b format table
+mate-table piece b format info
+mate-table stats format info
+```
+
+- `info-table`: the existing aligned table with `info string mate-table` prefixes.
+- `table`: the same output without those prefixes, including build/completion lines.
+- `info`: prefixed fields instead of table decorations, one line per distance:
+
+```text
+info string mate-table mate 0 mated 14 in 0
+info string mate-table mate 76 mated 18 in 1
+...
+info string mate-table mate 76 mated 218 in 35
+info string mate-table king_captures 59844
+info string mate-table mate 100.0% mated 80.7% tot
+info string mate-table time 34
+```
+
+All formats include variant context. `info` also retains the prefixed building
+and completion messages. Formats apply to the current command only; omitted
+`format` always means `info-table`. `mate-table stats format ...` reuses the
+cached result and original elapsed time. The `raw` diagnostic view remains
+`mate-table stats raw`; it is separate from the three presentation formats.
 
 This example is Metal Chess's Silver Bishop. `mate` counts strong-to-move
 winning positions; `mated` counts weak-to-move losing positions. `in` is the

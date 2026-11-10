@@ -85,11 +85,12 @@ piece = x:K
         engine.ready('setoption name Use NNUE value false\nsetoption name UCI_Variant value ' + variant)
         return engine
 
-    def build(self, engine, piece, extra='', api=False):
+    def build(self, engine, piece, extra='', api=False, prefix=PREFIX):
         engine.send(('api ' if api else '') + f'mate-table build piece {piece} {extra}')
-        lines = [s for _, s in engine.until(lambda s: s.startswith(PREFIX + 'complete')
-                                          or s.startswith(PREFIX + 'error'), timeout=120)]
-        self.assertTrue(lines[-1].startswith(PREFIX + 'complete'), '\n'.join(lines))
+        lines = [s for _, s in engine.until(lambda s: s.startswith(prefix + 'complete')
+                                          or s.startswith(PREFIX + 'error')
+                                          or s.startswith(prefix + 'error'), timeout=120)]
+        self.assertTrue(lines[-1].startswith(prefix + 'complete'), '\n'.join(lines))
         return lines
 
     def compare(self, lines, reference, color='white', signature=True, raw=False):
@@ -199,7 +200,40 @@ piece = x:K
             self.compare(raw, REFERENCE['b'], raw=True)
             self.assertFalse(any(s.startswith(PREFIX + 'Statistics') for s in raw))
             engine.send('mate-table stats invalid')
-            engine.until(lambda s: s == PREFIX + 'error usage: mate-table stats [raw]')
+            engine.until(lambda s: s == PREFIX + 'error usage: mate-table stats [raw | format info|info-table|table]')
+
+    def test_output_formats(self):
+        reference = REFERENCE['b']
+        for format in ('info', 'info-table', 'table'):
+            prefix = '' if format == 'table' else PREFIX
+            with self.subTest(format=format), self.engine('metal-chess') as engine:
+                built = self.build(engine, 'b', 'format ' + format, prefix=prefix)
+                cached = [s for _, s in engine.ready('mate-table stats format ' + format) if s != 'readyok']
+                # Changing the view of a cached table must not rebuild it.
+                self.assertEqual(cached, built[1:-1])
+                self.assertTrue(all(s.startswith(prefix) for s in built))
+                if format == 'info':
+                    rows = [list(map(int, re.fullmatch(PREFIX + r'mate (\d+) mated (\d+) in (\d+)', s).groups()))
+                            for s in built if re.fullmatch(PREFIX + r'mate \d+ mated \d+ in \d+', s)]
+                    self.assertEqual(rows, [[mate or 0, mated, distance]
+                                            for mate, mated, distance in reference['applet_table']['rows']])
+                    self.assertIn(PREFIX + 'king_captures 59844', built)
+                    self.assertIn(PREFIX + 'mate 100.0% mated 80.7% tot', built)
+                    self.assertTrue(any(re.fullmatch(PREFIX + r'time \d+', s) for s in built))
+                    self.assertFalse(any('|' in s or 'Statistics' in s for s in built))
+                else:
+                    self.compare([PREFIX + s if not prefix else s for s in built], reference)
+                if format == 'table':
+                    self.assertFalse(any('info string mate-table' in s for s in built))
+                # Formats are per-command; the default stays backward compatible.
+                default = [s for _, s in engine.ready('mate-table stats')]
+                self.compare(default, reference)
+                self.compare(self.raw_statistics(engine), reference, raw=True)
+                for command in ('mate-table piece b format invalid', 'mate-table piece b format',
+                                'mate-table stats format', 'mate-table stats format invalid',
+                                'mate-table stats format table extra', 'mate-table stats raw format table'):
+                    engine.send(command)
+                    engine.until(lambda s: s.startswith(PREFIX + 'error '))
 
     def test_black_orientation_and_multichar_symbols(self):
         with self.engine('metal-chess') as engine:

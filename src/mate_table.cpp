@@ -39,6 +39,7 @@ namespace {
 // loss when every reply wins. Here both turns are explicit, with 32-bit DTM.
 enum Result : uint8_t { INVALID, UNKNOWN, DRAW, WIN, LOSS };
 enum Turn { STRONG, WEAK };
+enum class Format { INFO, INFO_TABLE, TABLE };
 
 struct Node {
   uint32_t distance = 0;
@@ -47,8 +48,16 @@ struct Node {
 };
 static_assert(sizeof(Node) == 8, "Unexpected mate-table node size");
 
-void message(const std::string& text) {
-  sync_cout << "info string mate-table " << text << sync_endl;
+void message(const std::string& text, Format format = Format::INFO_TABLE) {
+  sync_cout << (format == Format::TABLE ? "" : "info string mate-table ") << text << sync_endl;
+}
+
+bool parse_format(const std::string& text, Format& format) {
+  if (text == "info") format = Format::INFO;
+  else if (text == "info-table") format = Format::INFO_TABLE;
+  else if (text == "table") format = Format::TABLE;
+  else return false;
+  return true;
 }
 
 const char* color_name(Color c) { return c == WHITE ? "white" : "black"; }
@@ -304,7 +313,7 @@ struct Table {
     return true;
   }
 
-  void formatted_stats() const {
+  void formatted_stats(Format format) const {
     // The applet groups both turns by the number of attacking moves: a win
     // from the strong side's turn uses ceil(DTM/2), a weak-side loss floor(DTM/2).
     std::map<uint32_t, std::array<uint64_t, 2>> rows;
@@ -326,6 +335,17 @@ struct Table {
     };
     const std::string matePercent = percent(wins[STRONG] + kingCaptures);
     const std::string matedPercent = percent(losses[WEAK]);
+    if (format == Format::INFO)
+    {
+        for (const auto& row : rows)
+            message("mate " + std::to_string(row.second[0]) + " mated " + std::to_string(row.second[1])
+                  + " in " + std::to_string(row.first));
+        message("king_captures " + std::to_string(kingCaptures));
+        message("mate " + matePercent + " mated " + matedPercent + " tot");
+        message("time " + std::to_string(elapsed));
+        return;
+    }
+    auto output = [format](const std::string& text) { message(text, format); };
     size_t first = std::max(size_t(6), std::to_string(kingCaptures).size()), second = 6, third = 3;
     for (const auto& row : rows)
     {
@@ -337,36 +357,36 @@ struct Table {
         std::ostringstream out;
         out << "| " << std::setw(int(first)) << a << " | " << std::setw(int(second)) << b
             << " | " << std::setw(int(third)) << c << " |";
-        message(out.str());
+        output(out.str());
     };
     const std::string border = "+" + std::string(first + 2, '-') + "+" + std::string(second + 2, '-')
                              + "+" + std::string(third + 2, '-') + "+";
-    message("Statistics");
-    message(border);
+    output("Statistics");
+    output(border);
     line("mate", "mated", "in");
-    message(border);
+    output(border);
     for (const auto& row : rows)
         line(row.first == 0 && row.second[0] == 0 ? "" : std::to_string(row.second[0]),
              std::to_string(row.second[1]), std::to_string(row.first));
-    message(border);
+    output(border);
     std::ostringstream captures;
     captures << "| " << std::setw(int(first)) << kingCaptures << " | "
              << std::setw(int(second + third + 3)) << "King capt" << " |";
-    message(captures.str());
+    output(captures.str());
     line(matePercent, matedPercent, "tot");
-    message(border);
-    message("Done in " + std::to_string(elapsed) + " ms");
+    output(border);
+    output("Done in " + std::to_string(elapsed) + " ms");
   }
 
-  void stats(bool raw = false) const {
+  void stats(bool raw = false, Format format = Format::INFO_TABLE) const {
     message("variant " + variantName + " piece " + symbol + " color " + color_name(strong)
           + " goal checkmate files " + std::to_string(int(variant->maxFile) + 1)
           + " ranks " + std::to_string(int(variant->maxRank) + 1)
           + " stalemate " + (variant->stalemateValue == VALUE_DRAW ? "draw" : variant->stalemateValue < VALUE_DRAW ? "loss" : "win")
-          + " nmove ignored castling-rights none");
+          + " nmove ignored castling-rights none", format);
     if (!raw)
     {
-        formatted_stats();
+        formatted_stats(format);
         return;
     }
     for (int turn : {STRONG, WEAK})
@@ -456,26 +476,40 @@ void MateTable::command(std::istream& input, const Position& pos) {
   if (verb == "clear") { stop(); impl->table.reset(); message("status empty"); return; }
   if (verb == "stats" || verb == "probe")
   {
-      std::string format, extra;
-      if (verb == "stats" && (input >> format) && (format != "raw" || (input >> extra)))
-      { message("error usage: mate-table stats [raw]"); return; }
+      Format format = Format::INFO_TABLE;
+      bool raw = false;
+      std::string option, value, extra;
+      if (verb == "stats" && (input >> option))
+      {
+          if (option == "raw") raw = true;
+          else if (option != "format" || !(input >> value) || !parse_format(value, format))
+          { message("error usage: mate-table stats [raw | format info|info-table|table]"); return; }
+          if (input >> extra)
+          { message("error usage: mate-table stats [raw | format info|info-table|table]"); return; }
+      }
       if (impl->building.load(std::memory_order_acquire)) { message("status building"); return; }
       if (!impl->table || impl->table->variant != v) { message("error no table for selected variant"); return; }
-      if (verb == "stats") impl->table->stats(format == "raw"); else impl->table->probe(pos);
+      if (verb == "stats") impl->table->stats(raw, format); else impl->table->probe(pos);
       return;
   }
   std::string symbol, option;
   if (verb == "build") input >> verb;
   if (verb == "piece") input >> symbol;
   else symbol = verb;
-  if (symbol.empty()) { message("error usage: mate-table piece SYMBOL [color white|black] [memory MiB]"); return; }
+  if (symbol.empty()) { message("error usage: mate-table piece SYMBOL [color white|black] [memory MiB] [format info|info-table|table]"); return; }
   Color color = WHITE;
   uint64_t memory = 512;
+  Format format = Format::INFO_TABLE;
   while (input >> option)
   {
       std::string value;
       if (!(input >> value)) { message("error missing option value"); return; }
       if (option == "color" && (value == "white" || value == "black")) color = value == "white" ? WHITE : BLACK;
+      else if (option == "format")
+      {
+          if (!parse_format(value, format))
+          { message("error format must be info, info-table or table"); return; }
+      }
       else if (option == "memory")
       {
           std::istringstream number(value);
@@ -498,21 +532,21 @@ void MateTable::command(std::istream& input, const Position& pos) {
   impl->cancelled.store(false, std::memory_order_relaxed);
   impl->building.store(true, std::memory_order_release);
   std::string name = Options["UCI_Variant"];
-  message("building variant " + name + " piece " + symbol + " color " + color_name(color));
-  impl->worker = std::thread([this, v, pt, color, name, symbol, memory] {
+  message("building variant " + name + " piece " + symbol + " color " + color_name(color), format);
+  impl->worker = std::thread([this, v, pt, color, name, symbol, memory, format] {
       std::unique_ptr<Table> table(new Table(v, pt, color, name, symbol, memory * 1048576));
       std::string error;
       bool complete = table->build(impl->cancelled, error);
       if (!complete)
       {
           impl->building.store(false, std::memory_order_release);
-          message(error.empty() ? "cancelled" : "error " + error);
+          message(error.empty() ? "cancelled" : "error " + error, format);
           return;
       }
       impl->table = std::move(table);
       impl->building.store(false, std::memory_order_release);
-      impl->table->stats();
-      message("complete time " + std::to_string(impl->table->elapsed));
+      impl->table->stats(false, format);
+      message("complete time " + std::to_string(impl->table->elapsed), format);
   });
 }
 
