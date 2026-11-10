@@ -202,6 +202,7 @@ void init(OptionsMap& o) {
   o["UCI_LimitStrength"]     << Option(false);
   o["UCI_Elo"]               << Option(1350, 500, 2850);
   o["UCI_ShowWDL"]           << Option(false);
+  o["UCI_Verbosity"]         << Option(3, 1, 3);
   o["SyzygyPath"]            << Option("<empty>", on_tb_path);
   o["SyzygyProbeDepth"]      << Option(1, 1, 100);
   o["Syzygy50MoveRule"]      << Option(true);

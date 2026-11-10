@@ -189,6 +189,9 @@ void MainThread::search() {
       return;
   }
 
+  uciVerbosity = int(Options["UCI_Verbosity"]);
+  lastSearchInfoTime = now();
+
   Color us = rootPos.side_to_move();
   Time.init(rootPos, Limits, us, rootPos.game_ply());
   TT.new_search();
@@ -217,6 +220,7 @@ void MainThread::search() {
       sync_cout << "info depth 0 score "
                 << UCI::value(result)
                 << sync_endl;
+      lastSearchInfoTime = now();
   }
   else
   {
@@ -238,7 +242,11 @@ void MainThread::search() {
   // until the GUI sends one of those commands.
 
   while (!Threads.stop && (ponder || Limits.infinite))
-  {} // Busy wait for a stop or a ponder reset
+  {
+      // A completed/terminal infinite search can otherwise be silent here.
+      if (uciVerbosity >= 3 && is_uci_dialect(CurrentProtocol))
+          check_time();
+  }
 
   // Stop the threads if not already stopped (also raise the stop if
   // "ponderhit" just reset Threads.ponder).
@@ -264,7 +272,7 @@ void MainThread::search() {
 
   // Send again PV info if we have a new best thread
   if (bestThread != this)
-      sync_cout << UCI::pv(bestThread->rootPos, bestThread->completedDepth, -VALUE_INFINITE, VALUE_INFINITE) << sync_endl;
+      report_pv(bestThread->rootPos, bestThread->completedDepth, -VALUE_INFINITE, VALUE_INFINITE);
 
   if (CurrentProtocol == XBOARD)
   {
@@ -471,7 +479,7 @@ void Thread::search() {
                   && multiPV == 1
                   && (bestValue <= alpha || bestValue >= beta)
                   && Time.elapsed() > 3000)
-                  sync_cout << UCI::pv(rootPos, rootDepth, alpha, beta) << sync_endl;
+                  mainThread->report_pv(rootPos, rootDepth, alpha, beta);
 
               // In case of failing low/high increase aspiration window and
               // re-search, otherwise exit the loop.
@@ -502,7 +510,7 @@ void Thread::search() {
 
           if (    mainThread
               && (Threads.stop || pvIdx + 1 == multiPV || Time.elapsed() > 3000))
-              sync_cout << UCI::pv(rootPos, rootDepth, alpha, beta) << sync_endl;
+              mainThread->report_pv(rootPos, rootDepth, alpha, beta);
       }
 
       if (!Threads.stop)
@@ -1160,9 +1168,7 @@ moves_loop: // When in check, search starts from here
       ss->moveCount = ++moveCount;
 
       if (rootNode && thisThread == Threads.main() && Time.elapsed() > 3000 && is_uci_dialect(CurrentProtocol))
-          sync_cout << "info depth " << depth
-                    << " currmove " << UCI::move(pos, move)
-                    << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
+          Threads.main()->report_currmove(pos, move, depth, moveCount + thisThread->pvIdx);
       if (PvNode)
           (ss+1)->pv = nullptr;
 
@@ -2057,6 +2063,41 @@ moves_loop: // When in check, search starts from here
 } // namespace
 
 
+namespace {
+
+  // Same counters and elapsed-time convention as PV output. Called only when
+  // actually emitting detailed progress, never for every searched node.
+  string progress_statistics() {
+      TimePoint elapsed = Time.elapsed() + 1;
+      uint64_t nodes = Threads.nodes_searched();
+      uint64_t tbHits = Threads.tb_hits() + (TB::RootInTB ? Threads.main()->rootMoves.size() : 0);
+      std::ostringstream ss;
+      ss << " nodes " << nodes
+         << " nps " << nodes * 1000 / elapsed
+         << " hashfull " << TT.hashfull()
+         << " tbhits " << tbHits
+         << " time " << elapsed;
+      return ss.str();
+  }
+
+}
+
+void MainThread::report_pv(const Position& pos, Depth depth, Value alpha, Value beta) {
+  sync_cout << UCI::pv(pos, depth, alpha, beta) << sync_endl;
+  lastSearchInfoTime = now();
+}
+
+void MainThread::report_currmove(const Position& pos, Move move, Depth depth, size_t moveNumber) {
+  std::ostringstream ss;
+  ss << "info depth " << depth
+     << " currmove " << UCI::move(pos, move)
+     << " currmovenumber " << moveNumber;
+  if (uciVerbosity >= 3) ss << progress_statistics();
+  sync_cout << ss.str() << sync_endl;
+  lastSearchInfoTime = now();
+}
+
+
 /// MainThread::check_time() is used to print debug info and, more importantly,
 /// to detect when we are out of available time and thus stop the search.
 
@@ -2077,6 +2118,18 @@ void MainThread::check_time() {
   {
       lastInfoTime = tick;
       dbg_print();
+  }
+
+  // Use wall time for liveness, including when nodestime changes the search
+  // clock. This runs at the existing throttled time checks (normally 1024
+  // calls), not at each node. PV/currmove reports reset the same clock.
+  if (   uciVerbosity >= 3
+      && is_uci_dialect(CurrentProtocol)
+      && !Threads.stop.load(std::memory_order_relaxed)
+      && now() - lastSearchInfoTime > 15000)
+  {
+      sync_cout << "info" << progress_statistics() << sync_endl;
+      lastSearchInfoTime = now();
   }
 
   // We should not stop pondering until told so by the GUI
