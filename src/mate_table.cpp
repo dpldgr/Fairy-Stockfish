@@ -9,9 +9,12 @@
 */
 
 #include "mate_table.h"
+#include "mate_table_storage.h"
 
 #include <array>
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cstdint>
 #include <iomanip>
 #include <map>
@@ -76,6 +79,58 @@ PieceType resolve_piece(const Variant* v, const std::string& symbol) {
       }
   }
   return found;
+}
+
+struct MaterialPiece {
+  PieceType type;
+  Color color;
+  std::string symbol;
+};
+
+bool parse_material(std::istream& input, const Variant* v,
+                    std::vector<MaterialPiece>& supports, std::string& error) {
+  auto trim = [](const std::string& text) {
+      size_t first = text.find_first_not_of(" \t\r\n");
+      if (first == std::string::npos) return std::string();
+      return text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
+  };
+  input >> std::ws;
+  if (input.get() != '{') { error = "pieces requires a braced comma-separated list"; return false; }
+  std::string body;
+  if (!std::getline(input, body, '}') || input.eof())
+  { error = "unterminated pieces list"; return false; }
+  int next = input.peek();
+  if (next != std::char_traits<char>::eof() && !std::isspace(static_cast<unsigned char>(next)))
+  { error = "expected whitespace after pieces list"; return false; }
+  body = trim(body);
+  if (!body.empty() && body.back() == ',') body = trim(body.substr(0, body.size() - 1));
+  if (body.empty() || body.back() == ',') { error = "empty entry in pieces list"; return false; }
+  std::istringstream list(body);
+  std::string token;
+  int kings[COLOR_NB] = {}, total = 0;
+  while (std::getline(list, token, ','))
+  {
+      token = trim(token);
+      if (token.empty()) { error = "empty entry in pieces list"; return false; }
+      const std::string upper = Variant::white_symbol(token), lower = Variant::black_symbol(token);
+      if (upper == lower || (token != upper && token != lower))
+      { error = "pieces uses uppercase White symbols and lowercase Black symbols"; return false; }
+      Color color = token == upper ? WHITE : BLACK;
+      PieceType pt = resolve_piece(v, token);
+      if (pt == NO_PIECE_TYPE) { error = "unknown or ambiguous piece symbol: " + token; return false; }
+      if (++total > 5) { error = "pieces supports three through five pieces"; return false; }
+      if (pt == KING) ++kings[color];
+      else supports.push_back({pt, color, v->pieceToSymbol[make_piece(color, pt)]});
+  }
+  if (kings[WHITE] != 1 || kings[BLACK] != 1)
+  { error = "pieces requires exactly one ordinary King of each color"; return false; }
+  if (total < 3) { error = "pieces supports three through five pieces"; return false; }
+  // Preserve multiplicity, including identical pieces of the same army.
+  // Sort resolved slots, so aliases and input order select the same table.
+  std::sort(supports.begin(), supports.end(), [](const MaterialPiece& a, const MaterialPiece& b) {
+      return a.color != b.color ? a.color < b.color : a.type < b.type;
+  });
+  return true;
 }
 
 std::string unsupported(const Variant* v, PieceType pt) {
@@ -443,10 +498,15 @@ struct Table {
   }
 };
 
+#include "mate_table_four.h"
+#include "mate_table_five.h"
+
 } // namespace
 
 struct MateTable::Impl {
   std::unique_ptr<Table> table;
+  std::unique_ptr<FourTable> four;
+  std::unique_ptr<FiveTable> five;
   std::thread worker;
   std::atomic_bool cancelled{false}, building{false};
 };
@@ -470,10 +530,11 @@ void MateTable::command(std::istream& input, const Position& pos) {
   if (verb == "status")
   {
       message(std::string("status ") + (impl->building.load(std::memory_order_acquire) ? "building"
-            : impl->table && impl->table->variant == v ? "ready" : "empty"));
+            : (impl->table && impl->table->variant == v) || (impl->four && impl->four->variant == v)
+              || (impl->five && impl->five->variant == v) ? "ready" : "empty"));
       return;
   }
-  if (verb == "clear") { stop(); impl->table.reset(); message("status empty"); return; }
+  if (verb == "clear") { stop(); impl->table.reset(); impl->four.reset(); impl->five.reset(); message("status empty"); return; }
   if (verb == "stats" || verb == "probe")
   {
       Format format = Format::INFO_TABLE;
@@ -488,23 +549,60 @@ void MateTable::command(std::istream& input, const Position& pos) {
           { message("error usage: mate-table stats [raw | format info|info-table|table]"); return; }
       }
       if (impl->building.load(std::memory_order_acquire)) { message("status building"); return; }
+      if (impl->five && impl->five->variant == v)
+      {
+          if (verb == "stats") impl->five->stats(raw, format); else impl->five->probe(pos);
+          return;
+      }
+      if (impl->four && impl->four->variant == v)
+      {
+          if (verb == "stats") impl->four->stats(raw, format); else impl->four->probe(pos);
+          return;
+      }
       if (!impl->table || impl->table->variant != v) { message("error no table for selected variant"); return; }
       if (verb == "stats") impl->table->stats(raw, format); else impl->table->probe(pos);
       return;
   }
   std::string symbol, option;
-  if (verb == "build") input >> verb;
-  if (verb == "piece") input >> symbol;
+  if (verb == "build" && !(input >> verb))
+  { message("error usage: mate-table pieces {K,B,k} [memory MiB] [format info|info-table|table]"); return; }
+  bool materialList = verb == "pieces";
+  std::vector<MaterialPiece> material;
+  if (materialList)
+  {
+      std::string error;
+      if (!parse_material(input, v, material, error)) { message("error " + error); return; }
+      symbol = material[0].symbol;
+  }
+  else if (verb == "piece") input >> symbol;
   else symbol = verb;
-  if (symbol.empty()) { message("error usage: mate-table piece SYMBOL [color white|black] [memory MiB] [format info|info-table|table]"); return; }
+  if (symbol.empty()) { message("error usage: mate-table pieces {K,B,k} [memory MiB] [format info|info-table|table]"); return; }
   Color color = WHITE;
   uint64_t memory = 512;
   Format format = Format::INFO_TABLE;
+  std::string secondSymbol;
+  std::string thirdSymbol;
+  bool opposing = true;
+  bool thirdOpposing = false;
+  if (materialList)
+  {
+      color = material[0].color;
+      if (material.size() > 1)
+      { secondSymbol = material[1].symbol; opposing = material[1].color != color; }
+      if (material.size() > 2)
+      { thirdSymbol = material[2].symbol; thirdOpposing = material[2].color != color; }
+  }
   while (input >> option)
   {
       std::string value;
       if (!(input >> value)) { message("error missing option value"); return; }
+      if (materialList && (option == "color" || option == "partner" || option == "opponent"))
+      { message("error pieces already specifies every piece and its color"); return; }
       if (option == "color" && (value == "white" || value == "black")) color = value == "white" ? WHITE : BLACK;
+      else if ((option == "opponent" || option == "partner") && secondSymbol.empty())
+      { secondSymbol = value; opposing = option == "opponent"; }
+      else if ((option == "opponent" || option == "partner") && thirdSymbol.empty())
+      { thirdSymbol = value; thirdOpposing = option == "opponent"; }
       else if (option == "format")
       {
           if (!parse_format(value, format))
@@ -514,24 +612,86 @@ void MateTable::command(std::istream& input, const Position& pos) {
       {
           std::istringstream number(value);
           char extra;
-          if (!(number >> memory) || (number >> extra) || memory < 1 || memory > 4096)
-          { message("error memory must be 1..4096 MiB"); return; }
+          if (!(number >> memory) || (number >> extra) || memory < 1 || memory > 32768)
+          { message("error memory must be 1..32768 MiB"); return; }
       }
       else { message("error unknown option or invalid value"); return; }
   }
-  PieceType pt = resolve_piece(v, symbol);
+  PieceType pt = materialList ? material[0].type : resolve_piece(v, symbol);
   if (pt == NO_PIECE_TYPE || pt == KING) { message("error unknown, ambiguous or royal piece symbol"); return; }
+  PieceType secondType = secondSymbol.empty() ? NO_PIECE_TYPE
+                       : materialList ? material[1].type : resolve_piece(v, secondSymbol);
+  if (!secondSymbol.empty() && (secondType == NO_PIECE_TYPE || secondType == KING))
+  { message("error unknown, ambiguous or royal second piece symbol"); return; }
+  PieceType thirdType = thirdSymbol.empty() ? NO_PIECE_TYPE
+                      : materialList ? material[2].type : resolve_piece(v, thirdSymbol);
+  if (!thirdSymbol.empty() && (thirdType == NO_PIECE_TYPE || thirdType == KING))
+  { message("error unknown, ambiguous or royal third piece symbol"); return; }
+  if (thirdSymbol.empty() && memory > 4096)
+  { message("error memory must be 1..4096 MiB"); return; }
   // Finish any previous job before checking/using the shared piece tables.
   stop();
   Threads.stop = true;
   TDS::wait();
   Threads.main()->wait_for_search_finished();
   std::string reason = unsupported(v, pt);
+  if (reason.empty() && secondType != NO_PIECE_TYPE) reason = unsupported(v, secondType);
+  if (reason.empty() && thirdType != NO_PIECE_TYPE) reason = unsupported(v, thirdType);
   if (!reason.empty()) { message("error unsupported: " + reason); return; }
+  if (secondType != NO_PIECE_TYPE && (int(v->maxFile) + 1) * (int(v->maxRank) + 1) > 81)
+  { message("error four-piece prototype limited to 81 cells"); return; }
+  if (thirdType != NO_PIECE_TYPE && (int(v->maxFile) + 1) * (int(v->maxRank) + 1) > 64)
+  { message("error five-piece prototype limited to 64 cells"); return; }
   impl->table.reset();
+  impl->four.reset();
+  impl->five.reset();
   impl->cancelled.store(false, std::memory_order_relaxed);
   impl->building.store(true, std::memory_order_release);
   std::string name = Options["UCI_Variant"];
+  if (thirdType != NO_PIECE_TYPE)
+  {
+      std::array<PieceType, 3> types = {pt, secondType, thirdType};
+      std::array<Color, 3> owners = {color, opposing ? ~color : color, thirdOpposing ? ~color : color};
+      std::array<std::string, 3> symbols = {symbol, secondSymbol, thirdSymbol};
+      message("building five-piece variant " + name + " " + symbol + " " + secondSymbol + " " + thirdSymbol, format);
+      impl->worker = std::thread([this, v, types, owners, symbols, name, memory, format] {
+          std::unique_ptr<FiveTable> table(new FiveTable(v, types, owners, symbols, name, memory * 1048576));
+          std::string error;
+          if (!table->build(impl->cancelled, error, format) || !table->verify(impl->cancelled, error, format))
+          {
+              impl->building.store(false, std::memory_order_release);
+              message(error.empty() ? "cancelled" : "error " + error, format);
+              return;
+          }
+          impl->five = std::move(table);
+          impl->building.store(false, std::memory_order_release);
+          impl->five->stats(false, format);
+          message("complete time " + std::to_string(impl->five->elapsed), format);
+      });
+      return;
+  }
+  if (secondType != NO_PIECE_TYPE)
+  {
+      std::array<PieceType, 2> types = {pt, secondType};
+      std::array<Color, 2> owners = {color, opposing ? ~color : color};
+      std::array<std::string, 2> symbols = {symbol, secondSymbol};
+      message("building four-piece variant " + name + " " + symbol + " " + secondSymbol, format);
+      impl->worker = std::thread([this, v, types, owners, symbols, name, memory, format] {
+          std::unique_ptr<FourTable> table(new FourTable(v, types, owners, symbols, name, memory * 1048576));
+          std::string error;
+          if (!table->build(impl->cancelled, error, format) || !table->verify(impl->cancelled, error, format))
+          {
+              impl->building.store(false, std::memory_order_release);
+              message(error.empty() ? "cancelled" : "error " + error, format);
+              return;
+          }
+          impl->four = std::move(table);
+          impl->building.store(false, std::memory_order_release);
+          impl->four->stats(false, format);
+          message("complete time " + std::to_string(impl->four->elapsed), format);
+      });
+      return;
+  }
   message("building variant " + name + " piece " + symbol + " color " + color_name(color), format);
   impl->worker = std::thread([this, v, pt, color, name, symbol, memory, format] {
       std::unique_ptr<Table> table(new Table(v, pt, color, name, symbol, memory * 1048576));

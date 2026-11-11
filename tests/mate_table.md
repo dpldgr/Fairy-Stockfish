@@ -1,4 +1,40 @@
-# K+piece versus K mate tables
+# Retrograde mate tables
+
+Select a variant and specify every piece, including both Kings:
+
+```text
+setoption name UCI_Variant value metal-chess
+mate-table pieces {K,B,k} format table
+mate-table pieces {K,B,k,n} format table
+mate-table pieces {K,B,N,N,k,} memory 8192 format table
+```
+
+Uppercase symbols belong to White; lowercase symbols belong to Black. The
+braced material list is order-independent and preserves repeated entries:
+`{k,N,B,K,N}` selects exactly the same material as `{K,B,N,N,k}`. A trailing
+comma and spaces around entries are accepted. Internally, the engine sorts
+resolved piece types by army and slot, so aliases and input ordering do not
+change the material. Repeated `N` entries represent separate pieces.
+
+Symbols must be configured by the selected variant. Multi-character symbols
+use uppercase or lowercase throughout, e.g. `{CK,SB,IN,IN,ck}`. Promoted-form
+symbols such as `+N` are accepted when their configured type is eligible.
+Each list must contain exactly one ordinary King of each color and three to
+five pieces in total. Empty entries inside the list, ambiguous symbols and
+mixed-case symbols are errors. `color`, `partner` and `opponent` options cannot
+be combined with `pieces`; the list already specifies that information.
+
+`mate-table build pieces ...` and `api mate-table pieces ...` are also accepted.
+The original piece/partner/opponent commands remain available as aliases.
+The existing three-piece solver supports rectangular 3x3 through 16x16 boards;
+the experimental four-piece solver is capped at 81 cells and five-piece at
+64 cells. Five-piece jobs allow memory budgets up to 32768 MiB. The movement
+and adjudication restrictions below apply to all material sizes. Four/five-piece
+captures consult smaller material tables and include their remaining DTM.
+
+The following three-piece details and applet counting conventions describe
+K+piece versus K. Four/five-piece statistics give one mate/mated table per army,
+with totals counting legal decisive positions rather than applet percentages.
 
 Select a variant, then select the **configured symbol** of the supporting piece:
 
