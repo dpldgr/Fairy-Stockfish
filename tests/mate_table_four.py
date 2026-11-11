@@ -22,7 +22,7 @@ def fields(text):
     return {tokens[i]: int(tokens[i + 1]) for i in range(0, len(tokens), 2)}
 
 
-def oracle(width, names, owners, stalemate=0, unordered=False):
+def oracle(width, names, owners, stalemate=0, unordered=False, include_nodes=False):
     """Explicit full graph, including captures, without any engine table code."""
     cells = range(width * width)
     supports = len(names)
@@ -166,7 +166,11 @@ def oracle(width, names, owners, stalemate=0, unordered=False):
                 row[{WIN: 'wins', LOSS: 'losses', DRAW: 'draws'}[r]] += 1
                 row['checkmates'] += r == LOSS and d == 0 and checked(p, side)
                 row['max_dtm_plies'] = max(row['max_dtm_plies'], d)
-    return {'summary': [dict(s) for s in summaries], 'signature': signature, 'graph_states': len(states)}
+    answer = {'summary': [dict(s) for s in summaries], 'signature': signature, 'graph_states': len(states)}
+    if include_nodes:
+        answer['nodes'] = {key: {'result': result[i] or DRAW, 'dtm': distance[i]}
+                           for i, key in enumerate(states)}
+    return answer
 
 
 def position(p, side, width, names, owners):

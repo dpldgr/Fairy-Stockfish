@@ -9,6 +9,7 @@
 */
 
 #include "mate_table.h"
+#include "mate_table_export.h"
 #include "mate_table_storage.h"
 
 #include <array>
@@ -501,6 +502,89 @@ struct Table {
 #include "mate_table_four.h"
 #include "mate_table_five.h"
 
+Node export_node(const Table& t, uint32_t i) { return t.nodes[i]; }
+Node export_node(const FourTable& t, uint32_t i) { return t.read(i); }
+Node export_node(const FiveTable& t, uint32_t i) { return t.read(i); }
+
+void export_placement(const Table& t, uint32_t i, MateTableBin::Entry& e) {
+  uint32_t tuple = i / 2;
+  unsigned weak = tuple % t.n; tuple /= t.n;
+  e.pieces[0].square = uint8_t(tuple % t.n);
+  e.kings[t.strong] = uint8_t(tuple / t.n);
+  e.kings[~t.strong] = uint8_t(weak);
+  e.turn = uint8_t((i & 1) == STRONG ? t.strong : ~t.strong);
+}
+
+void export_placement(const FourTable& t, uint32_t i, MateTableBin::Entry& e) {
+  uint32_t tuple = i / 2;
+  e.pieces[1].square = uint8_t(tuple % t.n); tuple /= t.n;
+  e.pieces[0].square = uint8_t(tuple % t.n); tuple /= t.n;
+  e.kings[BLACK] = uint8_t(tuple % t.n);
+  e.kings[WHITE] = uint8_t(tuple / t.n);
+  e.turn = uint8_t(i & 1);
+}
+
+void export_placement(const FiveTable& t, uint32_t i, MateTableBin::Entry& e) {
+  auto p = t.decode(i);
+  e.kings = {uint8_t(p[0]), uint8_t(p[1])};
+  for (unsigned j = 0; j < 3; ++j) e.pieces[j].square = uint8_t(p[j + 2]);
+  e.turn = uint8_t(i & 1);
+}
+
+template<typename TableType>
+bool export_table(const TableType& t, MateTableExport::Writer& writer,
+                  const std::atomic_bool& cancelled, Format format, std::string& error) {
+  TimePoint started = now(), report = started;
+  auto e = writer.prototype();
+  bool stopped = false;
+  for (uint32_t i = 0; i < t.count; ++i)
+  {
+      if (!(i & 65535))
+      {
+          if (cancelled.load(std::memory_order_relaxed)) { stopped = true; break; }
+          if (now() - report > 2000)
+          { message("export progress records " + std::to_string(writer.records()), format); report = now(); }
+      }
+      Node node = export_node(t, i);
+      if (node.result == INVALID) continue;
+      if (node.result != DRAW && node.result != WIN && node.result != LOSS)
+      { error = "export encountered unresolved table entry"; return false; }
+      export_placement(t, i, e);
+      // Four-piece tables and all-identical five-piece tables can contain
+      // multiple labelings of the same physical placement. Export it once.
+      bool canonical = true;
+      for (unsigned a = 0; a < e.count; ++a)
+          for (unsigned b = a + 1; b < e.count; ++b)
+              if (e.pieces[a].type == e.pieces[b].type && e.pieces[a].color == e.pieces[b].color
+                  && e.pieces[a].square >= e.pieces[b].square) canonical = false;
+      if (!canonical) continue;
+      if (node.result != DRAW && node.distance >= unsigned(VALUE_MATE))
+      { error = "export DTM exceeds signed mate-score range"; return false; }
+      int magnitude = int(VALUE_MATE) - int(node.distance);
+      e.result = node.result == WIN ? 1 : node.result == LOSS ? -1 : 0;
+      e.score = int16_t(e.result * magnitude);
+      if (!writer.write(e, error)) return false;
+  }
+  if (!writer.finish(error)) return false;
+  message(std::string("export ") + (stopped ? "cancelled " : "complete ")
+          + "records " + std::to_string(writer.records())
+          + " entrysize " + std::to_string(writer.entry_size())
+          + " bytes " + std::to_string(writer.records() * writer.entry_size())
+          + " time " + std::to_string(now() - started) + " file " + writer.filename(), format);
+  if (stopped) { error = "cancelled"; return false; }
+  return true;
+}
+
+bool export_path(std::istream& input, std::string& path) {
+  input >> std::ws;
+  if (input.peek() != '"') return bool(input >> path);
+  input.get();
+  // Preserve Windows backslashes literally inside quoted paths.
+  if (!std::getline(input, path, '"') || input.eof() || path.empty()) return false;
+  int next = input.peek();
+  return next == std::char_traits<char>::eof() || std::isspace(static_cast<unsigned char>(next));
+}
+
 } // namespace
 
 struct MateTable::Impl {
@@ -584,6 +668,9 @@ void MateTable::command(std::istream& input, const Position& pos) {
   std::string thirdSymbol;
   bool opposing = true;
   bool thirdOpposing = false;
+  std::string exportFile;
+  unsigned entrySize = 72;
+  bool entrySizeSpecified = false;
   if (materialList)
   {
       color = material[0].color;
@@ -595,6 +682,13 @@ void MateTable::command(std::istream& input, const Position& pos) {
   while (input >> option)
   {
       std::string value;
+      if (option == "export")
+      {
+          if (!exportFile.empty() || !export_path(input, value))
+          { message("error export requires one nonempty filename"); return; }
+          exportFile = value;
+          continue;
+      }
       if (!(input >> value)) { message("error missing option value"); return; }
       if (materialList && (option == "color" || option == "partner" || option == "opponent"))
       { message("error pieces already specifies every piece and its color"); return; }
@@ -608,6 +702,13 @@ void MateTable::command(std::istream& input, const Position& pos) {
           if (!parse_format(value, format))
           { message("error format must be info, info-table or table"); return; }
       }
+      else if (option == "entrysize")
+      {
+          if (entrySizeSpecified || (value != "8" && value != "72"))
+          { message("error entrysize must be 8 or 72, specified once"); return; }
+          entrySize = value == "8" ? 8 : 72;
+          entrySizeSpecified = true;
+      }
       else if (option == "memory")
       {
           std::istringstream number(value);
@@ -617,6 +718,8 @@ void MateTable::command(std::istream& input, const Position& pos) {
       }
       else { message("error unknown option or invalid value"); return; }
   }
+  if (entrySizeSpecified && exportFile.empty())
+  { message("error entrysize requires export filename"); return; }
   PieceType pt = materialList ? material[0].type : resolve_piece(v, symbol);
   if (pt == NO_PIECE_TYPE || pt == KING) { message("error unknown, ambiguous or royal piece symbol"); return; }
   PieceType secondType = secondSymbol.empty() ? NO_PIECE_TYPE
@@ -642,6 +745,18 @@ void MateTable::command(std::istream& input, const Position& pos) {
   { message("error four-piece prototype limited to 81 cells"); return; }
   if (thirdType != NO_PIECE_TYPE && (int(v->maxFile) + 1) * (int(v->maxRank) + 1) > 64)
   { message("error five-piece prototype limited to 64 cells"); return; }
+  std::shared_ptr<MateTableExport::Writer> writer;
+  if (!exportFile.empty())
+  {
+      std::vector<PieceType> types = {pt};
+      std::vector<Color> owners = {color};
+      if (secondType != NO_PIECE_TYPE) { types.push_back(secondType); owners.push_back(opposing ? ~color : color); }
+      if (thirdType != NO_PIECE_TYPE) { types.push_back(thirdType); owners.push_back(thirdOpposing ? ~color : color); }
+      writer.reset(new MateTableExport::Writer);
+      std::string error;
+      if (!writer->open(v, types, owners, exportFile, entrySize, error))
+      { message("error " + error, format); return; }
+  }
   impl->table.reset();
   impl->four.reset();
   impl->five.reset();
@@ -654,7 +769,7 @@ void MateTable::command(std::istream& input, const Position& pos) {
       std::array<Color, 3> owners = {color, opposing ? ~color : color, thirdOpposing ? ~color : color};
       std::array<std::string, 3> symbols = {symbol, secondSymbol, thirdSymbol};
       message("building five-piece variant " + name + " " + symbol + " " + secondSymbol + " " + thirdSymbol, format);
-      impl->worker = std::thread([this, v, types, owners, symbols, name, memory, format] {
+      impl->worker = std::thread([this, v, types, owners, symbols, name, memory, format, writer] {
           std::unique_ptr<FiveTable> table(new FiveTable(v, types, owners, symbols, name, memory * 1048576));
           std::string error;
           if (!table->build(impl->cancelled, error, format) || !table->verify(impl->cancelled, error, format))
@@ -664,6 +779,12 @@ void MateTable::command(std::istream& input, const Position& pos) {
               return;
           }
           impl->five = std::move(table);
+          if (writer && !export_table(*impl->five, *writer, impl->cancelled, format, error))
+          {
+              impl->building.store(false, std::memory_order_release);
+              message(error == "cancelled" ? "cancelled" : "error " + error, format);
+              return;
+          }
           impl->building.store(false, std::memory_order_release);
           impl->five->stats(false, format);
           message("complete time " + std::to_string(impl->five->elapsed), format);
@@ -676,7 +797,7 @@ void MateTable::command(std::istream& input, const Position& pos) {
       std::array<Color, 2> owners = {color, opposing ? ~color : color};
       std::array<std::string, 2> symbols = {symbol, secondSymbol};
       message("building four-piece variant " + name + " " + symbol + " " + secondSymbol, format);
-      impl->worker = std::thread([this, v, types, owners, symbols, name, memory, format] {
+      impl->worker = std::thread([this, v, types, owners, symbols, name, memory, format, writer] {
           std::unique_ptr<FourTable> table(new FourTable(v, types, owners, symbols, name, memory * 1048576));
           std::string error;
           if (!table->build(impl->cancelled, error, format) || !table->verify(impl->cancelled, error, format))
@@ -686,6 +807,12 @@ void MateTable::command(std::istream& input, const Position& pos) {
               return;
           }
           impl->four = std::move(table);
+          if (writer && !export_table(*impl->four, *writer, impl->cancelled, format, error))
+          {
+              impl->building.store(false, std::memory_order_release);
+              message(error == "cancelled" ? "cancelled" : "error " + error, format);
+              return;
+          }
           impl->building.store(false, std::memory_order_release);
           impl->four->stats(false, format);
           message("complete time " + std::to_string(impl->four->elapsed), format);
@@ -693,7 +820,7 @@ void MateTable::command(std::istream& input, const Position& pos) {
       return;
   }
   message("building variant " + name + " piece " + symbol + " color " + color_name(color), format);
-  impl->worker = std::thread([this, v, pt, color, name, symbol, memory, format] {
+  impl->worker = std::thread([this, v, pt, color, name, symbol, memory, format, writer] {
       std::unique_ptr<Table> table(new Table(v, pt, color, name, symbol, memory * 1048576));
       std::string error;
       bool complete = table->build(impl->cancelled, error);
@@ -704,6 +831,12 @@ void MateTable::command(std::istream& input, const Position& pos) {
           return;
       }
       impl->table = std::move(table);
+      if (writer && !export_table(*impl->table, *writer, impl->cancelled, format, error))
+      {
+          impl->building.store(false, std::memory_order_release);
+          message(error == "cancelled" ? "cancelled" : "error " + error, format);
+          return;
+      }
       impl->building.store(false, std::memory_order_release);
       impl->table->stats(false, format);
       message("complete time " + std::to_string(impl->table->elapsed), format);

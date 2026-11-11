@@ -196,3 +196,135 @@ lifetime, cancellation, errors, command-line completion and subsequent search.
 
 The large-build run also checks a 14x14 K+nonroyal-K/K table with 15,059,072
 indexed records, responsive `isready`, and distances through 124 plies.
+
+## Binary training-data export
+
+Add `export <filename>` to append every legal position from the requested
+material table to a binary training file:
+
+```text
+mate-table pieces {K,B,k} export silver-bishop.bin
+mate-table pieces {K,R,k} export gold-rook.bin entrysize 72
+mate-table pieces {K,N,k} export "C:/training/iron knight.bin" entrysize 8
+mate-table pieces {K,B,N,N,k} memory 8192 export metal-five.bin entrysize 8
+```
+
+`entrysize` accepts **72** (the default) or **8**. It requires `export`, and
+applies only to that command. Quoted paths preserve Windows backslashes.
+Omitting export preserves the existing table calculation and output. Both
+formats are headerless, fixed-size, little-endian records; the variant-specific
+reader supplies the schema. **Do not mix entry sizes or variant schemas in one
+file.** File-size alignment is checked, but a headerless file cannot identify
+its schema. Concurrent writers to the same path are not supported.
+
+Export starts after successful calculation (and the four/five-piece verification).
+It includes legal checks, checkmates and stalemates, skips invalid array cells,
+and emits interchangeable-piece placements only once. Capture-dependency tables
+are not exported automatically. Both sides to move are included. Repeating a
+command appends another copy; there is no deduplication against existing files.
+Output is buffered, with bounded additional memory, and is independent of search.
+
+Score and result are from the side-to-move perspective:
+
+- Win in d **plies**: score `32000-d`, result `+1`.
+- Loss in d plies: score `-32000+d`, result `-1`.
+- Draw: score `0`, result `0`.
+
+Already terminal decisive positions have d=0. DTM values >=32000 are rejected
+rather than silently changing the sign of the score. These are the existing
+mate-table results: move-count draw rules are ignored. Both formats reset
+history and carry no castling or en-passant rights.
+
+An export reports `export complete records N entrysize S bytes B time T file P`
+before the usual `complete` message. Progress is reported during long exports.
+`stop` during export retains a valid prefix of complete records and reports
+`export cancelled`. The completed table remains cached if export fails or is
+cancelled after calculation. Write errors attempt to remove any incomplete
+trailing record while preserving the existing file prefix, and report failure
+to restore that boundary if necessary. File/schema errors are checked before
+starting the expensive table calculation.
+
+### Standard 72-byte format
+
+Compatible with `variant-nnue-tools`' default `PackedSfenValue` and the matching
+variant NNUE training DLL:
+
+| Offset | Bytes | Value |
+|---:|---:|---|
+| 0 | 64 | Upstream packed position |
+| 64 | 2 | Signed score |
+| 66 | 2 | Zero move (`MOVE_NONE`) |
+| 68 | 2 | Placeholder game ply 1 |
+| 70 | 1 | Signed result (-1, 0, +1) |
+| 71 | 1 | Zero padding |
+
+The packed position has fullmove 1, rule50 0 and empty hands. Zero move is
+unused by the current value-training loader, including for terminal positions;
+tools that require a PV move need a separate adaptation. Use the ordinary
+512-bit/default data-size DLL, not the 136-byte `largedata` format.
+
+This encoding requires at most 128 board cells, the variant's unique NNUE King,
+at most 16 configured non-king piece identities, and a payload that fits 512
+bits. The upstream engine tools may impose narrower build geometry. Dense type
+indices enumerate every configured non-king type in increasing engine-slot
+order, followed by King; material selection does not change that ordering.
+Raw engine slot numbers, build board stride and piece-slot capacity are not
+written. Multi-character symbols therefore need no special record notation.
+
+### Compact 8-byte format and matching decoder
+
+The compact format supports at most 64 board cells, eight configured non-king
+identities, and three supports in addition to the two Kings. It requires an
+adapted DLL. `src/mate_table_bin.h` is a standalone C++17 encoder/decoder with
+no engine dependencies, suitable for inclusion in that DLL. There is no
+automatic detection of record size; select 8-byte records in the reader too.
+
+The little-endian 64-bit word contains:
+
+| Bits (least significant = 0) | Value |
+|---|---|
+| 0–5 | White King square |
+| 6–11 | Black King square |
+| 12–21 | Support 0 |
+| 22–31 | Support 1 |
+| 32–41 | Support 2 |
+| 42 | Side to move (White 0, Black 1) |
+| 43–44 | Number of supports (0–3) |
+| 45–60 | Two's-complement signed score |
+| 61–62 | Result + 1 (loss 0, draw 1, win 2; 3 invalid) |
+| 63 | Reserved zero |
+
+Each support uses six square bits, three dense type-index bits and one color
+bit, in that order from least significant to most significant. Unused support
+words are zero. Squares are rank-major within the **variant**, a1=0 and
+`square=rank*files+file`, independent of the executable's build dimensions.
+Supports are ordered by color, type index and square. Types use the same
+configured non-king ordering as the 72-byte format. For the supplied Metal
+Chess definition this is `p,q,r,b,n`, not orthodox `p,n,b,r,q`.
+
+Decoder integration:
+
+```cpp
+#include "mate_table_bin.h"
+
+Stockfish::MateTableBin::Entry entry;
+if (!Stockfish::MateTableBin::decode8(bytes, entry, 64, 5))
+    /* reject malformed record */;
+// Place entry.kings as White/Black Kings. Map entry.pieces[i].type through
+// the DLL's configured non-king index table. Use entry.turn, entry.score and
+// entry.result for the existing training targets. No move or ply is stored.
+```
+
+The decoder checks field ranges, overlapping squares, unused words and reserved
+bits; variant move legality comes from the generator. It does not change the
+trainer's loss function. Near-mate scores saturate the current sigmoid loss,
+so storing DTM exactly does not itself make the trainer learn mate distance.
+
+Additional checks from the repository root:
+
+```sh
+g++ -std=c++17 -O2 tests/mate_table_bin.cpp -o /tmp/mate-table-codec
+/tmp/mate-table-codec
+STOCKFISH=/path/to/stockfish python3 tests/mate_table_export.py -v
+BOARD_SIZE=16 STOCKFISH=/path/to/16x16-stockfish python3 tests/mate_table_export.py -v
+```
