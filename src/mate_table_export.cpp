@@ -44,8 +44,8 @@ bool Writer::open(const Variant* v, const std::vector<PieceType>& types,
   { error = "export board exceeds " + std::to_string(size == 8 ? 64 : 128) + " cells for entrysize " + std::to_string(size); return false; }
   if (size == 72 && v->nnueKing != KING)
   { error = "72-byte export requires the variant's unique NNUE King"; return false; }
-  if (types.empty() || types.size() > 3 || types.size() != owners.size())
-  { error = "export requires one to three supporting pieces"; return false; }
+  if (types.size() > 3 || types.size() != owners.size())
+  { error = "export requires zero to three supporting pieces"; return false; }
   std::array<unsigned, PIECE_TYPE_NB> index{};
   for (PieceSet ps = v->pieceTypes & ~piece_set(KING); ps;)
       index[pop_lsb(ps)] = typeCount++;

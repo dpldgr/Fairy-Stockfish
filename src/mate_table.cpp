@@ -119,13 +119,13 @@ bool parse_material(std::istream& input, const Variant* v,
       Color color = token == upper ? WHITE : BLACK;
       PieceType pt = resolve_piece(v, token);
       if (pt == NO_PIECE_TYPE) { error = "unknown or ambiguous piece symbol: " + token; return false; }
-      if (++total > 5) { error = "pieces supports three through five pieces"; return false; }
+      if (++total > 5) { error = "pieces supports two through five pieces"; return false; }
       if (pt == KING) ++kings[color];
       else supports.push_back({pt, color, v->pieceToSymbol[make_piece(color, pt)]});
   }
   if (kings[WHITE] != 1 || kings[BLACK] != 1)
   { error = "pieces requires exactly one ordinary King of each color"; return false; }
-  if (total < 3) { error = "pieces supports three through five pieces"; return false; }
+  if (total < 2) { error = "pieces supports two through five pieces"; return false; }
   // Preserve multiplicity, including identical pieces of the same army.
   // Sort resolved slots, so aliases and input order select the same table.
   std::sort(supports.begin(), supports.end(), [](const MaterialPiece& a, const MaterialPiece& b) {
@@ -499,12 +499,19 @@ struct Table {
   }
 };
 
+#include "mate_table_two.h"
 #include "mate_table_four.h"
 #include "mate_table_five.h"
 
+Node export_node(const TwoTable& t, uint32_t i) { return t.read(i); }
 Node export_node(const Table& t, uint32_t i) { return t.nodes[i]; }
 Node export_node(const FourTable& t, uint32_t i) { return t.read(i); }
 Node export_node(const FiveTable& t, uint32_t i) { return t.read(i); }
+
+void export_placement(const TwoTable& t, uint32_t i, MateTableBin::Entry& e) {
+  e.kings = {uint8_t((i / 2) / t.n), uint8_t((i / 2) % t.n)};
+  e.turn = uint8_t(i & 1);
+}
 
 void export_placement(const Table& t, uint32_t i, MateTableBin::Entry& e) {
   uint32_t tuple = i / 2;
@@ -588,6 +595,7 @@ bool export_path(std::istream& input, std::string& path) {
 } // namespace
 
 struct MateTable::Impl {
+  std::unique_ptr<TwoTable> two;
   std::unique_ptr<Table> table;
   std::unique_ptr<FourTable> four;
   std::unique_ptr<FiveTable> five;
@@ -614,11 +622,11 @@ void MateTable::command(std::istream& input, const Position& pos) {
   if (verb == "status")
   {
       message(std::string("status ") + (impl->building.load(std::memory_order_acquire) ? "building"
-            : (impl->table && impl->table->variant == v) || (impl->four && impl->four->variant == v)
+            : (impl->two && impl->two->variant == v) || (impl->table && impl->table->variant == v) || (impl->four && impl->four->variant == v)
               || (impl->five && impl->five->variant == v) ? "ready" : "empty"));
       return;
   }
-  if (verb == "clear") { stop(); impl->table.reset(); impl->four.reset(); impl->five.reset(); message("status empty"); return; }
+  if (verb == "clear") { stop(); impl->two.reset(); impl->table.reset(); impl->four.reset(); impl->five.reset(); message("status empty"); return; }
   if (verb == "stats" || verb == "probe")
   {
       Format format = Format::INFO_TABLE;
@@ -633,6 +641,11 @@ void MateTable::command(std::istream& input, const Position& pos) {
           { message("error usage: mate-table stats [raw | format info|info-table|table]"); return; }
       }
       if (impl->building.load(std::memory_order_acquire)) { message("status building"); return; }
+      if (impl->two && impl->two->variant == v)
+      {
+          if (verb == "stats") impl->two->stats(raw, format); else impl->two->probe(pos);
+          return;
+      }
       if (impl->five && impl->five->variant == v)
       {
           if (verb == "stats") impl->five->stats(raw, format); else impl->five->probe(pos);
@@ -656,11 +669,12 @@ void MateTable::command(std::istream& input, const Position& pos) {
   {
       std::string error;
       if (!parse_material(input, v, material, error)) { message("error " + error); return; }
-      symbol = material[0].symbol;
+      if (!material.empty()) symbol = material[0].symbol;
   }
   else if (verb == "piece") input >> symbol;
   else symbol = verb;
-  if (symbol.empty()) { message("error usage: mate-table pieces {K,B,k} [memory MiB] [format info|info-table|table]"); return; }
+  bool twoKings = materialList && material.empty();
+  if (symbol.empty() && !twoKings) { message("error usage: mate-table pieces {K,B,k} [memory MiB] [format info|info-table|table]"); return; }
   Color color = WHITE;
   uint64_t memory = 512;
   Format format = Format::INFO_TABLE;
@@ -671,7 +685,7 @@ void MateTable::command(std::istream& input, const Position& pos) {
   std::string exportFile;
   unsigned entrySize = 72;
   bool entrySizeSpecified = false;
-  if (materialList)
+  if (materialList && !twoKings)
   {
       color = material[0].color;
       if (material.size() > 1)
@@ -720,8 +734,8 @@ void MateTable::command(std::istream& input, const Position& pos) {
   }
   if (entrySizeSpecified && exportFile.empty())
   { message("error entrysize requires export filename"); return; }
-  PieceType pt = materialList ? material[0].type : resolve_piece(v, symbol);
-  if (pt == NO_PIECE_TYPE || pt == KING) { message("error unknown, ambiguous or royal piece symbol"); return; }
+  PieceType pt = twoKings ? KING : materialList ? material[0].type : resolve_piece(v, symbol);
+  if (pt == NO_PIECE_TYPE || (pt == KING && !twoKings)) { message("error unknown, ambiguous or royal piece symbol"); return; }
   PieceType secondType = secondSymbol.empty() ? NO_PIECE_TYPE
                        : materialList ? material[1].type : resolve_piece(v, secondSymbol);
   if (!secondSymbol.empty() && (secondType == NO_PIECE_TYPE || secondType == KING))
@@ -748,8 +762,9 @@ void MateTable::command(std::istream& input, const Position& pos) {
   std::shared_ptr<MateTableExport::Writer> writer;
   if (!exportFile.empty())
   {
-      std::vector<PieceType> types = {pt};
-      std::vector<Color> owners = {color};
+      std::vector<PieceType> types;
+      std::vector<Color> owners;
+      if (!twoKings) { types.push_back(pt); owners.push_back(color); }
       if (secondType != NO_PIECE_TYPE) { types.push_back(secondType); owners.push_back(opposing ? ~color : color); }
       if (thirdType != NO_PIECE_TYPE) { types.push_back(thirdType); owners.push_back(thirdOpposing ? ~color : color); }
       writer.reset(new MateTableExport::Writer);
@@ -757,12 +772,38 @@ void MateTable::command(std::istream& input, const Position& pos) {
       if (!writer->open(v, types, owners, exportFile, entrySize, error))
       { message("error " + error, format); return; }
   }
+  impl->two.reset();
   impl->table.reset();
   impl->four.reset();
   impl->five.reset();
   impl->cancelled.store(false, std::memory_order_relaxed);
   impl->building.store(true, std::memory_order_release);
   std::string name = Options["UCI_Variant"];
+  if (twoKings)
+  {
+      message("building two-piece variant " + name, format);
+      impl->worker = std::thread([this, v, name, memory, format, writer] {
+          std::unique_ptr<TwoTable> table(new TwoTable(v, name, memory * 1048576));
+          std::string error;
+          if (!table->build(impl->cancelled, error))
+          {
+              impl->building.store(false, std::memory_order_release);
+              message(error.empty() ? "cancelled" : "error " + error, format);
+              return;
+          }
+          impl->two = std::move(table);
+          if (writer && !export_table(*impl->two, *writer, impl->cancelled, format, error))
+          {
+              impl->building.store(false, std::memory_order_release);
+              message(error == "cancelled" ? "cancelled" : "error " + error, format);
+              return;
+          }
+          impl->building.store(false, std::memory_order_release);
+          impl->two->stats(false, format);
+          message("complete time " + std::to_string(impl->two->elapsed), format);
+      });
+      return;
+  }
   if (thirdType != NO_PIECE_TYPE)
   {
       std::array<PieceType, 3> types = {pt, secondType, thirdType};

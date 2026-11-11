@@ -60,6 +60,12 @@ int main() {
                  && e.pieces[i].color == decoded.pieces[i].color);
   }
   e = Entry{}; e.kings = {0, 63};
+  assert(encode8(e, bytes.data(), 64, 0));
+  assert(decode8(bytes.data(), decoded, 64, 0));
+  assert(decoded.count == 0 && decoded.result == 0 && decoded.score == 0);
+  e.count = 1; e.pieces[0] = {1, 0, 0};
+  assert(!encode8(e, bytes.data(), 64, 0));
+  e.count = 0;
   assert(encode8(e, bytes.data(), 64, 8));
   bytes[2] |= 1;
   assert(!decode8(bytes.data(), decoded, 64, 8)); // Nonzero unused support word.

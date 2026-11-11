@@ -105,7 +105,7 @@ customPiece2 = zz:F
     def test_malformed_material_preserves_cached_result(self):
         invalid = ['pieces', 'pieces K,B,k', 'pieces {}', 'pieces { }',
                    'pieces {K,B,k', 'pieces {K,,B,k}', 'pieces {,K,B,k}',
-                   'pieces {K,B,k,,}', 'pieces {K,B,k, ,}', 'pieces {K,k}',
+                   'pieces {K,B,k,,}', 'pieces {K,B,k, ,}', 'pieces {K}',
                    'pieces {K,K,B,k}', 'pieces {K,B}', 'pieces {K,B,N}',
                    'pieces {K,B,N,N,N,k}', 'pieces {K,missing,k}',
                    'pieces {K,123,k}', 'pieces {K,B,k}format info',
