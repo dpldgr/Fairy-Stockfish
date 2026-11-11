@@ -1001,7 +1001,7 @@ config-sanity: $(load_net)
 	@test "$(comp)" = "gcc" || test "$(comp)" = "icc" || test "$(comp)" = "mingw" || test "$(comp)" = "clang" \
 	|| test "$(comp)" = "armv7a-linux-androideabi16-clang"  || test "$(comp)" = "aarch64-linux-android21-clang"
 
-mate_table.o: mate_table.h mate_table_storage.h mate_table_four.h mate_table_five.h mate_table_export.h mate_table_bin.h
+mate_table.o: mate_table.h mate_table_storage.h mate_table_two.h mate_table_four.h mate_table_five.h mate_table_export.h mate_table_bin.h
 mate_table_export.o: mate_table_export.h mate_table_bin.h
 
 $(EXE): $(OBJS)

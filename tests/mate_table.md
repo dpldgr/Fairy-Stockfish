@@ -4,6 +4,7 @@ Select a variant and specify every piece, including both Kings:
 
 ```text
 setoption name UCI_Variant value metal-chess
+mate-table pieces {K,k} format table
 mate-table pieces {K,B,k} format table
 mate-table pieces {K,B,k,n} format table
 mate-table pieces {K,B,N,N,k,} memory 8192 format table
@@ -19,18 +20,25 @@ change the material. Repeated `N` entries represent separate pieces.
 Symbols must be configured by the selected variant. Multi-character symbols
 use uppercase or lowercase throughout, e.g. `{CK,SB,IN,IN,ck}`. Promoted-form
 symbols such as `+N` are accepted when their configured type is eligible.
-Each list must contain exactly one ordinary King of each color and three to
+Each list must contain exactly one ordinary King of each color and two to
 five pieces in total. Empty entries inside the list, ambiguous symbols and
 mixed-case symbols are errors. `color`, `partner` and `opponent` options cannot
 be combined with `pieces`; the list already specifies that information.
 
 `mate-table build pieces ...` and `api mate-table pieces ...` are also accepted.
 The original piece/partner/opponent commands remain available as aliases.
-The existing three-piece solver supports rectangular 3x3 through 16x16 boards;
+The two- and three-piece solvers support rectangular 3x3 through 16x16 boards;
 the experimental four-piece solver is capped at 81 cells and five-piece at
 64 cells. Five-piece jobs allow memory budgets up to 32768 MiB. The movement
 and adjudication restrictions below apply to all material sizes. Four/five-piece
 captures consult smaller material tables and include their remaining DTM.
+
+`{K,k}` enumerates bare ordinary Kings: every legal nonoverlapping,
+nonadjacent placement is a draw. On 8x8 this gives **7,224 states**, including
+both sides to move (3,612 each). Generation needs no retrograde propagation or
+result array. Statistics report legal/draw counts, and cached probes return a
+legal drawing move with no DTM field. The same variant restrictions below
+apply, including the exclusion of baring/extinction and other winning rules.
 
 The following three-piece details and applet counting conventions describe
 K+piece versus K. Four/five-piece statistics give one mate/mated table per army,
@@ -183,6 +191,7 @@ Run tests from the repository root:
 ```sh
 STOCKFISH=/path/to/stockfish python3 tests/mate_table.py -v
 BOARD_SIZE=16 STOCKFISH=/path/to/16x16-stockfish python3 tests/mate_table.py -v
+STOCKFISH=/path/to/stockfish python3 tests/mate_table_two.py -v
 ```
 
 The reference fixture was generated independently from the inline JavaScript at
@@ -204,6 +213,7 @@ material table to a binary training file:
 
 ```text
 mate-table pieces {K,B,k} export silver-bishop.bin
+mate-table pieces {K,k} export metal-training.bin
 mate-table pieces {K,R,k} export gold-rook.bin entrysize 72
 mate-table pieces {K,N,k} export "C:/training/iron knight.bin" entrysize 8
 mate-table pieces {K,B,N,N,k} memory 8192 export metal-five.bin entrysize 8
@@ -216,6 +226,13 @@ formats are headerless, fixed-size, little-endian records; the variant-specific
 reader supplies the schema. **Do not mix entry sizes or variant schemas in one
 file.** File-size alignment is checked, but a headerless file cannot identify
 its schema. Concurrent writers to the same path are not supported.
+
+Appending `{K,k}` uses the selected variant's full piece-index schema, just as
+larger materials do. Its records contain score 0 and result 0; draws have no
+DTM. Compact records use support count 0 and zero unused support words. The
+8x8 output sizes are **520,128 bytes** at entrysize 72 and **57,792 bytes** at
+entrysize 8. Neither format changes. The standalone compact codec also accepts
+zero configured non-king identities for a variant containing only Kings.
 
 Export starts after successful calculation (and the four/five-piece verification).
 It includes legal checks, checkmates and stalemates, skips invalid array cells,

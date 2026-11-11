@@ -33,7 +33,7 @@ struct Entry {
 // Dense type indices enumerate every configured non-king type in slot order.
 // The separately stored King is implicit and is not in this index range.
 inline bool valid(const Entry& e, unsigned squares, unsigned types) {
-  if (!squares || squares > 64 || !types || types > 8 || e.count > 3 || e.turn > 1
+  if (!squares || squares > 64 || types > 8 || e.count > 3 || e.turn > 1
       || e.result < -1 || e.result > 1 || e.kings[0] >= squares || e.kings[1] >= squares
       || e.kings[0] == e.kings[1]) return false;
   uint64_t occupied = (uint64_t(1) << e.kings[0]) | (uint64_t(1) << e.kings[1]);
