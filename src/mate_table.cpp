@@ -718,9 +718,12 @@ void MateTable::command(std::istream& input, const Position& pos) {
       }
       else if (option == "entrysize")
       {
-          if (entrySizeSpecified || (value != "8" && value != "72"))
-          { message("error entrysize must be 8 or 72, specified once"); return; }
-          entrySize = value == "8" ? 8 : 72;
+          std::istringstream number(value);
+          char extra;
+          int requested;
+          if (entrySizeSpecified || !(number >> requested) || (number >> extra) || requested < 7 || requested > 144)
+          { message("error entrysize must be 7..144, specified once"); return; }
+          entrySize = unsigned(requested);
           entrySizeSpecified = true;
       }
       else if (option == "memory")

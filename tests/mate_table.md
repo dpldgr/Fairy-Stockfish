@@ -219,9 +219,9 @@ mate-table pieces {K,N,k} export "C:/training/iron knight.bin" entrysize 8
 mate-table pieces {K,B,N,N,k} memory 8192 export metal-five.bin entrysize 8
 ```
 
-`entrysize` accepts **72** (the default) or **8**. It requires `export`, and
+`entrysize` accepts every integer **7 through 144**; the default remains **72**. It requires `export`, and
 applies only to that command. Quoted paths preserve Windows backslashes.
-Omitting export preserves the existing table calculation and output. Both
+Omitting export preserves the existing table calculation and output. All
 formats are headerless, fixed-size, little-endian records; the variant-specific
 reader supplies the schema. **Do not mix entry sizes or variant schemas in one
 file.** File-size alignment is checked, but a headerless file cannot identify
@@ -231,7 +231,7 @@ Appending `{K,k}` uses the selected variant's full piece-index schema, just as
 larger materials do. Its records contain score 0 and result 0; draws have no
 DTM. Compact records use support count 0 and zero unused support words. The
 8x8 output sizes are **520,128 bytes** at entrysize 72 and **57,792 bytes** at
-entrysize 8. Neither format changes. The standalone compact codec also accepts
+entrysize 8. The existing 8-byte and 72-byte layouts are unchanged. The compact codec also accepts
 zero configured non-king identities for a variant containing only Kings.
 
 Export starts after successful calculation (and the four/five-piece verification).
@@ -249,7 +249,7 @@ Score and result are from the side-to-move perspective:
 
 Already terminal decisive positions have d=0. DTM values >=32000 are rejected
 rather than silently changing the sign of the score. These are the existing
-mate-table results: move-count draw rules are ignored. Both formats reset
+mate-table results: move-count draw rules are ignored. All formats reset
 history and carry no castling or en-passant rights.
 
 An export reports `export complete records N entrysize S bytes B time T file P`
@@ -288,10 +288,10 @@ order, followed by King; material selection does not change that ordering.
 Raw engine slot numbers, build board stride and piece-slot capacity are not
 written. Multi-character symbols therefore need no special record notation.
 
-### Compact 8-byte format and matching decoder
+### Original compact 8-byte profile
 
-The compact format supports at most 64 board cells, eight configured non-king
-identities, and three supports in addition to the two Kings. It requires an
+For at most 64 board cells and eight configured non-king identities, the 8-byte
+layout remains byte identical and supports three pieces in addition to the Kings. It requires an
 adapted DLL. `src/mate_table_bin.h` is a standalone C++17 encoder/decoder with
 no engine dependencies, suitable for inclusion in that DLL. There is no
 automatic detection of record size; select 8-byte records in the reader too.
@@ -336,6 +336,52 @@ The decoder checks field ranges, overlapping squares, unused words and reserved
 bits; variant move legality comes from the generator. It does not change the
 trainer's loss function. Near-mate scores saturate the current sigmoid loss,
 so storing DTM exactly does not itself make the trainer learn mate distance.
+
+### Variable-width compact records (7..144 bytes, excluding 72)
+
+`src/compact_training_record.h` provides a standalone encoder/decoder shared
+with the PRP Trainer. The width, variant geometry and dense non-King type order
+are external schema. Width **72 is reserved for PackedSfen**, as described above.
+Use `--record-bytes N` in the matching Trainer, for both sequential and PRP reads.
+No additional DLL is introduced, but the existing library must be rebuilt.
+
+```text
+mate-table pieces {K,N,k} export iron-knight-7.bin entrysize 7
+mate-table pieces {K,B,N,k} export four-piece-9.bin entrysize 9
+```
+
+The highest bit selects sparse (0) or bitmap (1) placement encoding. All fields
+are little-endian, including bit fields. Unused fields/padding must be zero.
+
+For sparse records, let S=max(6,ceil(log2(cells))) and
+T=max(3,ceil(log2(nonKingTypes))). Choose the largest support capacity C fitting
+`2*S + C*(S+T+1) + ceil(log2(C+1)) + 20 <= 8*entrysize`. Fields are: two King
+squares (S bits each), C support slots (S square bits, T type bits, one color
+bit), side to move (one bit), support count (ceil(log2(C+1)) bits), signed score
+(16 bits), WDL+1 (two bits), zero padding and the zero mode bit. Minimum field
+widths retain compatibility with the original 8-byte profile above.
+
+If the material exceeds sparse capacity, bitmap mode is used when it fits:
+`cells + (supports+2)*(ceil(log2(nonKingTypes+1))+1) + 20 <= 8*entrysize`.
+Fields are: occupancy bitmap (one bit per cell), then type/color for each
+occupied square in increasing square order, side to move, score, WDL+1, zero
+padding and mode bit 1. King uses dense type code `nonKingTypes`; exactly one
+King of each color is required. The occupancy count supplies the piece count.
+
+Seven bytes hold all 2–4-piece Metal Chess positions on 8x8. On a 4x3 chess
+schema, bitmap encoding also fits six total pieces in seven bytes; the table
+solver itself still supports only two through five pieces. Other compact widths
+can accommodate larger geometry/type schemas, subject to available bits. There
+is no longer a global 64-cell/eight-type limit for compact exports. The requested
+material's capacity is checked before opening the destination or calculating a
+table. Too-small widths fail without appending data.
+
+The exporter writes canonical support order; bitmap readers recover square order
+and may reorder it. No move, ply, rights or history is stored. Decoder defaults
+match the original compact profile. Record widths must match throughout a file.
+Converting an existing file requires decoding/re-encoding, not truncation or
+padding. `src/mate_table_bin.h` remains a decoder for the original 8-byte profile;
+use `compact_training_record.h` for the expanded schemas and other widths.
 
 Additional checks from the repository root:
 

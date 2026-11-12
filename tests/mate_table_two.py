@@ -207,11 +207,23 @@ maxRank = 16
             self.build(engine,options='memory 1')
             raw='\n'.join(s for _,s in engine.ready('mate-table stats raw'))
             self.assertIn('legal_states '+str(len(legal_states(16,16))),raw)
-            for size in (8,72):
+            for size in (72,):
                 path=self.folder/f'large-{size}.bin'
                 engine.send(f'mate-table pieces {{K,k}} export "{path}" entrysize {size}')
                 engine.until(lambda s:s.startswith(PREFIX+'error export board exceeds'))
                 self.assertFalse(path.exists())
+
+    @unittest.skipUnless(int(os.environ.get('BOARD_SIZE','8'))>=16,'large build')
+    def test_compact_large_board_export(self):
+        expected = legal_states(16,16)
+        with self.engine('two-large') as engine:
+            for size in (7,8,144):
+                path=self.folder/f'wide-compact-{size}.bin'
+                self.build(engine,options=f'export "{path}" entrysize {size}')
+                decoded=list(records(path,size,16))
+                self.assertEqual(len(decoded),len(expected))
+                self.assertEqual({(*row[0],row[2]) for row in decoded},expected)
+                self.assertTrue(all(row[1]==() and row[3:]==(0,0) for row in decoded))
 
 
 if __name__=='__main__':

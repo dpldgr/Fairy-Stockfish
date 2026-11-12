@@ -19,7 +19,9 @@
 namespace Stockfish::MateTableBin {
 
 struct Support {
-  uint8_t square = 0, type = 0, color = 0;
+  uint8_t square = 0;
+  uint16_t type = 0; // Expanded compact schemas can have more than 256 types.
+  uint8_t color = 0;
 };
 
 struct Entry {

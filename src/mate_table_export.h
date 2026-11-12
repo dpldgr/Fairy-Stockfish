@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "mate_table_bin.h"
+#include "compact_training_record.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -49,6 +50,8 @@ private:
   size_t used = 0;
   uint64_t initialBytes = 0, confirmed = 0;
   MateTableBin::Entry material;
+  CompactTrainingRecord::Codec compact;
+  CompactTrainingRecord::Entry compactEntry;
 };
 
 } // namespace MateTableExport

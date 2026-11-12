@@ -26,22 +26,50 @@ def records(path, size, width=8, height=None, names=METAL_TYPES):
     with Path(path).open('rb') as stream:
         while raw := stream.read(size):
             assert len(raw) == size
-            if size == 8:
+            if size != 72:
                 word = int.from_bytes(raw, 'little')
-                assert word >> 63 == 0
-                kings = (word & 63, (word >> 6) & 63)
-                turn, count = (word >> 42) & 1, (word >> 43) & 3
-                score = (word >> 45) & 65535
-                score = score if score < 32768 else score - 65536
-                result = ((word >> 61) & 3) - 1
-                assert result in (-1, 0, 1)
+                cursor = 0
+                def bits(n):
+                    nonlocal cursor
+                    value = (word >> cursor) & ((1 << n) - 1)
+                    cursor += n
+                    return value
+                square_bits = max(6, (cells - 1).bit_length())
+                type_bits = max(3, (len(names) - 1).bit_length())
+                capacity = 0
+                for n in range(1, size * 8 + 1):
+                    if 2 * square_bits + n * (square_bits + type_bits + 1) + n.bit_length() + 20 > size * 8:
+                        break
+                    capacity = n
                 supports = []
-                for i in range(3):
-                    packed = (word >> (12 + 10 * i)) & 1023
-                    if i < count:
-                        supports.append((packed & 63, names[(packed >> 6) & 7], packed >> 9))
-                    else:
-                        assert packed == 0
+                bitmap = word >> (size * 8 - 1)
+                if bitmap:
+                    kings = [None, None]
+                    occupied = bits(cells)
+                    for sq in range(cells):
+                        if occupied >> sq & 1:
+                            kind, color = bits(len(names).bit_length()), bits(1)
+                            if kind == len(names):
+                                assert kings[color] is None
+                                kings[color] = sq
+                            else:
+                                supports.append((sq, names[kind], color))
+                    assert None not in kings
+                    kings = tuple(kings)
+                else:
+                    kings = (bits(square_bits), bits(square_bits))
+                    slots = [(bits(square_bits), bits(type_bits), bits(1)) for _ in range(capacity)]
+                turn = bits(1)
+                if not bitmap:
+                    count = bits(capacity.bit_length())
+                    assert count <= capacity
+                    assert all(p == (0, 0, 0) for p in slots[count:])
+                    supports = [(sq, names[kind], color) for sq, kind, color in slots[:count]]
+                score = bits(16)
+                score = score if score < 32768 else score - 65536
+                result = bits(2) - 1
+                assert cursor <= size * 8 - 1
+                assert word >> cursor == bitmap << (size * 8 - 1 - cursor)
             else:
                 payload = int.from_bytes(raw[:64], 'little')
                 cursor = 0
@@ -199,6 +227,42 @@ customPiece40 = z:K
                 self.assertEqual(seen, expected_physical)
                 self.assertEqual(count, len(seen))
 
+    def test_every_integer_width_matches_packed_and_bitmap(self):
+        with self.engine('export-tiny') as engine:
+            baseline = self.folder / 'all-widths-72.bin'
+            count, _ = self.build(engine, '{K,B,N,N,k}', baseline)
+            expected = list(records(baseline, 72, 3))
+            for size in range(7, 145):
+                if size == 72:
+                    continue
+                path = self.folder / f'all-widths-{size}.bin'
+                with self.subTest(size=size):
+                    actual, _ = self.build(engine, '{k,N,K,B,N}', path, size)
+                    self.assertEqual(actual, count)
+                    self.assertEqual(list(records(path, size, 3)), expected)
+                path.unlink()
+
+    def test_capacity_failure_preserves_destination(self):
+        # Three supports on 8x8 need at least eight bytes in this profile.
+        path = self.folder / 'too-small.bin'
+        prefix = bytes(7)
+        path.write_bytes(prefix)
+        with self.engine() as engine:
+            engine.send(f'mate-table pieces {{K,B,N,N,k}} export "{path}" entrysize 7')
+            lines = [s for _, s in engine.until(lambda s: s.startswith(PREFIX + 'error '))]
+            self.assertIn('does not fit entrysize 7', lines[-1])
+            self.assertEqual(path.read_bytes(), prefix)
+
+    def test_expanded_compact_piece_schema(self):
+        names = METAL_TYPES + tuple('x' + chr(97 + i) for i in range(4, 18))
+        with self.engine('export-many') as engine:
+            for size in (7, 8, 9, 73, 144):
+                path = self.folder / f'many-types-{size}.bin'
+                count, _ = self.build(engine, '{K,XR,k}', path, size)
+                decoded = list(records(path, size, 3, names=names))
+                self.assertEqual(len(decoded), count)
+                self.assertTrue(all(row[1][0][1:] == ('xr', 0) for row in decoded))
+
     def test_append_paths_aliases_and_black_perspective(self):
         path = self.folder / 'quoted path.bin'
         with self.engine('export-alias') as engine:
@@ -235,7 +299,7 @@ customPiece40 = z:K
             malformed = self.folder / 'misaligned.bin'
             malformed.write_bytes(b'x')
             for options in ['entrysize 8', 'export', 'export ""', 'export "unterminated',
-                            'export "a"tail', 'export a export b', 'export a entrysize 9',
+                            'export "a"tail', 'export a export b', 'export a entrysize 6', 'export a entrysize 145', 'export a entrysize 7.5', 'export a entrysize -4294967289',
                             'export a entrysize 8 entrysize 72', f'export "{malformed}"',
                             f'export "{self.folder}"', f'export "{self.folder}/missing/data.bin"']:
                 with self.subTest(options=options):
@@ -245,7 +309,7 @@ customPiece40 = z:K
                     self.assertIn(PREFIX + 'status ready', status)
             self.assertEqual(malformed.read_bytes(), b'x')
         with self.engine('export-many') as engine:
-            for size in (8, 72):
+            for size in (72,):
                 path = self.folder / f'too-many-{size}.bin'
                 engine.send(f'mate-table pieces {{K,B,k}} export "{path}" entrysize {size}')
                 lines = [s for _, s in engine.until(lambda s: s.startswith(PREFIX + 'error ')
@@ -299,7 +363,7 @@ customPiece40 = z:K
     @unittest.skipUnless(int(os.environ.get('BOARD_SIZE', '8')) >= 16, 'large build')
     def test_board_encoding_limits(self):
         path = self.folder / 'board-limit.bin'
-        for variant, size, limit in [('export-128', 8, 64), ('export-256', 72, 128)]:
+        for variant, size, limit in [('export-256', 72, 128)]:
             with self.subTest(variant=variant), self.engine(variant) as engine:
                 engine.send(f'mate-table pieces {{K,X,k}} export "{path}" entrysize {size}')
                 lines = [s for _, s in engine.until(lambda s: s.startswith(PREFIX + 'error '))]

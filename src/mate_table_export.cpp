@@ -36,12 +36,12 @@ bool Writer::open(const Variant* v, const std::vector<PieceType>& types,
                   const std::vector<Color>& owners, const std::string& filename,
                   unsigned entrySize, std::string& error) {
   if (file || !path.empty()) { error = "export writer already opened"; return false; }
-  if (entrySize != 8 && entrySize != 72) { error = "entrysize must be 8 or 72"; return false; }
+  if (entrySize < 7 || entrySize > 144) { error = "entrysize must be 7..144"; return false; }
   size = entrySize;
   files = unsigned(v->maxFile) + 1;
   cells = files * (unsigned(v->maxRank) + 1);
-  if (cells > (size == 8 ? 64u : 128u))
-  { error = "export board exceeds " + std::to_string(size == 8 ? 64 : 128) + " cells for entrysize " + std::to_string(size); return false; }
+  if (size == 72 && cells > 128)
+  { error = "export board exceeds 128 cells for entrysize 72"; return false; }
   if (size == 72 && v->nnueKing != KING)
   { error = "72-byte export requires the variant's unique NNUE King"; return false; }
   if (types.size() > 3 || types.size() != owners.size())
@@ -49,15 +49,22 @@ bool Writer::open(const Variant* v, const std::vector<PieceType>& types,
   std::array<unsigned, PIECE_TYPE_NB> index{};
   for (PieceSet ps = v->pieceTypes & ~piece_set(KING); ps;)
       index[pop_lsb(ps)] = typeCount++;
-  if (typeCount > (size == 8 ? 8u : 16u))
-  { error = "export variant exceeds " + std::to_string(size == 8 ? 8 : 16) + " non-king piece types"; return false; }
+  if (size == 72 && typeCount > 16)
+  { error = "export variant exceeds 16 non-king piece types"; return false; }
   material.count = uint8_t(types.size());
   for (size_t i = 0; i < types.size(); ++i)
-      material.pieces[i] = {0, uint8_t(index[types[i]]), uint8_t(owners[i])};
+      material.pieces[i] = {0, uint16_t(index[types[i]]), uint8_t(owners[i])};
   // The upstream payload includes zero hand counts for ALL configured types.
   unsigned payloadBits = cells + 41 + 5 * material.count + 10 * (typeCount + 1);
   if (size == 72 && payloadBits > 512)
   { error = "72-byte export packed position exceeds 512 bits"; return false; }
+  if (size != 72)
+  {
+      if (!compact.reset(cells, typeCount, size, error)) return false;
+      if (!compact.can_fit(unsigned(types.size())))
+      { error = "requested material does not fit entrysize " + std::to_string(size); return false; }
+      compactEntry.pieces.resize(types.size());
+  }
 
   std::error_code ec;
   bool exists = std::filesystem::exists(filename, ec);
@@ -119,12 +126,20 @@ bool Writer::write(const MateTableBin::Entry& entry, std::string& error) {
   for (unsigned i = 1; i < e.count; ++i)
       for (unsigned j = i; j && less(e.pieces[j], e.pieces[j - 1]); --j)
           std::swap(e.pieces[j], e.pieces[j - 1]);
-  if (size == 8)
+  if (size == 8 && cells <= 64 && typeCount <= 8)
   {
       if (!MateTableBin::encode8(e, buffer.get() + used, cells, typeCount))
       { error = "invalid compact export record"; return false; }
   }
-  else pack72(e, buffer.get() + used);
+  else if (size == 72) pack72(e, buffer.get() + used);
+  else
+  {
+      compactEntry.kings = {e.kings[0], e.kings[1]};
+      compactEntry.turn = e.turn; compactEntry.score = e.score; compactEntry.result = e.result;
+      for (unsigned i = 0; i < e.count; ++i)
+          compactEntry.pieces[i] = {e.pieces[i].square, e.pieces[i].type, e.pieces[i].color};
+      if (!compact.encode(compactEntry, buffer.get() + used, error)) return false;
+  }
   used += size;
   return used < BufferRecords * size || flush(error);
 }
