@@ -735,6 +735,8 @@ void MateTable::command(std::istream& input, const Position& pos) {
       }
       else { message("error unknown option or invalid value"); return; }
   }
+  if (entrySizeSpecified && MateTableExport::is_dtx(exportFile))
+  { message("error DTX record width is described by its header; entrysize applies only to bin exports"); return; }
   if (entrySizeSpecified && exportFile.empty())
   { message("error entrysize requires export filename"); return; }
   PieceType pt = twoKings ? KING : materialList ? material[0].type : resolve_piece(v, symbol);
@@ -772,7 +774,7 @@ void MateTable::command(std::istream& input, const Position& pos) {
       if (thirdType != NO_PIECE_TYPE) { types.push_back(thirdType); owners.push_back(thirdOpposing ? ~color : color); }
       writer.reset(new MateTableExport::Writer);
       std::string error;
-      if (!writer->open(v, types, owners, exportFile, entrySize, error))
+      if (!writer->open(v, types, owners, exportFile, entrySize, error, std::string(Options["UCI_Variant"])))
       { message("error " + error, format); return; }
   }
   impl->two.reset();
