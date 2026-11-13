@@ -289,6 +289,11 @@ The javascript binding [ffish.js](https://www.npmjs.com/package/ffish) contribut
 
 For in-browser use a [port of Fairy-Stockfish to WebAssembly](https://github.com/fairy-stockfish/fairy-stockfish.wasm) is available at [npm](https://www.npmjs.com/package/fairy-stockfish-nnue.wasm). It is e.g. used for local analysis on [pychess.org](https://www.pychess.org/analysis/chess). Also see the [Fairy-Stockfish WASM demo](https://github.com/ianfab/fairy-stockfish-nnue-wasm-demo) available at https://fairy-stockfish-nnue-wasm.vercel.app/.
 
+## Distance training export
+
+`mate-table` can export header-described, fixed-stride `.dtx` training files.
+Existing `.bin` exports are unchanged. See [DTX format and usage](docs/dtx-format.md).
+
 ## Terms of use
 
 Fairy-Stockfish is free, and distributed under the **GNU General Public License version 3**

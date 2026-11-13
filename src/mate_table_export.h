@@ -19,6 +19,7 @@
 
 #include "mate_table_bin.h"
 #include "compact_training_record.h"
+#include "dtx_training_record.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -26,12 +27,14 @@ class Variant;
 
 namespace MateTableExport {
 
+bool is_dtx(const std::string& path);
+
 // Optional append-only training output; independent of search and table storage.
 class Writer {
 public:
   ~Writer();
   bool open(const Variant*, const std::vector<PieceType>&, const std::vector<Color>&,
-            const std::string& path, unsigned entrySize, std::string& error);
+            const std::string& path, unsigned entrySize, std::string& error, const std::string& variantName = "");
   bool write(const MateTableBin::Entry&, std::string& error);
   bool finish(std::string& error);
   MateTableBin::Entry prototype() const { return material; }
@@ -40,6 +43,8 @@ public:
   const std::string& filename() const { return path; }
 
 private:
+  bool open_dtx(const Variant*, const std::string&, const std::string&, std::string&);
+  bool rollback_dtx(std::string& error);
   bool flush(std::string& error);
   bool fail(const std::string& reason, std::string& error);
   void pack72(const MateTableBin::Entry&, uint8_t*) const;
@@ -52,6 +57,11 @@ private:
   MateTableBin::Entry material;
   CompactTrainingRecord::Codec compact;
   CompactTrainingRecord::Entry compactEntry;
+  bool dtx = false;
+  uint64_t initialRecords = 0;
+  DtxTrainingRecord::Header dtxHeader;
+  DtxTrainingRecord::Codec dtxCodec;
+  DtxTrainingRecord::Entry dtxEntry;
 };
 
 } // namespace MateTableExport
